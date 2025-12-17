@@ -1,0 +1,2 @@
+This is a lightweight test file to verify GitHub connectivity.
+Commit and push to ensure the remote accepts changes.
