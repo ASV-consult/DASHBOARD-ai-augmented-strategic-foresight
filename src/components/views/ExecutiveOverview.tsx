@@ -35,32 +35,44 @@ interface ExecutiveOverviewProps {
 interface PipelineStageProps {
   icon: React.ReactNode;
   label: string;
-  count: number;
+  count?: number;
   onClick: () => void;
   isActive?: boolean;
   color?: string;
 }
 
-function PipelineStage({ icon, label, count, onClick, isActive, color }: PipelineStageProps) {
+function PipelineStage({ icon, label, onClick, isActive, color }: PipelineStageProps) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        "group flex min-w-[150px] flex-col items-center gap-3 rounded-3xl border border-border/50 bg-background/60 px-4 py-4 text-center shadow-[0_10px_30px_-22px_rgba(15,23,42,0.35)] backdrop-blur transition-all hover:-translate-y-1 hover:border-primary/60 hover:bg-primary/5",
+        "group flex h-[120px] w-[110px] flex-col items-center justify-center gap-2 rounded-3xl border border-border/50 bg-background/60 px-3 py-3 text-center shadow-[0_10px_30px_-22px_rgba(15,23,42,0.35)] backdrop-blur transition-all hover:-translate-y-1 hover:border-primary/60 hover:bg-primary/5",
         isActive 
           ? "border-primary/60 bg-primary/10 shadow-[0_20px_40px_-25px_rgba(59,130,246,0.35)]" 
           : "hover:border-primary/40"
       )}
     >
       <div className={cn(
-        "flex h-11 w-11 items-center justify-center rounded-2xl ring-1 ring-border/60 shadow-sm transition group-hover:ring-primary/40",
+        "flex h-10 w-10 items-center justify-center rounded-xl ring-1 ring-border/60 shadow-sm transition group-hover:ring-primary/40",
         color || "bg-primary/10 text-primary"
       )}>
         {icon}
       </div>
-      <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">{label}</span>
-      <span className="text-lg font-semibold text-foreground">{count}</span>
+      <span className="min-h-[28px] text-[10px] font-semibold uppercase tracking-wide text-muted-foreground leading-snug whitespace-normal max-w-[100px] flex items-center text-center">
+        {label}
+      </span>
     </button>
+  );
+}
+
+function PipelineConnector({ label }: { label: string }) {
+  return (
+    <div className="flex w-[90px] flex-col items-center gap-1 text-center shrink-0">
+      <ChevronRight className="h-5 w-5 text-muted-foreground" />
+      <span className="min-h-[28px] text-[10px] font-medium text-muted-foreground leading-snug max-w-[90px] text-center">
+        {label}
+      </span>
+    </div>
   );
 }
 
@@ -80,6 +92,7 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
   } = useForesight();
   
   const [selectedSignal, setSelectedSignal] = useState<Signal | null>(null);
+  const [showHighlights, setShowHighlights] = useState(false);
 
   // Get company info
   const companyName = data?.meta?.company || data?.strategy_context?.company?.name || 'Company';
@@ -128,6 +141,11 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
     };
   }, [allSignals]);
 
+  const scoredAssumptionsCount =
+    data?.strategy_context?.assumption_health?.length ||
+    data?.assumption_health?.length ||
+    coreAssumptions.length;
+
   if (!data) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -172,7 +190,7 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
               {generatedAt}
             </p>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex items-center gap-3 rounded-2xl border border-border/50 bg-background/70 px-4 py-3 shadow-[0_10px_30px_-20px_rgba(15,23,42,0.35)]">
               <div className="rounded-xl bg-primary/10 p-2 text-primary">
                 <Radio className="h-4 w-4" />
@@ -180,15 +198,6 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
               <div>
                 <div className="text-2xl font-semibold text-foreground">{allSignals.length}</div>
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Signals</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 rounded-2xl border border-border/50 bg-background/70 px-4 py-3 shadow-[0_10px_30px_-20px_rgba(15,23,42,0.35)]">
-              <div className="rounded-xl bg-emerald-500/10 p-2 text-emerald-500">
-                <Briefcase className="h-4 w-4" />
-              </div>
-              <div>
-                <div className="text-2xl font-semibold text-foreground">{workstreams.length}</div>
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Workstreams</div>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-2xl border border-border/50 bg-background/70 px-4 py-3 shadow-[0_10px_30px_-20px_rgba(15,23,42,0.35)]">
@@ -211,42 +220,50 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
           <p className="text-xs text-muted-foreground">Navigate the flow from strategy to action.</p>
         </CardHeader>
         <CardContent className="pt-0 pb-6">
-          <div className="flex items-center justify-between gap-5 overflow-x-auto py-4 px-2">
+          <div className="flex flex-nowrap items-center justify-center gap-3 py-4 px-2">
+            <PipelineStage
+              icon={<Building2 className="h-5 w-5" />}
+              label="Input company name"
+              count={1}
+              onClick={() => onNavigate('overview')}
+              color="bg-slate-500/10 text-slate-500"
+            />
+            <PipelineConnector label="Research + Strategic analysis" />
             <PipelineStage
               icon={<Layers className="h-5 w-5" />}
-              label="Strategy"
+              label="Strategic Decomposition"
               count={buildingBlocks ? 4 : 0}
               onClick={() => onNavigate('strategy')}
               color="bg-blue-500/10 text-blue-500"
             />
-            <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
+            <PipelineConnector label="Assumption extraction" />
             <PipelineStage
               icon={<Radio className="h-5 w-5" />}
+              label="Core Assumptions"
+              count={coreAssumptions.length}
+              onClick={() => onNavigate('core-assumptions')}
+              color="bg-cyan-500/10 text-cyan-500"
+            />
+            <PipelineConnector label="Signal Scanning + Scoring" />
+            <PipelineStage
+              icon={<Target className="h-5 w-5" />}
               label="Signals"
               count={allSignals.length}
               onClick={() => onNavigate('signals')}
-              color="bg-cyan-500/10 text-cyan-500"
-            />
-            <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
-            <PipelineStage
-              icon={<Target className="h-5 w-5" />}
-              label="Assumptions Scored"
-              count={coreAssumptions.length}
-              onClick={() => onNavigate('assumptions')}
               color="bg-purple-500/10 text-purple-500"
             />
-            <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
+            <PipelineConnector label="Signal Aggregation + Analysis" />
             <PipelineStage
               icon={<AlertTriangle className="h-5 w-5" />}
-              label="Forecast"
-              count={threats.length + opportunities.length + earlyWarnings.length}
-              onClick={() => onNavigate('outliers')}
+              label="Core Assumptions Scored"
+              count={scoredAssumptionsCount}
+              onClick={() => onNavigate('assumptions')}
               color="bg-orange-500/10 text-orange-500"
             />
-            <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
+            <PipelineConnector label="Impact Formulation" />
             <PipelineStage
               icon={<Briefcase className="h-5 w-5" />}
-              label="Workstreams"
+              label="Strategic Impact"
               count={workstreams.length}
               onClick={() => onNavigate('workstreams')}
               color="bg-emerald-500/10 text-emerald-500"
@@ -254,9 +271,26 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
           </div>
         </CardContent>
       </Card>
+      <div className="text-center text-sm text-muted-foreground px-6 -mt-2">
+        Use the pipeline as your primary navigation to move from inputs to strategic impact. Supporting details sit below.
+      </div>
+      <div className="text-center text-lg font-semibold text-foreground mt-5">
+        Model highlights at a glance
+      </div>
+      <div className="flex justify-center mt-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="rounded-full px-4"
+          onClick={() => setShowHighlights(prev => !prev)}
+        >
+          {showHighlights ? 'Hide highlights' : 'See highlights'}
+        </Button>
+      </div>
 
       {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {showHighlights && (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-4">
         {/* Top Threats */}
         <Card className="relative overflow-hidden bg-card/60 border border-destructive/30 rounded-3xl shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] backdrop-blur before:absolute before:inset-x-0 before:top-0 before:h-1 before:bg-destructive/80">
           <CardHeader className="pb-3 pt-5">
@@ -371,7 +405,10 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
           </CardContent>
         </Card>
       </div>
+      )}
 
+      {showHighlights && (
+      <>
       {/* Second Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Most Sensitive Assumptions */}
@@ -542,6 +579,8 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
             </div>
           </CardContent>
         </Card>
+      )}
+      </>
       )}
     </div>
   );

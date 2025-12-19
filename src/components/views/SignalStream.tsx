@@ -11,6 +11,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { SignalDetailDialog } from '@/components/SignalDetailDialog';
 import { 
   Search, 
@@ -23,8 +24,17 @@ import {
   Radio
 } from 'lucide-react';
 import { Signal } from '@/types/foresight';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { OutlierForecast } from '@/components/views/OutlierForecast';
+import { getSignalScore } from '@/lib/signal-utils';
 
-export function SignalStream() {
+export function SignalStream({
+  activeTab = 'stream',
+  onTabChange,
+}: {
+  activeTab?: 'stream' | 'outliers';
+  onTabChange?: (tab: 'stream' | 'outliers') => void;
+}) {
   const { allSignals, coreAssumptions, threatIds, opportunityIds, warningIds } = useForesight();
   const [search, setSearch] = useState('');
   const [assumptionFilter, setAssumptionFilter] = useState<string>('all');
@@ -33,6 +43,7 @@ export function SignalStream() {
   const [timeHorizonFilter, setTimeHorizonFilter] = useState<string>('all');
   const [outlierFilter, setOutlierFilter] = useState<string>('all');
   const [directionFilter, setDirectionFilter] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [selectedSignal, setSelectedSignal] = useState<Signal | null>(null);
   
   if (allSignals.length === 0) {
@@ -46,6 +57,10 @@ export function SignalStream() {
       </div>
     );
   }
+
+  const handleTabChange = (tab: 'stream' | 'outliers') => {
+    onTabChange?.(tab);
+  };
 
   // Get unique values for filters
   const uniqueBuildingBlocks = useMemo(() => {
@@ -74,7 +89,8 @@ export function SignalStream() {
 
   // Filter signals
   const filteredSignals = useMemo(() => {
-    return allSignals.filter(signal => {
+    return allSignals
+      .filter(signal => {
       // Search filter
       const searchLower = search.toLowerCase();
       const content = signal.signal_content || signal.strategic_analysis || '';
@@ -124,8 +140,13 @@ export function SignalStream() {
       }
       
       return true;
-    });
-  }, [allSignals, search, assumptionFilter, buildingBlockFilter, riskDomainFilter, timeHorizonFilter, directionFilter, outlierFilter, threatIds, opportunityIds, warningIds]);
+    })
+      .sort((a, b) => {
+        const scoreA = getSignalScore(a);
+        const scoreB = getSignalScore(b);
+        return sortOrder === 'desc' ? scoreB - scoreA : scoreA - scoreB;
+      });
+  }, [allSignals, search, assumptionFilter, buildingBlockFilter, riskDomainFilter, timeHorizonFilter, directionFilter, outlierFilter, sortOrder, threatIds, opportunityIds, warningIds]);
 
   const getOutlierBadges = (signalId: string) => {
     const badges = [];
@@ -141,7 +162,7 @@ export function SignalStream() {
     return badges;
   };
 
-  return (
+  const streamContent = (
     <div className="space-y-4">
       <SignalDetailDialog
         signal={selectedSignal}
@@ -189,6 +210,15 @@ export function SignalStream() {
                 <SelectItem value="Negative">Negative</SelectItem>
               </SelectContent>
             </Select>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="px-3"
+              onClick={() => setSortOrder(prev => (prev === 'desc' ? 'asc' : 'desc'))}
+            >
+              Sort by score: {sortOrder === 'desc' ? 'High to Low' : 'Low to High'}
+            </Button>
 
             <Select value={buildingBlockFilter} onValueChange={setBuildingBlockFilter}>
               <SelectTrigger className="w-[160px]">
@@ -291,5 +321,28 @@ export function SignalStream() {
         </div>
       </ScrollArea>
     </div>
+  );
+
+  return (
+    <Tabs value={activeTab} onValueChange={value => handleTabChange(value as 'stream' | 'outliers')}>
+      <TabsList className="w-full justify-start mb-4 bg-card/70 border border-border/60 rounded-full p-2 flex-wrap h-auto gap-2 shadow-sm backdrop-blur">
+        <TabsTrigger value="stream" className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium">
+          <Radio className="h-4 w-4" />
+          Signal Stream
+        </TabsTrigger>
+        <TabsTrigger value="outliers" className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium">
+          <AlertTriangle className="h-4 w-4" />
+          Outlier Forecast
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="stream" className="mt-2">
+        {streamContent}
+      </TabsContent>
+
+      <TabsContent value="outliers" className="mt-2">
+        <OutlierForecast />
+      </TabsContent>
+    </Tabs>
   );
 }

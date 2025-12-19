@@ -325,6 +325,168 @@ export interface ValidationReport {
   integrity_check: string;
 }
 
+export interface StrategicImpactMeta {
+  document_type?: string;
+  company_name?: string;
+  as_of_date?: string;
+  strategy_intent?: string;
+}
+
+export interface StrategicImpactNode {
+  type: string;
+  id: string;
+  label: string;
+}
+
+export interface StrategicImpactFeedbackLoop {
+  loop_id: string;
+  title: string;
+  chain_text?: string;
+  nodes?: StrategicImpactNode[];
+}
+
+export interface StrategicImpactUpsidePoint {
+  id: string;
+  title: string;
+  description?: string;
+  note_on_uncertainty?: string;
+}
+
+export interface StrategicImpactConstraint {
+  constraint_id: string;
+  name: string;
+  description?: string;
+}
+
+export interface StrategicImpactExecutiveDiagnosis {
+  summary_paragraphs?: string[];
+  dominant_feedback_loops?: StrategicImpactFeedbackLoop[];
+  validated_upside_points?: StrategicImpactUpsidePoint[];
+  constraints?: StrategicImpactConstraint[];
+}
+
+export interface StrategicImpactPathwayLit {
+  pathway_id: string;
+  short_description?: string;
+  activation_strength?: string;
+}
+
+export interface StrategicImpactObjectiveStatus {
+  label?: string;
+  severity?: string;
+  pattern?: string;
+}
+
+export type StrategicImpactSignalIdMap = Record<string, string[]>;
+
+export interface StrategicImpactEvidenceLinks {
+  signal_ids?: string[] | StrategicImpactSignalIdMap;
+  note?: string;
+}
+
+export interface StrategicImpactObjective {
+  objective_id: string;
+  objective_title: string;
+  status?: StrategicImpactObjectiveStatus;
+  diagnosis?: string;
+  impact_pathways_lit?: StrategicImpactPathwayLit[];
+  strategic_consequence?: string;
+  key_risk_modes?: string[];
+  evidence_links?: StrategicImpactEvidenceLinks;
+  signal_placeholders?: {
+    not_provided_in_text?: boolean;
+    note?: string;
+  };
+}
+
+export interface StrategicImpactObjectiveScoreboard {
+  overview?: string;
+  objectives?: StrategicImpactObjective[];
+}
+
+export interface StrategicImpactBreakpointWhy {
+  assumption_id?: string;
+  assumption_short_description?: string;
+  assumption_health?: string;
+  pathway_id?: string;
+  pathway_short_description?: string;
+  notes?: string;
+  evidence_summary?: string;
+}
+
+export interface StrategicImpactMove {
+  move_id: string;
+  title: string;
+  description?: string;
+  time_horizon?: string;
+}
+
+export interface StrategicImpactBreakpoint {
+  breakpoint_id: string;
+  title: string;
+  type?: string;
+  why_happening?: StrategicImpactBreakpointWhy[];
+  impact_on_strategy?: string[];
+  moves?: StrategicImpactMove[];
+  linked_pathways?: StrategicImpactPathwayLit[];
+  devils_advocate?: {
+    counter_case?: string;
+    what_to_test?: string[];
+  };
+  evidence_links?: StrategicImpactEvidenceLinks;
+}
+
+export interface StrategicImpactTruthTableEntry {
+  assumption_id: string;
+  short_description?: string;
+  status?: string;
+  why_high_impact?: string;
+  why_it_creates_options?: string;
+}
+
+export interface StrategicImpactTruthTable {
+  danger_zone?: StrategicImpactTruthTableEntry[];
+  holding_and_option_creating?: StrategicImpactTruthTableEntry[];
+}
+
+export interface StrategicImpactSequencingItem {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+export interface StrategicImpactSequencingPlan {
+  next_0_90_days?: StrategicImpactSequencingItem[];
+  next_3_12_months?: StrategicImpactSequencingItem[];
+  next_12_24_months?: StrategicImpactSequencingItem[];
+}
+
+export interface StrategicImpactConclusion {
+  executive_conclusion?: string;
+  what_is_breaking?: string;
+  what_does_not_need_to_change?: string;
+  what_must_change?: string;
+  board_level_implication?: string;
+  devils_advocate?: string;
+}
+
+export interface StrategicImpactAnalysisPayload {
+  meta?: StrategicImpactMeta;
+  executive_diagnosis?: StrategicImpactExecutiveDiagnosis;
+  objective_scoreboard?: StrategicImpactObjectiveScoreboard;
+  breakpoints?: StrategicImpactBreakpoint[];
+  assumption_truth_table?: StrategicImpactTruthTable;
+  sequencing_plan?: StrategicImpactSequencingPlan;
+  pathway_activation_summary?: Array<{
+    status: string;
+    pathways: StrategicImpactPathwayLit[];
+  }>;
+  strategic_impact_analysis?: {
+    strategic_conclusion?: StrategicImpactConclusion;
+  };
+  strategic_conclusion?: StrategicImpactConclusion;
+}
+
 // Main data interface for v2.1 schema
 export interface ForesightData {
   meta: Meta;
@@ -334,6 +496,7 @@ export interface ForesightData {
   workstreams: Workstream[];
   validation_report?: ValidationReport;
   assumption_health?: AssumptionHealth[];
+  strategic_impact_analysis?: StrategicImpactAnalysisPayload;
   // Legacy fields for backwards compatibility
   company_strategy?: {
     company: Company;

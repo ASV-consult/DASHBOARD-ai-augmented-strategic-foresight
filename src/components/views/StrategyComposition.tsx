@@ -29,6 +29,8 @@ const buildingBlockIcons: Record<string, React.ReactNode> = {
   direction_and_positioning: <Compass className="h-4 w-4" />,
   value_creation: <Layers className="h-4 w-4" />,
   value_defence: <Shield className="h-4 w-4" />,
+  Strategic_defence: <Shield className="h-4 w-4" />,
+  Strategic_defense: <Shield className="h-4 w-4" />,
   key_levers: <Zap className="h-4 w-4" />,
 };
 
@@ -116,12 +118,9 @@ function StrategySnapshotCard() {
             <div className="rounded-2xl border border-border/60 bg-background/70 p-2 shadow-sm">
               <Building2 className="h-5 w-5 text-primary" />
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Strategy Snapshot</p>
-              <CardTitle className="text-xl font-semibold tracking-tight text-foreground">
-                Strategic Positioning
-              </CardTitle>
-            </div>
+            <CardTitle className="text-xl font-semibold tracking-tight text-foreground">
+              Strategy Snapshot
+            </CardTitle>
           </div>
           {snapshot.confidence && (
             <Badge variant="secondary" className="text-[11px] uppercase tracking-wide">
@@ -191,48 +190,6 @@ function StrategicObjectivesSection() {
 
   return (
     <div className="space-y-8">
-      {/* Financial Targets - Hero Cards */}
-      {financialTargets.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-primary" />
-            Financial Targets
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {financialTargets.map((target, idx) => (
-              <Card key={idx} className="relative overflow-hidden border-none shadow-md bg-gradient-to-br from-card to-secondary/10 hover:shadow-lg transition-all">
-                <div className="absolute -right-4 -top-4 opacity-[0.03]">
-                  <DollarSign className="h-32 w-32" />
-                </div>
-                <CardContent className="p-6 relative z-10">
-                  <div className="flex flex-col h-full justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">{target.metric}</p>
-                      <h4 className="text-2xl font-semibold text-foreground mt-2">{target.target}</h4>
-                      <div className="flex items-center gap-2 mt-2">
-                        <Badge variant="outline" className="text-xs bg-background/50 backdrop-blur-sm border-primary/20 text-primary">
-                          {target.timeframe}
-                        </Badge>
-                        <ConfidenceIndicator level={target.evidence_strength} />
-                      </div>
-                    </div>
-
-                    {target.linked_assumptions?.length > 0 && (
-                      <div className="pt-4 border-t border-border/10">
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <LinkIcon className="h-3 w-3" />
-                          {target.linked_assumptions.length} linked assumptions
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Primary Goals */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -323,6 +280,45 @@ function StrategicObjectivesSection() {
           })}
         </div>
       </div>
+
+      {/* Financial Targets - Hero Cards */}
+      {financialTargets.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <DollarSign className="h-5 w-5 text-primary" />
+            Financial Targets
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {financialTargets.map((target, idx) => (
+              <Card
+                key={idx}
+                className="relative overflow-hidden border-none shadow-md bg-gradient-to-br from-card to-secondary/10 hover:shadow-lg transition-all"
+              >
+                <div className="absolute -right-4 -top-4 opacity-[0.03]">
+                  <DollarSign className="h-32 w-32" />
+                </div>
+                <CardContent className="p-6 relative z-10">
+                  <div className="flex flex-col h-full justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">{target.metric}</p>
+                      <h4 className="text-2xl font-semibold text-foreground mt-2">{target.target}</h4>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Badge
+                          variant="outline"
+                          className="text-xs bg-background/50 backdrop-blur-sm border-primary/20 text-primary"
+                        >
+                          {target.timeframe}
+                        </Badge>
+                        <ConfidenceIndicator level={target.evidence_strength} />
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -342,7 +338,7 @@ function KPIsSection() {
     <div className="space-y-8">
       {/* KPI Detail Dialog */}
       <Dialog open={!!selectedKpi} onOpenChange={() => setSelectedKpi(null)}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <div className="flex items-center gap-3 mb-2">
               <div className="p-2 bg-primary/10 rounded-lg">
@@ -357,9 +353,11 @@ function KPIsSection() {
 
           {selectedKpi && (
             <div className="space-y-6">
-              <div className="p-4 bg-secondary/20 rounded-xl border border-border/50">
-                <p className="text-sm text-foreground leading-relaxed">{selectedKpi.description}</p>
-              </div>
+              {selectedKpi.description && (
+                <div className="p-4 bg-secondary/20 rounded-xl border border-border/50">
+                  <p className="text-sm text-foreground leading-relaxed">{selectedKpi.description}</p>
+                </div>
+              )}
 
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary" className="text-xs">
@@ -377,24 +375,40 @@ function KPIsSection() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <Card className="bg-primary/5 border border-primary/20 rounded-2xl shadow-sm">
-                  <CardContent className="p-4">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Current Value</span>
-                    <div className="text-3xl font-bold text-primary mt-1">{selectedKpi.current_value || 'N/A'}</div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm backdrop-blur">
-                  <CardContent className="p-4">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Evidence Strength</span>
-                    <div className="mt-2">
-                      <ConfidenceIndicator level={selectedKpi.evidence_strength} />
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+              {(selectedKpi.current_value || selectedKpi.numeric_anchor || selectedKpi.evidence_strength) && (
+                <div className="space-y-3">
+                  {selectedKpi.current_value && (
+                    <Card className="bg-primary/5 border border-primary/20 rounded-2xl shadow-sm">
+                      <CardContent className="p-5">
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Current Value</span>
+                        <div className="text-3xl font-bold text-primary mt-2 leading-tight break-words">{selectedKpi.current_value}</div>
+                      </CardContent>
+                    </Card>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {selectedKpi.numeric_anchor && (
+                      <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm backdrop-blur">
+                        <CardContent className="p-4">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Numeric Anchor</span>
+                          <div className="text-lg font-semibold text-foreground mt-1">{selectedKpi.numeric_anchor}</div>
+                        </CardContent>
+                      </Card>
+                    )}
+                    {selectedKpi.evidence_strength && (
+                      <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm backdrop-blur">
+                        <CardContent className="p-4">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Evidence Strength</span>
+                          <div className="mt-2">
+                            <ConfidenceIndicator level={selectedKpi.evidence_strength} />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                </div>
+              )}
 
-              {selectedKpi.linked_assumptions?.length > 0 && (
+              {false && selectedKpi.linked_assumptions?.length > 0 && (
                 <div>
                   <h4 className="text-sm font-medium mb-3">Linked Assumptions</h4>
                   <ScrollArea className="h-[200px] pr-4">
@@ -438,21 +452,25 @@ function KPIsSection() {
               >
                 <div className="absolute right-0 top-0 h-24 w-24 bg-destructive/5 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110" />
 
-                <CardContent className="p-5 space-y-4">
+                <CardContent className="p-5 space-y-4 overflow-hidden min-h-[230px] flex flex-col">
                   <div className="flex items-start justify-between gap-4 relative z-10">
-                    <h4 className="font-semibold text-lg text-foreground line-clamp-2">{kpi.name}</h4>
+                    <h4 className="font-semibold text-lg text-foreground line-clamp-2 break-words">{kpi.name}</h4>
                     <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
 
                   <div className="space-y-1">
                     <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Current Status</span>
-                    <div className="text-2xl font-bold text-foreground">
-                      {kpi.current_value || '—'}
+                    <div className="text-xl font-bold text-foreground break-words line-clamp-2 leading-snug">
+                      {kpi.current_value || 'N/A'}
                     </div>
                   </div>
 
-                  <div className="pt-4 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{kpi.evidence_strength} Evidence</span>
+                  <div className="pt-4 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground mt-auto">
+                    {kpi.evidence_strength ? (
+                      <span>Evidence {kpi.evidence_strength}</span>
+                    ) : (
+                      <span className="text-muted-foreground">Evidence N/A</span>
+                    )}
                     <Badge variant="secondary" className="text-[10px] h-5 bg-destructive/10 text-destructive-foreground hover:bg-destructive/20 border-0">
                       Critical
                     </Badge>
@@ -472,42 +490,49 @@ function KPIsSection() {
             Supporting Metrics
           </h3>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {otherKpis.map((kpi, idx) => (
               <Card
                 key={kpi.kpi_id || idx}
-                className="cursor-pointer transition-colors bg-card/70 border border-border/60 rounded-2xl shadow-sm hover:border-primary/40 hover:shadow-md backdrop-blur"
+                className="group cursor-pointer transition-all bg-card/80 border border-border/60 rounded-3xl shadow-[0_16px_40px_-30px_rgba(15,23,42,0.4)] hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-[0_24px_50px_-28px_rgba(59,130,246,0.35)]"
                 onClick={() => setSelectedKpi(kpi)}
               >
-                <CardContent className="p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <h4 className="text-sm font-semibold text-foreground line-clamp-2 min-h-[2.5rem]">{kpi.name}</h4>
-                    {kpi.current_value && (
-                      <span className="px-2 py-1 bg-primary/10 rounded text-xs font-bold text-primary shrink-0">
+                <CardContent className="p-6 space-y-4 overflow-hidden min-h-[300px] flex flex-col">
+                  <div className="space-y-2">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Supporting metric</p>
+                    <h4 className="text-base font-semibold text-foreground leading-snug break-words">
+                      {kpi.name}
+                    </h4>
+                  </div>
+                  {kpi.current_value && (
+                    <div className="bg-primary/5 border border-primary/30 rounded-2xl p-4">
+                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Current</span>
+                      <div className="text-xl font-semibold text-primary break-words leading-snug mt-1">
                         {kpi.current_value}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                    <Badge variant="outline" className="text-[10px] h-5 opacity-70">
-                      {kpi.strategic_importance}
-                    </Badge>
-                    {kpi.evidence_strength && (
-                      <Badge variant="secondary" className="text-[10px] h-5">
-                        Evidence: {kpi.evidence_strength}
-                      </Badge>
-                    )}
-                    {kpi.linked_assumptions?.length ? (
-                      <Badge variant="outline" className="text-[10px] h-5">
-                        {kpi.linked_assumptions.length} assumptions
-                      </Badge>
-                    ) : null}
-                  </div>
+                      </div>
+                    </div>
+                  )}
                   {kpi.description && (
-                    <p className="text-xs text-muted-foreground line-clamp-2">
+                    <p className="text-sm text-muted-foreground leading-relaxed break-words">
                       {kpi.description}
                     </p>
                   )}
+                  <div className="flex flex-col gap-2 text-[11px] uppercase tracking-wide mt-auto">
+                    <Badge
+                      variant="outline"
+                      className="text-[11px] h-auto px-4 py-2 opacity-90 rounded-full whitespace-normal break-words text-left"
+                    >
+                      {kpi.strategic_importance}
+                    </Badge>
+                    {kpi.evidence_strength && (
+                      <Badge
+                        variant="secondary"
+                        className="text-[11px] h-auto px-4 py-2 rounded-full whitespace-normal break-words text-left"
+                      >
+                        Evidence {kpi.evidence_strength}
+                      </Badge>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -672,7 +697,7 @@ function ImpactPathwaysSection() {
 }
 
 // Assumption Clusters Section
-function AssumptionClustersSection() {
+export function AssumptionClustersSection() {
   const { data } = useForesight();
   const clusters = data?.strategy_context?.assumption_dependencies?.critical_clusters || [];
 
@@ -798,7 +823,7 @@ function BuildingBlocksSection() {
           </div>
           <div>
             <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Building Blocks</p>
-            <h3 className="text-lg font-semibold text-foreground">Strategy Foundations</h3>
+            <h3 className="text-lg font-semibold text-foreground">Strategic Building Blocks</h3>
           </div>
         </div>
 
@@ -1481,7 +1506,7 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
 }
 
 // Assumptions Definition Section
-function AssumptionsDefinitionSection() {
+export function AssumptionsDefinitionSection() {
   const { coreAssumptions } = useForesight();
   const [selectedAssumption, setSelectedAssumption] = useState<Assumption | null>(null);
 
@@ -1745,12 +1770,6 @@ export function StrategyComposition() {
             Objectives & KPIs
           </TabsTrigger>
           <TabsTrigger
-            value="assumptions"
-            className="rounded-full px-4 py-2 text-xs font-medium transition data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"
-          >
-            Assumptions
-          </TabsTrigger>
-          <TabsTrigger
             value="pathways"
             className="rounded-full px-4 py-2 text-xs font-medium transition data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"
           >
@@ -1767,11 +1786,6 @@ export function StrategyComposition() {
         <TabsContent value="objectives" className="space-y-6 mt-6">
           <StrategicObjectivesSection />
           <KPIsSection />
-        </TabsContent>
-
-        <TabsContent value="assumptions" className="space-y-6 mt-6">
-          <AssumptionsDefinitionSection />
-          <AssumptionClustersSection />
         </TabsContent>
 
         <TabsContent value="pathways" className="space-y-6 mt-6">

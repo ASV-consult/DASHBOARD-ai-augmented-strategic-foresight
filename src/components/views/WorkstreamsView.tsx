@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useForesight } from '@/contexts/ForesightContext';
+import { StrategicImpactWorkstreams } from '@/components/views/StrategicImpactWorkstreams';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,14 +24,15 @@ import {
 import { cn } from '@/lib/utils';
 
 export function WorkstreamsView() {
-  const { 
-    workstreams, 
-    allSignals, 
-    threatIds, 
-    opportunityIds, 
-    warningIds 
+  const {
+    data,
+    workstreams,
+    allSignals,
+    threatIds,
+    opportunityIds,
+    warningIds,
   } = useForesight();
-  
+
   const [selectedWorkstream, setSelectedWorkstream] = useState<Workstream | null>(null);
   const [selectedSignal, setSelectedSignal] = useState<Signal | null>(null);
   const [showAllSupportingSignals, setShowAllSupportingSignals] = useState(false);
@@ -39,6 +41,10 @@ export function WorkstreamsView() {
     // Reset supporting signals expansion when switching/closing workstream
     setShowAllSupportingSignals(false);
   }, [selectedWorkstream?.id]);
+
+  if (data?.strategic_impact_analysis) {
+    return <StrategicImpactWorkstreams />;
+  }
 
   // Find supporting signals for a workstream
   const getSupportingSignals = (ws: Workstream): Signal[] => {

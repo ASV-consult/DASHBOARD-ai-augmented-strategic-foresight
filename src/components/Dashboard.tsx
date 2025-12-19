@@ -1,17 +1,15 @@
 import { useState } from 'react';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { ExecutiveOverview } from '@/components/views/ExecutiveOverview';
-import { StrategyComposition, AssumptionsAnalysis } from '@/components/views/StrategyComposition';
-import { OutlierForecast } from '@/components/views/OutlierForecast';
-import { SynthesizedForecast } from '@/components/views/SynthesizedForecast';
+import { StrategyComposition } from '@/components/views/StrategyComposition';
+import { CoreAssumptionsView } from '@/components/views/CoreAssumptionsView';
+import { AssumptionsScoredHub } from '@/components/views/AssumptionsScoredHub';
 import { SignalStream } from '@/components/views/SignalStream';
 import { WorkstreamsView } from '@/components/views/WorkstreamsView';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useForesight } from '@/contexts/ForesightContext';
 import { 
   LayoutDashboard, 
-  AlertTriangle, 
-  Activity, 
   Radio,
   Briefcase,
   Layers,
@@ -19,11 +17,23 @@ import {
 } from 'lucide-react';
 
 export function Dashboard() {
-  const { isLoaded, workstreams } = useForesight();
+  const { isLoaded, workstreams, data } = useForesight();
   const [activeTab, setActiveTab] = useState('overview');
-  const hasWorkstreams = workstreams.length > 0;
+  const [assumptionsSubtab, setAssumptionsSubtab] = useState<'scored' | 'synthesized'>('scored');
+  const [signalSubtab, setSignalSubtab] = useState<'stream' | 'outliers'>('stream');
+  const hasWorkstreams = workstreams.length > 0 || !!data?.strategic_impact_analysis;
 
   const handleNavigate = (tab: string) => {
+    if (tab === 'outliers') {
+      setActiveTab('signals');
+      setSignalSubtab('outliers');
+      return;
+    }
+    if (tab === 'synthesized') {
+      setActiveTab('assumptions');
+      setAssumptionsSubtab('synthesized');
+      return;
+    }
     setActiveTab(tab);
   };
 
@@ -40,7 +50,11 @@ export function Dashboard() {
             </TabsTrigger>
             <TabsTrigger value="strategy" className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium transition data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow">
               <Layers className="h-4 w-4" />
-              Strategy Composition
+              Strategy Decomposition
+            </TabsTrigger>
+            <TabsTrigger value="core-assumptions" className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium transition data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow">
+              <Target className="h-4 w-4" />
+              Core Assumptions
             </TabsTrigger>
             <TabsTrigger value="signals" className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium transition data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow">
               <Radio className="h-4 w-4" />
@@ -50,18 +64,10 @@ export function Dashboard() {
               <Target className="h-4 w-4" />
               Assumptions Scored
             </TabsTrigger>
-            <TabsTrigger value="outliers" className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium transition data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow">
-              <AlertTriangle className="h-4 w-4" />
-              Outlier Forecast
-            </TabsTrigger>
-            <TabsTrigger value="synthesized" className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium transition data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow">
-              <Activity className="h-4 w-4" />
-              Synthesized Forecast
-            </TabsTrigger>
             {hasWorkstreams && (
               <TabsTrigger value="workstreams" className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium transition data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow">
                 <Briefcase className="h-4 w-4" />
-                Workstreams
+                Strategic Impact
               </TabsTrigger>
             )}
           </TabsList>
@@ -74,20 +80,19 @@ export function Dashboard() {
             <StrategyComposition />
           </TabsContent>
 
-          <TabsContent value="signals">
-            <SignalStream />
-          </TabsContent>
+        <TabsContent value="core-assumptions">
+          <CoreAssumptionsView />
+        </TabsContent>
+
+        <TabsContent value="signals">
+          <SignalStream activeTab={signalSubtab} onTabChange={setSignalSubtab} />
+        </TabsContent>
           
           <TabsContent value="assumptions">
-            <AssumptionsAnalysis />
-          </TabsContent>
-
-          <TabsContent value="outliers">
-            <OutlierForecast />
-          </TabsContent>
-          
-          <TabsContent value="synthesized">
-            <SynthesizedForecast />
+            <AssumptionsScoredHub
+              activeTab={assumptionsSubtab}
+              onTabChange={setAssumptionsSubtab}
+            />
           </TabsContent>
 
           {hasWorkstreams && (
