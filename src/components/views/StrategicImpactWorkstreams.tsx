@@ -402,6 +402,10 @@ function MechanicsPage({
   const [activeAssumption, setActiveAssumption] = useState<string | null>(null);
   const [activePathway, setActivePathway] = useState<string | null>(null);
   const [selectedObjective, setSelectedObjective] = useState<StrategicImpactObjective | null>(null);
+  const [selectedAssumption, setSelectedAssumption] = useState<{
+    entry: StrategicImpactTruthTableEntry;
+    bucket: 'danger' | 'holding';
+  } | null>(null);
 
   const assumptionToPathways = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -550,6 +554,58 @@ function MechanicsPage({
 
   return (
     <div className="space-y-6">
+      <Sheet
+        open={!!selectedAssumption}
+        onOpenChange={open => {
+          if (!open) setSelectedAssumption(null);
+        }}
+      >
+        <SheetContent side="right" className="w-full sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Badge variant="outline" className="font-mono">
+                {selectedAssumption?.entry.assumption_id || 'Assumption'}
+              </Badge>
+              <Badge variant="secondary" className="text-xs">
+                {selectedAssumption?.bucket === 'danger' ? 'Danger zone' : 'Holding & options'}
+              </Badge>
+              {selectedAssumption?.entry.status && (
+                <Badge variant={statusVariantMap[selectedAssumption.entry.status] || 'outline'} className="text-xs">
+                  {formatLabel(selectedAssumption.entry.status)}
+                </Badge>
+              )}
+            </SheetTitle>
+          </SheetHeader>
+          <div className="space-y-4 text-sm text-muted-foreground mt-4">
+            {selectedAssumption?.entry.short_description && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Summary</p>
+                <p className="text-sm text-foreground">{selectedAssumption.entry.short_description}</p>
+              </div>
+            )}
+            {selectedAssumption?.entry.why_high_impact && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Why high impact</p>
+                <p className="text-sm text-foreground">{selectedAssumption.entry.why_high_impact}</p>
+              </div>
+            )}
+            {selectedAssumption?.entry.why_it_creates_options && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Why it creates options
+                </p>
+                <p className="text-sm text-foreground">{selectedAssumption.entry.why_it_creates_options}</p>
+              </div>
+            )}
+            {!selectedAssumption?.entry.why_high_impact &&
+              !selectedAssumption?.entry.why_it_creates_options &&
+              !selectedAssumption?.entry.short_description && (
+                <p className="text-sm text-muted-foreground">No additional details provided.</p>
+              )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
       <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
         <CardContent className="p-4 flex flex-wrap items-center gap-3 text-xs">
           <Filter className="h-4 w-4 text-muted-foreground" />
@@ -628,7 +684,7 @@ function MechanicsPage({
                       <TableCell className="text-xs text-muted-foreground">
                         {objective.status?.severity ? formatLabel(objective.status.severity) : 'n/a'}
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-[240px] truncate">
+                      <TableCell className="text-xs text-muted-foreground whitespace-normal break-words">
                         {objective.diagnosis || 'No diagnosis provided.'}
                       </TableCell>
                       <TableCell>
@@ -755,33 +811,46 @@ function MechanicsPage({
               Assumption danger zone
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {filterAssumptions(truthTable?.danger_zone || []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No assumptions in danger zone.</p>
-            ) : (
-              filterAssumptions(truthTable?.danger_zone || []).map(entry => (
-                <div key={entry.assumption_id} className="p-3 rounded-xl bg-muted/30 border border-border/50">
-                  <div className="flex items-center gap-2 mb-2">
-                    <AssumptionBadge
-                      id={entry.assumption_id}
-                      label={entry.short_description || getAssumptionLabel(entry.assumption_id)}
-                      active={activeAssumption === entry.assumption_id}
-                      onClick={() =>
-                        setActiveAssumption(prev => (prev === entry.assumption_id ? null : entry.assumption_id))
+            <CardContent className="space-y-3">
+              {filterAssumptions(truthTable?.danger_zone || []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No assumptions in danger zone.</p>
+              ) : (
+                filterAssumptions(truthTable?.danger_zone || []).map(entry => (
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    key={entry.assumption_id}
+                    className="w-full text-left p-3 rounded-xl bg-muted/30 border border-border/50 hover:bg-muted/40 transition cursor-pointer"
+                    onClick={() => setSelectedAssumption({ entry, bucket: 'danger' })}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setSelectedAssumption({ entry, bucket: 'danger' });
                       }
-                    />
-                    {entry.status && (
-                      <Badge variant="destructive" className="text-xs">
-                        {formatLabel(entry.status)}
-                      </Badge>
-                    )}
+                    }}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <AssumptionBadge
+                        id={entry.assumption_id}
+                        label={entry.short_description || getAssumptionLabel(entry.assumption_id)}
+                        active={activeAssumption === entry.assumption_id}
+                        onClick={event => {
+                          event.stopPropagation();
+                          setActiveAssumption(prev => (prev === entry.assumption_id ? null : entry.assumption_id));
+                        }}
+                      />
+                      {entry.status && (
+                        <Badge variant="destructive" className="text-xs">
+                          {formatLabel(entry.status)}
+                        </Badge>
+                      )}
+                    </div>
+                    {entry.why_high_impact && <p className="text-xs text-muted-foreground">{entry.why_high_impact}</p>}
                   </div>
-                  {entry.why_high_impact && <p className="text-xs text-muted-foreground">{entry.why_high_impact}</p>}
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+                ))
+              )}
+            </CardContent>
+          </Card>
 
         <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
           <CardHeader className="pb-2">
@@ -790,35 +859,48 @@ function MechanicsPage({
               Holding and option creating
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {filterAssumptions(truthTable?.holding_and_option_creating || []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No option-creating assumptions listed.</p>
-            ) : (
-              filterAssumptions(truthTable?.holding_and_option_creating || []).map(entry => (
-                <div key={entry.assumption_id} className="p-3 rounded-xl bg-muted/30 border border-border/50">
-                  <div className="flex items-center gap-2 mb-2">
-                    <AssumptionBadge
-                      id={entry.assumption_id}
-                      label={entry.short_description || getAssumptionLabel(entry.assumption_id)}
-                      active={activeAssumption === entry.assumption_id}
-                      onClick={() =>
-                        setActiveAssumption(prev => (prev === entry.assumption_id ? null : entry.assumption_id))
+            <CardContent className="space-y-3">
+              {filterAssumptions(truthTable?.holding_and_option_creating || []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No option-creating assumptions listed.</p>
+              ) : (
+                filterAssumptions(truthTable?.holding_and_option_creating || []).map(entry => (
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    key={entry.assumption_id}
+                    className="w-full text-left p-3 rounded-xl bg-muted/30 border border-border/50 hover:bg-muted/40 transition cursor-pointer"
+                    onClick={() => setSelectedAssumption({ entry, bucket: 'holding' })}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setSelectedAssumption({ entry, bucket: 'holding' });
                       }
-                    />
-                    {entry.status && (
-                      <Badge variant="outline" className="text-xs">
-                        {formatLabel(entry.status)}
-                      </Badge>
+                    }}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <AssumptionBadge
+                        id={entry.assumption_id}
+                        label={entry.short_description || getAssumptionLabel(entry.assumption_id)}
+                        active={activeAssumption === entry.assumption_id}
+                        onClick={event => {
+                          event.stopPropagation();
+                          setActiveAssumption(prev => (prev === entry.assumption_id ? null : entry.assumption_id));
+                        }}
+                      />
+                      {entry.status && (
+                        <Badge variant="outline" className="text-xs">
+                          {formatLabel(entry.status)}
+                        </Badge>
+                      )}
+                    </div>
+                    {entry.why_it_creates_options && (
+                      <p className="text-xs text-muted-foreground">{entry.why_it_creates_options}</p>
                     )}
                   </div>
-                  {entry.why_it_creates_options && (
-                    <p className="text-xs text-muted-foreground">{entry.why_it_creates_options}</p>
-                  )}
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+                ))
+              )}
+            </CardContent>
+          </Card>
       </div>
 
       <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
@@ -870,6 +952,7 @@ function DecisionAgendaPage({
   const sequencing = impactData.sequencing_plan;
   const [expandedDevil, setExpandedDevil] = useState<string | null>(null);
   const [pinnedMoves, setPinnedMoves] = useState<Map<string, StrategicImpactMove>>(new Map());
+  const [expandedEvidence, setExpandedEvidence] = useState<Set<string>>(new Set());
 
   const togglePinnedMove = (move: StrategicImpactMove, breakpointId: string) => {
     setPinnedMoves(prev => {
@@ -1161,11 +1244,35 @@ function DecisionAgendaPage({
                   )}
 
                   {breakpointSignalIds.length > 0 && (
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                        Evidence links
-                      </p>
-                      {renderEvidenceSignals(breakpointSignalIds)}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Evidence links
+                        </p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-[11px]"
+                          onClick={() =>
+                            setExpandedEvidence(prev => {
+                              const next = new Set(prev);
+                              if (next.has(breakpoint.breakpoint_id)) {
+                                next.delete(breakpoint.breakpoint_id);
+                              } else {
+                                next.add(breakpoint.breakpoint_id);
+                              }
+                              return next;
+                            })
+                          }
+                        >
+                          {expandedEvidence.has(breakpoint.breakpoint_id) ? 'Hide signals' : 'See signals'}
+                        </Button>
+                      </div>
+                      {expandedEvidence.has(breakpoint.breakpoint_id) ? (
+                        renderEvidenceSignals(breakpointSignalIds)
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Signals hidden</p>
+                      )}
                     </div>
                   )}
                 </CardContent>
