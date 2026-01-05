@@ -65,6 +65,50 @@ export interface ValueChain {
   critical_dependencies: CriticalDependency[];
 }
 
+export interface PorterForce {
+  name?: string;
+  force?: string;
+  intensity?: string;
+  rating?: string;
+  pressure?: string;
+  description?: string;
+   analysis?: string;
+  drivers?: string[];
+  signals?: string[];
+  mitigation?: string[];
+  opportunities?: string[];
+  threats?: string[];
+   summary?: string;
+}
+
+export interface PorterFiveForces {
+  summary?: string;
+  overview?: string;
+  forces: PorterForce[] | Record<string, PorterForce>;
+}
+
+export interface SwotItem {
+  title?: string;
+  description?: string;
+  evidence?: string;
+  source?: string;
+  point?: string;
+  detail?: string;
+  implication?: string;
+  reference?: string;
+  url?: string;
+}
+
+export interface SwotAnalysis {
+  summary?: string;
+  strategic_implication?: string;
+  strengths?: Array<SwotItem | string>;
+  weaknesses?: Array<SwotItem | string>;
+  opportunities?: Array<SwotItem | string>;
+  threats?: Array<SwotItem | string>;
+  source?: string;
+}
+
 export interface ImpactPathway {
   pathway_id: string;
   trigger_assumption: string;
@@ -155,6 +199,28 @@ export interface StrategyContext {
   assumption_dependencies: {
     critical_clusters: AssumptionCluster[];
   };
+  porter_five_forces?: PorterFiveForces;
+  porter_5_forces?: PorterFiveForces;
+  swot_analysis?: SwotAnalysis;
+  base_research_sources?: Array<{
+    source_id?: string;
+    title?: string;
+    url?: string;
+    source?: string;
+    reference?: string;
+    type?: string;
+    domain?: string;
+    score?: number;
+    confidence?: string;
+    excerpt?: string;
+  }>;
+  forces_research_sources?: Array<{
+    source_id?: string;
+    title?: string;
+    url?: string;
+    source?: string;
+    reference?: string;
+  }>;
 }
 
 export interface OutlierFlags {
@@ -363,6 +429,21 @@ export interface StrategicImpactExecutiveDiagnosis {
   dominant_feedback_loops?: StrategicImpactFeedbackLoop[];
   validated_upside_points?: StrategicImpactUpsidePoint[];
   constraints?: StrategicImpactConstraint[];
+  bottom_line_verdict?: string;
+  state_of_suspicion?: {
+    core_concern?: string;
+    why_now?: string;
+  };
+  inside_out_findings?: Array<{
+    finding?: string;
+    hard_data_anchors?: string[];
+    implication?: string;
+  }>;
+  outside_in_findings?: Array<{
+    finding?: string;
+    implication?: string;
+  }>;
+  diagnostic_conclusion?: string;
 }
 
 export interface StrategicImpactPathwayLit {
@@ -402,6 +483,23 @@ export interface StrategicImpactObjective {
 export interface StrategicImpactObjectiveScoreboard {
   overview?: string;
   objectives?: StrategicImpactObjective[];
+  assumption_health_summary?: {
+    validated?: number;
+    mixed?: number;
+    at_risk?: number;
+    interpretation?: string;
+  };
+  cluster_risk_summary?: Array<{
+    cluster?: string;
+    cascade_risk?: string;
+    status?: string;
+    why?: string;
+  }>;
+  hard_data_flags?: Array<{
+    metric_or_signal?: string;
+    value?: string;
+    why_it_matters?: string;
+  }>;
 }
 
 export interface StrategicImpactBreakpointWhy {
@@ -422,9 +520,14 @@ export interface StrategicImpactMove {
 }
 
 export interface StrategicImpactBreakpoint {
-  breakpoint_id: string;
-  title: string;
+  breakpoint_id?: string;
+  title?: string;
+  id?: string;
+  name?: string;
   type?: string;
+  trigger?: string;
+  what_breaks?: string[];
+  irreversible_damage_risk?: string;
   why_happening?: StrategicImpactBreakpointWhy[];
   impact_on_strategy?: string[];
   moves?: StrategicImpactMove[];
@@ -437,16 +540,24 @@ export interface StrategicImpactBreakpoint {
 }
 
 export interface StrategicImpactTruthTableEntry {
-  assumption_id: string;
+  assumption_id?: string;
   short_description?: string;
   status?: string;
   why_high_impact?: string;
   why_it_creates_options?: string;
+  assumption?: string;
+  evidence_direction?: string;
+  board_interpretation?: string;
+  hard_data?: string[];
 }
 
 export interface StrategicImpactTruthTable {
   danger_zone?: StrategicImpactTruthTableEntry[];
   holding_and_option_creating?: StrategicImpactTruthTableEntry[];
+  foundational_pillars?: StrategicImpactTruthTableEntry[];
+  critical_at_risk_pillars?: StrategicImpactTruthTableEntry[];
+  mixed_or_ambiguous?: StrategicImpactTruthTableEntry[];
+  data_blind_spots?: string[];
 }
 
 export interface StrategicImpactSequencingItem {
@@ -462,10 +573,20 @@ export interface StrategicImpactSequencingPlan {
 }
 
 export interface StrategicImpactConclusion {
+  executive_summary?: string;
+  current_state_diagnosis?: string;
+  future_relevance_analysis?: string;
+  bull_bear_synthesis?: string;
+  strategic_recommendation?: string;
+  full_adversarial_memo?: string;
   executive_conclusion?: string;
+  short_term_implication?: string;
   what_is_breaking?: string;
   what_does_not_need_to_change?: string;
   what_must_change?: string;
+  macro_verdict?: string;
+  bull_bear_synthesis?: string;
+  final_verdict?: string;
   board_level_implication?: string;
   devils_advocate?: string;
 }

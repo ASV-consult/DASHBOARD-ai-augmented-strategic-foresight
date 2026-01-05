@@ -26,6 +26,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   ArrowRight,
+  AlertTriangle,
   BadgeCheck,
   ChevronDown,
   ChevronRight,
@@ -49,6 +50,7 @@ const statusVariantMap: Record<string, 'default' | 'secondary' | 'outline' | 'de
   most_negative_net_impact: 'destructive',
   net_negative: 'secondary',
   mildly_negative: 'secondary',
+  at_risk: 'destructive',
   mixed: 'outline',
   validated: 'default',
   validated_directionally: 'outline',
@@ -68,7 +70,56 @@ const activationLabelMap: Record<string, string> = {
   watch: 'Watchlist',
 };
 
+const strategicConclusionSectionOrder = [
+  'executive_summary',
+  'current_state_diagnosis',
+  'future_relevance_analysis',
+  'bull_bear_synthesis',
+  'strategic_recommendation',
+];
+
+const strategicConclusionSectionTriggers = [
+  'executive_summary',
+  'current_state_diagnosis',
+  'future_relevance_analysis',
+  'strategic_recommendation',
+];
+
+const strategicConclusionLegacyOrder = [
+  'executive_conclusion',
+  'short_term_implication',
+  'what_is_breaking',
+  'what_does_not_need_to_change',
+  'what_must_change',
+  'macro_verdict',
+  'final_verdict',
+  'board_level_implication',
+  'devils_advocate',
+];
+
 const formatLabel = (value?: string) => (value || '').replace(/_/g, ' ');
+
+function StatusPill({
+  label,
+  variant = 'outline',
+  className,
+}: {
+  label: string;
+  variant?: 'default' | 'secondary' | 'outline' | 'destructive';
+  className?: string;
+}) {
+  return (
+    <Badge
+      variant={variant}
+      className={cn(
+        "px-3 py-1 text-[11px] font-semibold tracking-wide whitespace-nowrap",
+        className
+      )}
+    >
+      {label}
+    </Badge>
+  );
+}
 
 const normalizeSignalIds = (signalIds?: StrategicImpactEvidenceLinks['signal_ids']) => {
   if (!signalIds) return [];
@@ -106,6 +157,30 @@ const extractText = (children: ReactNode) => {
   if (typeof children === 'string') return children;
   if (Array.isArray(children)) return children.map(extractText).join('');
   return '';
+};
+
+const buildConclusionMarkdown = (
+  conclusion: Record<string, unknown>,
+  orderedKeys: string[],
+  skipKeys?: Set<string>,
+) => {
+  const seen = new Set<string>();
+  const blocks: string[] = [];
+  orderedKeys.forEach(key => {
+    if (seen.has(key) || skipKeys?.has(key)) return;
+    const value = conclusion[key];
+    if (typeof value === 'string' && value.trim()) {
+      blocks.push(value);
+      seen.add(key);
+    }
+  });
+  Object.entries(conclusion).forEach(([key, value]) => {
+    if (seen.has(key) || skipKeys?.has(key)) return;
+    if (typeof value === 'string' && value.trim()) {
+      blocks.push(value);
+    }
+  });
+  return blocks.join('\n\n');
 };
 
 const buildEvidenceContext = (objective?: StrategicImpactObjective, breakpoint?: StrategicImpactBreakpoint) => {
@@ -200,6 +275,19 @@ function SummaryPage({
   const [showAllSummary, setShowAllSummary] = useState(false);
   const summaryParagraphs = diagnosis?.summary_paragraphs || [];
   const visibleSummary = showAllSummary ? summaryParagraphs : summaryParagraphs.slice(0, 2);
+  const bottomLineVerdict = diagnosis?.bottom_line_verdict;
+  const diagnosticConclusion = diagnosis?.diagnostic_conclusion;
+  const suspicion = diagnosis?.state_of_suspicion;
+  const insideOutFindings = diagnosis?.inside_out_findings || [];
+  const outsideInFindings = diagnosis?.outside_in_findings || [];
+  const hasStructuredDiagnosis =
+    !!bottomLineVerdict ||
+    !!diagnosticConclusion ||
+    !!suspicion?.core_concern ||
+    !!suspicion?.why_now;
+  const hasFindings = insideOutFindings.length > 0 || outsideInFindings.length > 0;
+  const assumptionHealth = impactData.objective_scoreboard?.assumption_health_summary;
+  const hardDataFlags = impactData.objective_scoreboard?.hard_data_flags || [];
 
   return (
     <div className="space-y-6">
@@ -230,84 +318,179 @@ function SummaryPage({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
-          {visibleSummary.length === 0 ? (
-            <p>No executive summary paragraphs provided.</p>
+          {summaryParagraphs.length > 0 ? (
+            <>
+              {visibleSummary.map((paragraph, idx) => (
+                <p key={idx} className="leading-relaxed">
+                  {paragraph}
+                </p>
+              ))}
+              {summaryParagraphs.length > 2 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => setShowAllSummary(prev => !prev)}
+                >
+                  {showAllSummary ? 'Show less' : 'Show more'}
+                </Button>
+              )}
+            </>
+          ) : hasStructuredDiagnosis ? (
+            <div className="space-y-4">
+              {bottomLineVerdict && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                    Bottom-line verdict
+                  </p>
+                  <p className="text-sm text-foreground leading-relaxed">{bottomLineVerdict}</p>
+                </div>
+              )}
+              {(suspicion?.core_concern || suspicion?.why_now) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {suspicion?.core_concern && (
+                    <div className="p-3 rounded-xl bg-muted/30 border border-border/50">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Core concern
+                      </p>
+                      <p className="text-sm text-foreground mt-1">{suspicion.core_concern}</p>
+                    </div>
+                  )}
+                  {suspicion?.why_now && (
+                    <div className="p-3 rounded-xl bg-muted/30 border border-border/50">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Why now</p>
+                      <p className="text-sm text-foreground mt-1">{suspicion.why_now}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              {diagnosticConclusion && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                    Diagnostic conclusion
+                  </p>
+                  <p className="text-sm text-foreground leading-relaxed">{diagnosticConclusion}</p>
+                </div>
+              )}
+            </div>
           ) : (
-            visibleSummary.map((paragraph, idx) => (
-              <p key={idx} className="leading-relaxed">
-                {paragraph}
-              </p>
-            ))
-          )}
-          {summaryParagraphs.length > 2 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs"
-              onClick={() => setShowAllSummary(prev => !prev)}
-            >
-              {showAllSummary ? 'Show less' : 'Show more'}
-            </Button>
+            <p>No executive summary paragraphs provided.</p>
           )}
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary" />
-              Impact chains
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {(diagnosis?.dominant_feedback_loops || []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No feedback loops provided.</p>
-            ) : (
-              diagnosis?.dominant_feedback_loops?.map(loop => (
-                <div key={loop.loop_id} className="space-y-2">
-                  <p className="text-sm font-semibold text-foreground">{loop.title}</p>
-                  {loop.nodes && loop.nodes.length > 0 ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      {loop.nodes.map((node, idx) => (
-                        <div key={`${loop.loop_id}-${node.id}`} className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs font-mono">
-                            {node.label}
-                          </Badge>
-                          {idx < loop.nodes.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground" />}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">{loop.chain_text}</p>
-                  )}
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+      {hasFindings ? (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Layers className="h-4 w-4 text-primary" />
+                Inside-out findings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {insideOutFindings.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No inside-out findings provided.</p>
+              ) : (
+                insideOutFindings.map((finding, idx) => (
+                  <div key={`inside-${idx}`} className="p-3 rounded-xl bg-muted/30 border border-border/50 space-y-2">
+                    {finding.finding && <p className="text-sm font-semibold text-foreground">{finding.finding}</p>}
+                    {finding.hard_data_anchors && finding.hard_data_anchors.length > 0 && (
+                      <ul className="space-y-1 text-xs text-muted-foreground">
+                        {finding.hard_data_anchors.map(anchor => (
+                          <li key={anchor} className="flex items-start gap-2">
+                            <ChevronRight className="h-3 w-3 mt-0.5 text-primary" />
+                            <span>{anchor}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {finding.implication && <p className="text-xs text-muted-foreground">{finding.implication}</p>}
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
 
-        <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 text-primary" />
-              Constraints
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-3">
-            {(diagnosis?.constraints || []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No constraints defined.</p>
-            ) : (
-              diagnosis?.constraints?.map(constraint => (
-                <div key={constraint.constraint_id} className="p-3 rounded-xl bg-muted/30 border border-border/50">
-                  <p className="text-sm font-semibold text-foreground">{constraint.name}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{constraint.description}</p>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-primary" />
+                Outside-in findings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {outsideInFindings.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No outside-in findings provided.</p>
+              ) : (
+                outsideInFindings.map((finding, idx) => (
+                  <div key={`outside-${idx}`} className="p-3 rounded-xl bg-muted/30 border border-border/50 space-y-2">
+                    {finding.finding && <p className="text-sm font-semibold text-foreground">{finding.finding}</p>}
+                    {finding.implication && <p className="text-xs text-muted-foreground">{finding.implication}</p>}
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Layers className="h-4 w-4 text-primary" />
+                Impact chains
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {(diagnosis?.dominant_feedback_loops || []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No feedback loops provided.</p>
+              ) : (
+                diagnosis?.dominant_feedback_loops?.map(loop => (
+                  <div key={loop.loop_id} className="space-y-2">
+                    <p className="text-sm font-semibold text-foreground">{loop.title}</p>
+                    {loop.nodes && loop.nodes.length > 0 ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {loop.nodes.map((node, idx) => (
+                          <div key={`${loop.loop_id}-${node.id}`} className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs font-mono">
+                              {node.label}
+                            </Badge>
+                            {idx < loop.nodes.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground" />}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">{loop.chain_text}</p>
+                    )}
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-primary" />
+                Constraints
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-3">
+              {(diagnosis?.constraints || []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No constraints defined.</p>
+              ) : (
+                diagnosis?.constraints?.map(constraint => (
+                  <div key={constraint.constraint_id} className="p-3 rounded-xl bg-muted/30 border border-border/50">
+                    <p className="text-sm font-semibold text-foreground">{constraint.name}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{constraint.description}</p>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
@@ -321,14 +504,19 @@ function SummaryPage({
             {breakpoints.slice(0, 3).length === 0 ? (
               <p className="text-sm text-muted-foreground">No breakpoints listed.</p>
             ) : (
-              breakpoints.slice(0, 3).map(breakpoint => (
-                <div key={breakpoint.breakpoint_id} className="flex items-start gap-2">
+              breakpoints.slice(0, 3).map((breakpoint, idx) => {
+                const breakpointId = breakpoint.breakpoint_id || breakpoint.id || `BP-${idx + 1}`;
+                const breakpointTitle =
+                  breakpoint.title || breakpoint.name || breakpoint.breakpoint_id || breakpoint.id || 'Breakpoint';
+                return (
+                  <div key={breakpointId} className="flex items-start gap-2">
                   <Badge variant="outline" className="text-xs font-mono">
-                    {breakpoint.breakpoint_id}
+                    {breakpointId}
                   </Badge>
-                  <span className="text-sm text-foreground">{breakpoint.title}</span>
+                  <span className="text-sm text-foreground">{breakpointTitle}</span>
                 </div>
-              ))
+                );
+              })
             )}
           </CardContent>
         </Card>
@@ -337,20 +525,45 @@ function SummaryPage({
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <Target className="h-4 w-4 text-primary" />
-              Objectives at risk
+              {assumptionHealth ? 'Assumption health summary' : 'Objectives at risk'}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            {objectives.slice(0, 3).length === 0 ? (
+            {assumptionHealth ? (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {typeof assumptionHealth.validated === 'number' && (
+                    <Badge variant="secondary" className="text-xs">
+                      Validated: {assumptionHealth.validated}
+                    </Badge>
+                  )}
+                  {typeof assumptionHealth.mixed === 'number' && (
+                    <Badge variant="outline" className="text-xs">
+                      Mixed: {assumptionHealth.mixed}
+                    </Badge>
+                  )}
+                  {typeof assumptionHealth.at_risk === 'number' && (
+                    <Badge variant="destructive" className="text-xs">
+                      At risk: {assumptionHealth.at_risk}
+                    </Badge>
+                  )}
+                </div>
+                {assumptionHealth.interpretation && (
+                  <p className="text-xs text-muted-foreground">{assumptionHealth.interpretation}</p>
+                )}
+              </div>
+            ) : objectives.slice(0, 3).length === 0 ? (
               <p className="text-sm text-muted-foreground">No objectives listed.</p>
             ) : (
               objectives.slice(0, 3).map(objective => (
                 <div key={objective.objective_id} className="flex items-center justify-between gap-2">
                   <span className="text-sm text-foreground">{objective.objective_title}</span>
                   {objective.status?.label && (
-                    <Badge variant={statusVariantMap[objective.status.label] || 'outline'} className="text-xs">
-                      {formatLabel(objective.status.label)}
-                    </Badge>
+                    <StatusPill
+                      label={formatLabel(objective.status.label)}
+                      variant={statusVariantMap[objective.status.label] || 'outline'}
+                      className="shrink-0"
+                    />
                   )}
                 </div>
               ))
@@ -362,11 +575,19 @@ function SummaryPage({
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <BadgeCheck className="h-4 w-4 text-primary" />
-              Upside points
+              {hardDataFlags.length > 0 ? 'Hard data flags' : 'Upside points'}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            {(diagnosis?.validated_upside_points || []).length === 0 ? (
+            {hardDataFlags.length > 0 ? (
+              hardDataFlags.slice(0, 3).map((flag, idx) => (
+                <div key={`${flag.metric_or_signal || 'flag'}-${idx}`} className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">{flag.metric_or_signal || 'Metric'}</p>
+                  {flag.value && <p className="text-xs text-muted-foreground">{flag.value}</p>}
+                  {flag.why_it_matters && <p className="text-xs text-muted-foreground">{flag.why_it_matters}</p>}
+                </div>
+              ))
+            ) : (diagnosis?.validated_upside_points || []).length === 0 ? (
               <p className="text-sm text-muted-foreground">No validated upside points provided.</p>
             ) : (
               diagnosis?.validated_upside_points?.map(point => (
@@ -398,6 +619,17 @@ function MechanicsPage({
   const truthTable = impactData.assumption_truth_table;
   const breakpoints = impactData.breakpoints || [];
   const pathwaySummary = impactData.pathway_activation_summary || [];
+  const assumptionHealth = impactData.objective_scoreboard?.assumption_health_summary;
+  const clusterRiskSummary = impactData.objective_scoreboard?.cluster_risk_summary || [];
+  const hardDataFlags = impactData.objective_scoreboard?.hard_data_flags || [];
+  const foundationalPillars = truthTable?.foundational_pillars || [];
+  const criticalAtRisk = truthTable?.critical_at_risk_pillars || [];
+  const mixedAmbiguous = truthTable?.mixed_or_ambiguous || [];
+  const dataBlindSpots = truthTable?.data_blind_spots || [];
+  const hasRunBundleScoreboard =
+    !!assumptionHealth || clusterRiskSummary.length > 0 || hardDataFlags.length > 0;
+  const hasRunBundleTruthTable =
+    foundationalPillars.length > 0 || criticalAtRisk.length > 0 || mixedAmbiguous.length > 0 || dataBlindSpots.length > 0;
 
   const [activeAssumption, setActiveAssumption] = useState<string | null>(null);
   const [activePathway, setActivePathway] = useState<string | null>(null);
@@ -531,6 +763,10 @@ function MechanicsPage({
     })
     .filter(group => group.pathways.length > 0);
 
+  const hasLegacyTruthTable =
+    (truthTable?.danger_zone || []).length > 0 || (truthTable?.holding_and_option_creating || []).length > 0;
+  const showLegacyFilters = objectives.length > 0 || hasLegacyTruthTable || visiblePathwayGroups.length > 0;
+
   const openObjective = (objective: StrategicImpactObjective) => {
     setSelectedObjective(objective);
   };
@@ -541,6 +777,12 @@ function MechanicsPage({
 
   const getAssumptionLabel = (id: string) => assumptionLabelMap.get(id);
   const getPathwayLabel = (id: string) => pathwayLabelMap.get(id);
+  const getCascadeVariant = (risk?: string) => {
+    const value = (risk || '').toLowerCase();
+    if (value.includes('high')) return 'destructive';
+    if (value.includes('medium')) return 'secondary';
+    return 'outline';
+  };
 
   const renderPathwayChip = (pathwayId: string) => (
     <PathwayBadge
@@ -562,7 +804,7 @@ function MechanicsPage({
       >
         <SheetContent side="right" className="w-full sm:max-w-lg">
           <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
+            <SheetTitle className="flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="font-mono">
                 {selectedAssumption?.entry.assumption_id || 'Assumption'}
               </Badge>
@@ -570,9 +812,10 @@ function MechanicsPage({
                 {selectedAssumption?.bucket === 'danger' ? 'Danger zone' : 'Holding & options'}
               </Badge>
               {selectedAssumption?.entry.status && (
-                <Badge variant={statusVariantMap[selectedAssumption.entry.status] || 'outline'} className="text-xs">
-                  {formatLabel(selectedAssumption.entry.status)}
-                </Badge>
+                <StatusPill
+                  label={formatLabel(selectedAssumption.entry.status)}
+                  variant={statusVariantMap[selectedAssumption.entry.status] || 'outline'}
+                />
               )}
             </SheetTitle>
           </SheetHeader>
@@ -606,112 +849,215 @@ function MechanicsPage({
         </SheetContent>
       </Sheet>
 
-      <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
-        <CardContent className="p-4 flex flex-wrap items-center gap-3 text-xs">
-          <Filter className="h-4 w-4 text-muted-foreground" />
-          {activeAssumption || activePathway ? (
-            <>
-              {activeAssumption && (
-                <Badge variant="secondary" className="text-xs">
-                  Assumption: {activeAssumption}
-                </Badge>
-              )}
-              {activePathway && (
-                <Badge variant="secondary" className="text-xs">
-                  Pathway: {activePathway}
-                </Badge>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs"
-                onClick={() => {
-                  setActiveAssumption(null);
-                  setActivePathway(null);
-                }}
-              >
-                Clear filters
-              </Button>
-            </>
-          ) : (
-            <span className="text-muted-foreground">Click an assumption or pathway to filter.</span>
-          )}
-        </CardContent>
-      </Card>
+      {showLegacyFilters && (
+        <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+          <CardContent className="p-4 flex flex-wrap items-center gap-3 text-xs">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            {activeAssumption || activePathway ? (
+              <>
+                {activeAssumption && (
+                  <Badge variant="secondary" className="text-xs">
+                    Assumption: {activeAssumption}
+                  </Badge>
+                )}
+                {activePathway && (
+                  <Badge variant="secondary" className="text-xs">
+                    Pathway: {activePathway}
+                  </Badge>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => {
+                    setActiveAssumption(null);
+                    setActivePathway(null);
+                  }}
+                >
+                  Clear filters
+                </Button>
+              </>
+            ) : (
+              <span className="text-muted-foreground">Click an assumption or pathway to filter.</span>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-      <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <List className="h-4 w-4 text-primary" />
-            Objectives scorecard
-          </CardTitle>
-          {impactData.objective_scoreboard?.overview && (
-            <p className="text-xs text-muted-foreground mt-1">{impactData.objective_scoreboard.overview}</p>
-          )}
-        </CardHeader>
-        <CardContent>
-          {filteredObjectives.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No objectives match the current filters.</p>
-          ) : (
-            <div className="overflow-auto rounded-lg border border-border/50">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Objective</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Severity</TableHead>
-                    <TableHead>Diagnosis</TableHead>
-                    <TableHead>Lit pathways</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredObjectives.map(objective => (
-                    <TableRow
-                      key={objective.objective_id}
-                      className="cursor-pointer hover:bg-muted/30"
-                      onClick={() => openObjective(objective)}
-                    >
-                      <TableCell className="font-medium">{objective.objective_title}</TableCell>
-                      <TableCell>
-                        {objective.status?.label ? (
-                          <Badge variant={statusVariantMap[objective.status.label] || 'outline'} className="text-xs">
-                            {formatLabel(objective.status.label)}
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">n/a</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {objective.status?.severity ? formatLabel(objective.status.severity) : 'n/a'}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-normal break-words">
-                        {objective.diagnosis || 'No diagnosis provided.'}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap">
-                          {(objective.impact_pathways_lit || []).length === 0 ? (
-                            <span className="text-xs text-muted-foreground">None</span>
-                          ) : (
-                            objective.impact_pathways_lit?.map(pathway => (
-                              <div
-                                key={pathway.pathway_id}
-                                onClick={event => event.stopPropagation()}
-                                className="mr-1 mb-1"
-                              >
-                                {renderPathwayChip(pathway.pathway_id)}
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </TableCell>
+      {hasRunBundleScoreboard && (
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Target className="h-4 w-4 text-primary" />
+                Assumption health summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {assumptionHealth ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {typeof assumptionHealth.validated === 'number' && (
+                      <Badge variant="secondary" className="text-xs">
+                        Validated: {assumptionHealth.validated}
+                      </Badge>
+                    )}
+                    {typeof assumptionHealth.mixed === 'number' && (
+                      <Badge variant="outline" className="text-xs">
+                        Mixed: {assumptionHealth.mixed}
+                      </Badge>
+                    )}
+                    {typeof assumptionHealth.at_risk === 'number' && (
+                      <Badge variant="destructive" className="text-xs">
+                        At risk: {assumptionHealth.at_risk}
+                      </Badge>
+                    )}
+                  </div>
+                  {assumptionHealth.interpretation && (
+                    <p className="text-xs text-muted-foreground">{assumptionHealth.interpretation}</p>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">No assumption health summary provided.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-primary" />
+                Cluster risk summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {clusterRiskSummary.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No cluster risk summary provided.</p>
+              ) : (
+                clusterRiskSummary.map((cluster, idx) => (
+                  <div key={`${cluster.cluster || 'cluster'}-${idx}`} className="p-3 rounded-xl bg-muted/30 border border-border/50">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-foreground">{cluster.cluster || 'Cluster'}</p>
+                      {cluster.cascade_risk && (
+                        <Badge variant={getCascadeVariant(cluster.cascade_risk)} className="text-[10px] uppercase">
+                          {cluster.cascade_risk}
+                        </Badge>
+                      )}
+                      {cluster.status && (
+                        <Badge variant="outline" className="text-[10px] uppercase">
+                          {cluster.status}
+                        </Badge>
+                      )}
+                    </div>
+                    {cluster.why && <p className="text-xs text-muted-foreground mt-2">{cluster.why}</p>}
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Flame className="h-4 w-4 text-primary" />
+                Hard data flags
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {hardDataFlags.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No hard data flags provided.</p>
+              ) : (
+                hardDataFlags.map((flag, idx) => (
+                  <div key={`${flag.metric_or_signal || 'flag'}-${idx}`} className="p-3 rounded-xl bg-muted/30 border border-border/50">
+                    <p className="text-sm font-semibold text-foreground">{flag.metric_or_signal || 'Metric'}</p>
+                    {flag.value && <p className="text-xs text-muted-foreground mt-1">{flag.value}</p>}
+                    {flag.why_it_matters && (
+                      <p className="text-xs text-muted-foreground mt-2">{flag.why_it_matters}</p>
+                    )}
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {objectives.length > 0 && (
+        <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <List className="h-4 w-4 text-primary" />
+              Objectives scorecard
+            </CardTitle>
+            {impactData.objective_scoreboard?.overview && (
+              <p className="text-xs text-muted-foreground mt-1">{impactData.objective_scoreboard.overview}</p>
+            )}
+          </CardHeader>
+          <CardContent>
+            {filteredObjectives.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No objectives match the current filters.</p>
+            ) : (
+              <div className="overflow-auto rounded-lg border border-border/50">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Objective</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Severity</TableHead>
+                      <TableHead>Diagnosis</TableHead>
+                      <TableHead>Lit pathways</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredObjectives.map(objective => (
+                      <TableRow
+                        key={objective.objective_id}
+                        className="cursor-pointer hover:bg-muted/30"
+                        onClick={() => openObjective(objective)}
+                      >
+                        <TableCell className="font-medium">{objective.objective_title}</TableCell>
+                        <TableCell>
+                          {objective.status?.label ? (
+                            <StatusPill
+                              label={formatLabel(objective.status.label)}
+                              variant={statusVariantMap[objective.status.label] || 'outline'}
+                            />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">n/a</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {objective.status?.severity ? formatLabel(objective.status.severity) : 'n/a'}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-normal break-words">
+                          {objective.diagnosis || 'No diagnosis provided.'}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap">
+                            {(objective.impact_pathways_lit || []).length === 0 ? (
+                              <span className="text-xs text-muted-foreground">None</span>
+                            ) : (
+                              objective.impact_pathways_lit?.map(pathway => (
+                                <div
+                                  key={pathway.pathway_id}
+                                  onClick={event => event.stopPropagation()}
+                                  className="mr-1 mb-1"
+                                >
+                                  {renderPathwayChip(pathway.pathway_id)}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Sheet open={!!selectedObjective} onOpenChange={() => setSelectedObjective(null)}>
         <SheetContent side="right" className="w-full sm:max-w-xl">
@@ -721,12 +1067,10 @@ function MechanicsPage({
                 <SheetTitle>{selectedObjective.objective_title}</SheetTitle>
                 <div className="flex flex-wrap items-center gap-2">
                   {selectedObjective.status?.label && (
-                    <Badge
+                    <StatusPill
+                      label={formatLabel(selectedObjective.status.label)}
                       variant={statusVariantMap[selectedObjective.status.label] || 'outline'}
-                      className="text-xs"
-                    >
-                      {formatLabel(selectedObjective.status.label)}
-                    </Badge>
+                    />
                   )}
                   {selectedObjective.status?.severity && (
                     <Badge variant="outline" className="text-xs">
@@ -803,118 +1147,261 @@ function MechanicsPage({
         </SheetContent>
       </Sheet>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 text-primary" />
-              Assumption danger zone
-            </CardTitle>
-          </CardHeader>
+      {hasRunBundleTruthTable && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <BadgeCheck className="h-4 w-4 text-primary" />
+                Foundational pillars
+              </CardTitle>
+            </CardHeader>
             <CardContent className="space-y-3">
-              {filterAssumptions(truthTable?.danger_zone || []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">No assumptions in danger zone.</p>
+              {foundationalPillars.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No foundational pillars provided.</p>
               ) : (
-                filterAssumptions(truthTable?.danger_zone || []).map(entry => (
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    key={entry.assumption_id}
-                    className="w-full text-left p-3 rounded-xl bg-muted/30 border border-border/50 hover:bg-muted/40 transition cursor-pointer"
-                    onClick={() => setSelectedAssumption({ entry, bucket: 'danger' })}
-                    onKeyDown={event => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        setSelectedAssumption({ entry, bucket: 'danger' });
-                      }
-                    }}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <AssumptionBadge
-                        id={entry.assumption_id}
-                        label={entry.short_description || getAssumptionLabel(entry.assumption_id)}
-                        active={activeAssumption === entry.assumption_id}
-                        onClick={event => {
-                          event.stopPropagation();
-                          setActiveAssumption(prev => (prev === entry.assumption_id ? null : entry.assumption_id));
-                        }}
-                      />
+                foundationalPillars.map((entry, idx) => (
+                  <div key={`foundation-${idx}`} className="p-3 rounded-xl bg-muted/30 border border-border/50">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <p className="text-sm font-semibold text-foreground">
+                        {entry.assumption || entry.short_description || 'Assumption'}
+                      </p>
                       {entry.status && (
-                        <Badge variant="destructive" className="text-xs">
-                          {formatLabel(entry.status)}
-                        </Badge>
+                        <StatusPill
+                          label={formatLabel(entry.status)}
+                          variant={statusVariantMap[entry.status] || 'outline'}
+                        />
                       )}
                     </div>
-                    {entry.why_high_impact && <p className="text-xs text-muted-foreground">{entry.why_high_impact}</p>}
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-        <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <PackageCheck className="h-4 w-4 text-primary" />
-              Holding and option creating
-            </CardTitle>
-          </CardHeader>
-            <CardContent className="space-y-3">
-              {filterAssumptions(truthTable?.holding_and_option_creating || []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">No option-creating assumptions listed.</p>
-              ) : (
-                filterAssumptions(truthTable?.holding_and_option_creating || []).map(entry => (
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    key={entry.assumption_id}
-                    className="w-full text-left p-3 rounded-xl bg-muted/30 border border-border/50 hover:bg-muted/40 transition cursor-pointer"
-                    onClick={() => setSelectedAssumption({ entry, bucket: 'holding' })}
-                    onKeyDown={event => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        setSelectedAssumption({ entry, bucket: 'holding' });
-                      }
-                    }}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <AssumptionBadge
-                        id={entry.assumption_id}
-                        label={entry.short_description || getAssumptionLabel(entry.assumption_id)}
-                        active={activeAssumption === entry.assumption_id}
-                        onClick={event => {
-                          event.stopPropagation();
-                          setActiveAssumption(prev => (prev === entry.assumption_id ? null : entry.assumption_id));
-                        }}
-                      />
-                      {entry.status && (
-                        <Badge variant="outline" className="text-xs">
-                          {formatLabel(entry.status)}
-                        </Badge>
-                      )}
-                    </div>
-                    {entry.why_it_creates_options && (
-                      <p className="text-xs text-muted-foreground">{entry.why_it_creates_options}</p>
+                    {entry.board_interpretation && (
+                      <p className="text-xs text-muted-foreground">{entry.board_interpretation}</p>
                     )}
                   </div>
                 ))
               )}
             </CardContent>
           </Card>
-      </div>
 
-      <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Link2 className="h-4 w-4 text-primary" />
-            Pathway activation
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {visiblePathwayGroups.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No pathway activation data available.</p>
-          ) : (
-            visiblePathwayGroups.map(group => (
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-primary" />
+                Critical at-risk pillars
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {criticalAtRisk.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No critical at-risk pillars provided.</p>
+              ) : (
+                criticalAtRisk.map((entry, idx) => (
+                  <div key={`risk-${idx}`} className="p-3 rounded-xl bg-muted/30 border border-border/50">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <p className="text-sm font-semibold text-foreground">
+                        {entry.assumption || entry.short_description || 'Assumption'}
+                      </p>
+                      {entry.status && (
+                        <StatusPill
+                          label={formatLabel(entry.status)}
+                          variant={statusVariantMap[entry.status] || 'destructive'}
+                        />
+                      )}
+                      {entry.evidence_direction && (
+                        <Badge variant="outline" className="text-[10px] uppercase">
+                          {entry.evidence_direction}
+                        </Badge>
+                      )}
+                    </div>
+                    {entry.hard_data && entry.hard_data.length > 0 && (
+                      <ul className="space-y-1 text-xs text-muted-foreground">
+                        {entry.hard_data.map(point => (
+                          <li key={point} className="flex items-start gap-2">
+                            <ChevronRight className="h-3 w-3 mt-0.5 text-primary" />
+                            <span>{point}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Layers className="h-4 w-4 text-primary" />
+                Mixed or ambiguous
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {mixedAmbiguous.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No mixed/ambiguous pillars provided.</p>
+              ) : (
+                mixedAmbiguous.map((entry, idx) => (
+                  <div key={`mixed-${idx}`} className="p-3 rounded-xl bg-muted/30 border border-border/50">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <p className="text-sm font-semibold text-foreground">
+                        {entry.assumption || entry.short_description || 'Assumption'}
+                      </p>
+                      {entry.status && (
+                        <StatusPill
+                          label={formatLabel(entry.status)}
+                          variant={statusVariantMap[entry.status] || 'outline'}
+                        />
+                      )}
+                    </div>
+                    {entry.board_interpretation && (
+                      <p className="text-xs text-muted-foreground">{entry.board_interpretation}</p>
+                    )}
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-primary" />
+                Data blind spots
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-muted-foreground">
+              {dataBlindSpots.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No data blind spots listed.</p>
+              ) : (
+                <ul className="space-y-1 text-xs text-muted-foreground">
+                  {dataBlindSpots.map(spot => (
+                    <li key={spot} className="flex items-start gap-2">
+                      <ChevronRight className="h-3 w-3 mt-0.5 text-primary" />
+                      <span>{spot}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {hasLegacyTruthTable && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-primary" />
+                Assumption danger zone
+              </CardTitle>
+            </CardHeader>
+              <CardContent className="space-y-3">
+                {filterAssumptions(truthTable?.danger_zone || []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No assumptions in danger zone.</p>
+                ) : (
+                  filterAssumptions(truthTable?.danger_zone || []).map(entry => (
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      key={entry.assumption_id}
+                      className="w-full text-left p-3 rounded-xl bg-muted/30 border border-border/50 hover:bg-muted/40 transition cursor-pointer"
+                      onClick={() => setSelectedAssumption({ entry, bucket: 'danger' })}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setSelectedAssumption({ entry, bucket: 'danger' });
+                        }
+                      }}
+                    >
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <AssumptionBadge
+                          id={entry.assumption_id}
+                          label={entry.short_description || getAssumptionLabel(entry.assumption_id)}
+                          active={activeAssumption === entry.assumption_id}
+                          onClick={event => {
+                            event.stopPropagation();
+                            setActiveAssumption(prev => (prev === entry.assumption_id ? null : entry.assumption_id));
+                          }}
+                        />
+                        {entry.status && (
+                          <StatusPill
+                            label={formatLabel(entry.status)}
+                            variant={statusVariantMap[entry.status] || 'destructive'}
+                            className="shrink-0"
+                          />
+                        )}
+                      </div>
+                      {entry.why_high_impact && <p className="text-xs text-muted-foreground">{entry.why_high_impact}</p>}
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <PackageCheck className="h-4 w-4 text-primary" />
+                Holding and option creating
+              </CardTitle>
+            </CardHeader>
+              <CardContent className="space-y-3">
+                {filterAssumptions(truthTable?.holding_and_option_creating || []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No option-creating assumptions listed.</p>
+                ) : (
+                  filterAssumptions(truthTable?.holding_and_option_creating || []).map(entry => (
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      key={entry.assumption_id}
+                      className="w-full text-left p-3 rounded-xl bg-muted/30 border border-border/50 hover:bg-muted/40 transition cursor-pointer"
+                      onClick={() => setSelectedAssumption({ entry, bucket: 'holding' })}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setSelectedAssumption({ entry, bucket: 'holding' });
+                        }
+                      }}
+                    >
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <AssumptionBadge
+                          id={entry.assumption_id}
+                          label={entry.short_description || getAssumptionLabel(entry.assumption_id)}
+                          active={activeAssumption === entry.assumption_id}
+                          onClick={event => {
+                            event.stopPropagation();
+                            setActiveAssumption(prev => (prev === entry.assumption_id ? null : entry.assumption_id));
+                          }}
+                        />
+                        {entry.status && (
+                          <StatusPill
+                            label={formatLabel(entry.status)}
+                            variant={statusVariantMap[entry.status] || 'outline'}
+                            className="shrink-0"
+                          />
+                        )}
+                      </div>
+                      {entry.why_it_creates_options && (
+                        <p className="text-xs text-muted-foreground">{entry.why_it_creates_options}</p>
+                      )}
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+        </div>
+      )}
+
+      {visiblePathwayGroups.length > 0 && (
+        <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Link2 className="h-4 w-4 text-primary" />
+              Pathway activation
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {visiblePathwayGroups.map(group => (
               <div key={group.title}>
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{group.title}</p>
                 <div className="flex flex-wrap gap-2">
@@ -929,10 +1416,10 @@ function MechanicsPage({
                   ))}
                 </div>
               </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
@@ -1072,7 +1559,7 @@ function DecisionAgendaPage({
         {breakpoints.length === 0 ? (
           <EmptyState title="No breakpoints" description="No breakpoint data provided in this payload." />
         ) : (
-          breakpoints.map(breakpoint => {
+          breakpoints.map((breakpoint, index) => {
             const groupedMoves = (breakpoint.moves || []).reduce(
               (acc, move) => {
                 const label = horizonLabels[move.time_horizon || ''] || formatLabel(move.time_horizon || 'Other');
@@ -1082,17 +1569,25 @@ function DecisionAgendaPage({
               },
               {} as Record<string, StrategicImpactMove[]>,
             );
+            const breakpointId = breakpoint.breakpoint_id || breakpoint.id || `BP-${index + 1}`;
+            const breakpointTitle =
+              breakpoint.title || breakpoint.name || breakpoint.breakpoint_id || breakpoint.id || 'Breakpoint';
+            const hasWhy = (breakpoint.why_happening || []).length > 0;
+            const trigger = breakpoint.trigger;
+            const hasImpact = (breakpoint.impact_on_strategy || []).length > 0;
+            const hasWhatBreaks = (breakpoint.what_breaks || []).length > 0;
+            const impactLabel = hasWhatBreaks && !hasImpact ? 'What breaks' : 'Impact on strategy';
             const breakpointSignalIds = normalizeSignalIds(breakpoint.evidence_links?.signal_ids);
 
             return (
-              <Card key={breakpoint.breakpoint_id} className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+              <Card key={breakpointId} className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
                 <CardHeader className="pb-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="space-y-1">
-                      <CardTitle className="text-base">{breakpoint.title}</CardTitle>
+                      <CardTitle className="text-base">{breakpointTitle}</CardTitle>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline" className="text-xs font-mono">
-                          {breakpoint.breakpoint_id}
+                          {breakpointId}
                         </Badge>
                         {breakpoint.type && (
                           <Badge variant="secondary" className="text-xs">
@@ -1109,14 +1604,12 @@ function DecisionAgendaPage({
                       Why happening
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {(breakpoint.why_happening || []).length === 0 ? (
-                        <span className="text-xs text-muted-foreground">No drivers listed.</span>
-                      ) : (
+                      {hasWhy ? (
                         breakpoint.why_happening?.map((reason, idx) => {
                           if (reason.assumption_id) {
                             return (
                               <AssumptionBadge
-                                key={`${breakpoint.breakpoint_id}-${idx}`}
+                                key={`${breakpointId}-${idx}`}
                                 id={reason.assumption_id}
                                 label={reason.assumption_short_description || getAssumptionLabel(reason.assumption_id)}
                               />
@@ -1125,7 +1618,7 @@ function DecisionAgendaPage({
                           if (reason.pathway_id) {
                             return (
                               <PathwayBadge
-                                key={`${breakpoint.breakpoint_id}-${idx}`}
+                                key={`${breakpointId}-${idx}`}
                                 id={reason.pathway_id}
                                 label={reason.pathway_short_description || getPathwayLabel(reason.pathway_id)}
                               />
@@ -1133,34 +1626,56 @@ function DecisionAgendaPage({
                           }
                           if (reason.evidence_summary) {
                             return (
-                              <Badge key={`${breakpoint.breakpoint_id}-${idx}`} variant="outline" className="text-xs">
+                              <Badge key={`${breakpointId}-${idx}`} variant="outline" className="text-xs">
                                 {reason.evidence_summary}
                               </Badge>
                             );
                           }
                           return null;
                         })
+                      ) : trigger ? (
+                        <p className="text-xs text-muted-foreground">{trigger}</p>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No drivers listed.</span>
                       )}
                     </div>
                   </div>
 
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                      Impact on strategy
+                      {impactLabel}
                     </p>
-                    {(breakpoint.impact_on_strategy || []).length === 0 ? (
-                      <p className="text-xs text-muted-foreground">No impact statements provided.</p>
-                    ) : (
+                    {hasImpact ? (
                       <ul className="space-y-1 text-sm text-muted-foreground">
                         {breakpoint.impact_on_strategy?.map((impact, idx) => (
-                          <li key={`${breakpoint.breakpoint_id}-impact-${idx}`} className="flex items-start gap-2">
+                          <li key={`${breakpointId}-impact-${idx}`} className="flex items-start gap-2">
                             <ChevronRight className="h-3 w-3 mt-0.5 text-primary" />
                             <span>{impact}</span>
                           </li>
                         ))}
                       </ul>
+                    ) : hasWhatBreaks ? (
+                      <ul className="space-y-1 text-sm text-muted-foreground">
+                        {breakpoint.what_breaks?.map((impact, idx) => (
+                          <li key={`${breakpointId}-break-${idx}`} className="flex items-start gap-2">
+                            <ChevronRight className="h-3 w-3 mt-0.5 text-primary" />
+                            <span>{impact}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No impact statements provided.</p>
                     )}
                   </div>
+
+                  {breakpoint.irreversible_damage_risk && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                        Irreversible damage risk
+                      </p>
+                      <p className="text-xs text-muted-foreground">{breakpoint.irreversible_damage_risk}</p>
+                    </div>
+                  )}
 
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
@@ -1171,13 +1686,13 @@ function DecisionAgendaPage({
                         <p className="text-xs text-muted-foreground">No moves defined.</p>
                       ) : (
                         Object.entries(groupedMoves).map(([label, moves]) => (
-                          <div key={`${breakpoint.breakpoint_id}-${label}`} className="space-y-2">
+                          <div key={`${breakpointId}-${label}`} className="space-y-2">
                             <Badge variant="outline" className="text-xs">
                               {label}
                             </Badge>
                             <div className="space-y-2">
                               {moves.map(move => {
-                                const key = `${breakpoint.breakpoint_id}:${move.move_id}`;
+                                const key = `${breakpointId}:${move.move_id}`;
                                 const isPinned = pinnedMoves.has(key);
                                 return (
                                   <div key={move.move_id} className="p-3 rounded-xl bg-muted/30 border border-border/50">
@@ -1192,7 +1707,7 @@ function DecisionAgendaPage({
                                         variant={isPinned ? 'default' : 'outline'}
                                         size="sm"
                                         className="text-[11px] h-7"
-                                        onClick={() => togglePinnedMove(move, breakpoint.breakpoint_id)}
+                                        onClick={() => togglePinnedMove(move, breakpointId)}
                                       >
                                         {isPinned ? 'Pinned' : 'Pin'}
                                       </Button>
@@ -1209,10 +1724,8 @@ function DecisionAgendaPage({
 
                   {breakpoint.devils_advocate && (
                     <Collapsible
-                      open={expandedDevil === breakpoint.breakpoint_id}
-                      onOpenChange={() =>
-                        setExpandedDevil(prev => (prev === breakpoint.breakpoint_id ? null : breakpoint.breakpoint_id))
-                      }
+                      open={expandedDevil === breakpointId}
+                      onOpenChange={() => setExpandedDevil(prev => (prev === breakpointId ? null : breakpointId))}
                     >
                       <CollapsibleTrigger asChild>
                         <Button variant="ghost" size="sm" className="text-xs flex items-center gap-2">
@@ -1256,19 +1769,19 @@ function DecisionAgendaPage({
                           onClick={() =>
                             setExpandedEvidence(prev => {
                               const next = new Set(prev);
-                              if (next.has(breakpoint.breakpoint_id)) {
-                                next.delete(breakpoint.breakpoint_id);
+                              if (next.has(breakpointId)) {
+                                next.delete(breakpointId);
                               } else {
-                                next.add(breakpoint.breakpoint_id);
+                                next.add(breakpointId);
                               }
                               return next;
                             })
                           }
                         >
-                          {expandedEvidence.has(breakpoint.breakpoint_id) ? 'Hide signals' : 'See signals'}
+                          {expandedEvidence.has(breakpointId) ? 'Hide signals' : 'See signals'}
                         </Button>
                       </div>
-                      {expandedEvidence.has(breakpoint.breakpoint_id) ? (
+                      {expandedEvidence.has(breakpointId) ? (
                         renderEvidenceSignals(breakpointSignalIds)
                       ) : (
                         <p className="text-xs text-muted-foreground">Signals hidden</p>
@@ -1405,16 +1918,56 @@ function EvidencePaperPage({
 
   const strategicConclusion =
     impactData.strategic_impact_analysis?.strategic_conclusion || impactData.strategic_conclusion;
-  const markdown = [
-    strategicConclusion?.executive_conclusion,
-    strategicConclusion?.what_is_breaking,
-    strategicConclusion?.what_does_not_need_to_change,
-    strategicConclusion?.what_must_change,
-    strategicConclusion?.board_level_implication,
-    strategicConclusion?.devils_advocate,
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+  const structuredSections = (() => {
+    if (!strategicConclusion || typeof strategicConclusion === 'string') return [];
+    const conclusionRecord = strategicConclusion as Record<string, unknown>;
+    const hasStructuredTrigger = strategicConclusionSectionTriggers.some(key => {
+      const value = conclusionRecord[key];
+      return typeof value === 'string' && value.trim();
+    });
+    if (!hasStructuredTrigger) return [];
+    return strategicConclusionSectionOrder
+      .map(key => {
+        const value = conclusionRecord[key];
+        if (typeof value !== 'string' || !value.trim()) return null;
+        return { key, content: value };
+      })
+      .filter(Boolean) as Array<{ key: string; content: string }>;
+  })();
+
+  const structuredKeys = new Set(structuredSections.map(section => section.key));
+  const extraMarkdown =
+    structuredSections.length > 0 && strategicConclusion && typeof strategicConclusion !== 'string'
+      ? buildConclusionMarkdown(
+          strategicConclusion as Record<string, unknown>,
+          strategicConclusionLegacyOrder,
+          structuredKeys,
+        )
+      : '';
+
+  const markdown = (() => {
+    if (!strategicConclusion) return '';
+    if (typeof strategicConclusion === 'string') return strategicConclusion;
+    if (structuredSections.length > 0) {
+      const structuredMarkdown = structuredSections.map(section => section.content).join('\n\n');
+      return [structuredMarkdown, extraMarkdown].filter(Boolean).join('\n\n');
+    }
+    return buildConclusionMarkdown(
+      strategicConclusion as Record<string, unknown>,
+      [...strategicConclusionSectionOrder, ...strategicConclusionLegacyOrder],
+    );
+  })();
+
+  const summarySection = structuredSections.find(section => section.key === 'executive_summary');
+  const analysisSections = structuredSections.filter(
+    section => section.key === 'current_state_diagnosis' || section.key === 'future_relevance_analysis',
+  );
+  const remainingSections = structuredSections.filter(
+    section =>
+      section.key !== 'executive_summary' &&
+      section.key !== 'current_state_diagnosis' &&
+      section.key !== 'future_relevance_analysis',
+  );
 
   const toc = useMemo(() => {
     const items: Array<{ id: string; text: string; depth: number }> = [];
@@ -1431,6 +1984,54 @@ function EvidencePaperPage({
   }, [markdown]);
 
   const headingCounter = new Map<string, number>();
+
+  const markdownComponents = {
+    h1: ({ children }: { children: ReactNode }) => {
+      const text = extractText(children);
+      const id = slugifyHeading(text, headingCounter);
+      return (
+        <h1 id={id} className="text-2xl font-semibold text-foreground mb-4">
+          {children}
+        </h1>
+      );
+    },
+    h2: ({ children }: { children: ReactNode }) => {
+      const text = extractText(children);
+      const id = slugifyHeading(text, headingCounter);
+      return (
+        <h2 id={id} className="text-xl font-semibold text-foreground mt-6 mb-3">
+          {children}
+        </h2>
+      );
+    },
+    h3: ({ children }: { children: ReactNode }) => {
+      const text = extractText(children);
+      const id = slugifyHeading(text, headingCounter);
+      return (
+        <h3 id={id} className="text-lg font-semibold text-foreground mt-5 mb-2">
+          {children}
+        </h3>
+      );
+    },
+    p: ({ children }: { children: ReactNode }) => (
+      <p className="text-sm text-muted-foreground leading-relaxed mb-4">{children}</p>
+    ),
+    ul: ({ children }: { children: ReactNode }) => (
+      <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground mb-4">{children}</ul>
+    ),
+    ol: ({ children }: { children: ReactNode }) => (
+      <ol className="list-decimal pl-5 space-y-1 text-sm text-muted-foreground mb-4">{children}</ol>
+    ),
+    li: ({ children }: { children: ReactNode }) => <li className="text-sm text-muted-foreground">{children}</li>,
+    strong: ({ children }: { children: ReactNode }) => <strong className="text-foreground">{children}</strong>,
+    hr: () => <Separator className="my-6" />,
+  };
+
+  const renderMarkdown = (content: string) => (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      {content}
+    </ReactMarkdown>
+  );
 
   const renderLinkList = (ids: string[], map: Map<string, string>) => {
     return ids.length === 0
@@ -1612,54 +2213,54 @@ function EvidencePaperPage({
               </Card>
             ) : null}
 
-            <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
-              <CardContent className="p-8">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    h1: ({ children }) => {
-                      const text = extractText(children);
-                      const id = slugifyHeading(text, headingCounter);
-                      return (
-                        <h1 id={id} className="text-2xl font-semibold text-foreground mb-4">
-                          {children}
-                        </h1>
-                      );
-                    },
-                    h2: ({ children }) => {
-                      const text = extractText(children);
-                      const id = slugifyHeading(text, headingCounter);
-                      return (
-                        <h2 id={id} className="text-xl font-semibold text-foreground mt-6 mb-3">
-                          {children}
-                        </h2>
-                      );
-                    },
-                    h3: ({ children }) => {
-                      const text = extractText(children);
-                      const id = slugifyHeading(text, headingCounter);
-                      return (
-                        <h3 id={id} className="text-lg font-semibold text-foreground mt-5 mb-2">
-                          {children}
-                        </h3>
-                      );
-                    },
-                    p: ({ children }) => <p className="text-sm text-muted-foreground leading-relaxed mb-4">{children}</p>,
-                    ul: ({ children }) => (
-                      <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground mb-4">{children}</ul>
-                    ),
-                    ol: ({ children }) => (
-                      <ol className="list-decimal pl-5 space-y-1 text-sm text-muted-foreground mb-4">{children}</ol>
-                    ),
-                    li: ({ children }) => <li className="text-sm text-muted-foreground">{children}</li>,
-                    strong: ({ children }) => <strong className="text-foreground">{children}</strong>,
-                    hr: () => <Separator className="my-6" />,
-                  }}
-                >
-                  {markdown}
-                </ReactMarkdown>
-              </CardContent>
-            </Card>
+            <div className="space-y-6">
+              {structuredSections.length > 0 ? (
+                <>
+                  {summarySection ? (
+                    <Card
+                      className={cn(
+                        'bg-card/70 border border-border/60 rounded-2xl shadow-sm',
+                        'border-primary/30 bg-primary/5',
+                      )}
+                    >
+                      <CardContent className="p-8">{renderMarkdown(summarySection.content)}</CardContent>
+                    </Card>
+                  ) : null}
+
+                  {analysisSections.length > 0 ? (
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                      {analysisSections.map(section => (
+                        <Card
+                          key={section.key}
+                          className="bg-card/70 border border-border/60 rounded-2xl shadow-sm"
+                        >
+                          <CardContent className="p-6">{renderMarkdown(section.content)}</CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {remainingSections.map(section => (
+                    <Card
+                      key={section.key}
+                      className="bg-card/70 border border-border/60 rounded-2xl shadow-sm"
+                    >
+                      <CardContent className="p-6">{renderMarkdown(section.content)}</CardContent>
+                    </Card>
+                  ))}
+
+                  {extraMarkdown.trim().length > 0 ? (
+                    <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+                      <CardContent className="p-6">{renderMarkdown(extraMarkdown)}</CardContent>
+                    </Card>
+                  ) : null}
+                </>
+              ) : (
+                <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+                  <CardContent className="p-8">{renderMarkdown(markdown)}</CardContent>
+                </Card>
+              )}
+            </div>
           </div>
         )}
       </TabsContent>

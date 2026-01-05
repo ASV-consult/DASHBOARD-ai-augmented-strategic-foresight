@@ -8,7 +8,7 @@ import {
   CheckCircle2, AlertCircle, ChevronRight, BarChart3, Compass, ChevronDown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Signal, Assumption, StrategicObjective, FinancialTarget, KPI, ImpactPathway, AssumptionCluster, AssumptionHealth } from '@/types/foresight';
+import { Signal, Assumption, StrategicObjective, FinancialTarget, KPI, ImpactPathway, AssumptionCluster, AssumptionHealth, PorterFiveForces, PorterForce, SwotAnalysis, SwotItem } from '@/types/foresight';
 import { cn } from '@/lib/utils';
 import { getHealthColor, getStatusBadgeVariant } from '@/lib/foresight-utils';
 import { getSignalScore } from '@/lib/signal-utils';
@@ -98,6 +98,123 @@ const splitSummaryBlocks = (summary: string[]): SummaryBlock[] => {
   });
 
   return blocks;
+};
+
+const normalizeSwotItems = (items?: Array<SwotItem | string>) => {
+  if (!items) return [];
+  return items.map(item => {
+    if (typeof item === 'string') {
+      return { title: item, description: '' };
+    }
+    return {
+      title: item.title || item.point || item.description || item.detail || item.evidence || 'Item',
+      description: item.description || item.detail || item.evidence || item.point || '',
+      source: item.source || item.reference || item.url,
+      evidence: item.evidence,
+    };
+  });
+};
+
+const normalizeForceName = (force: any) => force?.name || force?.force || force?.id || 'Force';
+const normalizeForcePressure = (force: any) => force?.intensity || force?.rating || force?.pressure || force?.level || '';
+
+const forceTone = (pressure?: string) => {
+  if (!pressure) return 'secondary';
+  const val = pressure.toLowerCase();
+  if (val.includes('high') || val.includes('strong')) return 'destructive';
+  if (val.includes('medium')) return 'secondary';
+  if (val.includes('low')) return 'default';
+  return 'secondary';
+};
+
+const formatForceKey = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+const normalizePorterForces = (fiveForces?: PorterFiveForces) => {
+  if (!fiveForces) return [];
+
+  const fromForcesField = (input: PorterFiveForces['forces']) => {
+    if (!input) return [];
+    if (Array.isArray(input)) return input;
+    return Object.entries(input).map(([key, value]) => ({
+      ...value,
+      name: value?.name || value?.force || formatForceKey(key),
+      description: value?.description || value?.analysis || value?.summary || value?.details,
+      intensity: value?.intensity || value?.level || value?.rating || value?.pressure,
+    }));
+  };
+
+  // Prefer explicit forces field; otherwise treat remaining object keys as forces
+  const explicit = fromForcesField(fiveForces.forces);
+  if (explicit.length > 0) return explicit;
+
+  const ignored = new Set(['summary', 'overview', 'confidence', 'forces', 'forces_research_sources', 'base_research_sources']);
+  return Object.entries(fiveForces)
+    .filter(([key, val]) => !ignored.has(key) && typeof val === 'object' && val !== null)
+    .map(([key, value]) => ({
+      ...(value as PorterForce),
+      name: (value as PorterForce)?.name || (value as PorterForce)?.force || formatForceKey(key),
+      description: (value as PorterForce)?.description || (value as PorterForce)?.analysis || (value as any)?.summary || (value as any)?.details,
+      intensity: (value as PorterForce)?.intensity || (value as any)?.level || (value as PorterForce)?.rating || (value as PorterForce)?.pressure,
+    }));
+};
+
+const extractUrlFromText = (text?: string) => {
+  if (!text) return '';
+  const match = text.match(/https?:\/\/\S+/);
+  if (!match) return '';
+  return match[0].replace(/[),.;]+$/, '');
+};
+
+const extractSourceId = (text?: string) => {
+  if (!text) return undefined;
+  const match = text.match(/\bS\d+\b/);
+  return match ? match[0] : undefined;
+};
+
+const normalizeResearchSources = (sources?: Array<{ source_id?: string; title?: string; url?: string; source?: string; reference?: string }>) => {
+  if (!sources || sources.length === 0) return [];
+  return sources.map((item) => {
+    const url = item.url || extractUrlFromText(item.source) || extractUrlFromText(item.reference);
+    const title = item.title || item.source || item.reference || item.url || 'Source';
+    const id = item.source_id || extractSourceId(item.reference) || extractSourceId(item.title) || extractSourceId(item.source);
+    return { id, title, url };
+  });
+};
+
+const categorizePorterForces = (forces: PorterForce[]) => {
+  const remaining = [...forces];
+  const matchCategory = (force: PorterForce) => {
+    const name = normalizeForceName(force).toLowerCase();
+    if (name.includes('rivalry') || name.includes('industry')) return 'rivalry';
+    if (name.includes('buyer') || name.includes('customer')) return 'buyers';
+    if (name.includes('supplier')) return 'suppliers';
+    if (name.includes('substitute')) return 'substitutes';
+    if (name.includes('entrant') || name.includes('entry') || name.includes('new')) return 'entrants';
+    return 'others';
+  };
+
+  const buckets: Record<string, PorterForce | undefined> = {
+    rivalry: undefined,
+    buyers: undefined,
+    suppliers: undefined,
+    entrants: undefined,
+    substitutes: undefined,
+  };
+  const others: PorterForce[] = [];
+
+  remaining.forEach(force => {
+    const cat = matchCategory(force);
+    if (cat === 'others') {
+      others.push(force);
+      return;
+    }
+    if (!buckets[cat]) {
+      buckets[cat] = force;
+    } else {
+      others.push(force);
+    }
+  });
+
+  return { ...buckets, others };
 };
 
 // Strategy Snapshot Card
@@ -636,62 +753,451 @@ function ValueChainSection() {
   );
 }
 
-// Impact Pathways Section
-function ImpactPathwaysSection() {
-  const { data, getAssumptionById } = useForesight();
-  const pathways = data?.strategy_context?.impact_pathways || [];
 
-  if (pathways.length === 0) return null;
+
+// Competitive Analysis Section with interactivity
+function CompetitiveAnalysisSection() {
+  const { data } = useForesight();
+  const fiveForces = data?.strategy_context?.porter_five_forces || data?.strategy_context?.porter_5_forces;
+  const swot = data?.strategy_context?.swot_analysis;
+  const forces = useMemo(() => normalizePorterForces(fiveForces), [fiveForces]);
+  const forceBuckets = useMemo(() => categorizePorterForces(forces), [forces]);
+  const baseSources = data?.strategy_context?.base_research_sources || [];
+  const forcesSources = data?.strategy_context?.forces_research_sources || (fiveForces as any)?.forces_research_sources || [];
+  const researchSources = useMemo(() => {
+    const preferredList = forcesSources.length > 0 ? forcesSources : baseSources;
+    const normalized = normalizeResearchSources([
+      ...preferredList,
+      ...(swot?.source ? [{ source: swot.source }] : []),
+    ]);
+    const seen = new Set<string>();
+    return normalized.filter((source) => {
+      const key = source.url || source.title;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [baseSources, forcesSources, swot?.source]);
+  const sourceMap = useMemo(() => {
+    const map = new Map<string, { title: string; url?: string }>();
+    normalizeResearchSources(baseSources).forEach((source) => {
+      if (source.id) map.set(source.id, source);
+    });
+    normalizeResearchSources(forcesSources).forEach((source) => {
+      if (source.id && !map.has(source.id)) map.set(source.id, source);
+    });
+    return map;
+  }, [baseSources, forcesSources]);
+
+  const [selectedForce, setSelectedForce] = useState<PorterForce | null>(null);
+  const [selectedSwot, setSelectedSwot] = useState<{ category: string, item: SwotItem | string } | null>(null);
+  const [showSources, setShowSources] = useState(false);
+
+  const renderWithSources = (text?: string, options?: { stopPropagation?: boolean }) => {
+    if (!text) return null;
+    const regex = /\[(S\d+)\]/g;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+      const [full, sourceId] = match;
+      const start = match.index;
+      if (start > lastIndex) {
+        parts.push(text.slice(lastIndex, start));
+      }
+      const source = sourceMap.get(sourceId);
+      const linkProps = options?.stopPropagation
+        ? { onClick: (event: React.MouseEvent) => event.stopPropagation() }
+        : {};
+      parts.push(
+        source?.url ? (
+          <a
+            key={`${sourceId}-${start}`}
+            href={source.url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-primary font-semibold hover:underline"
+            {...linkProps}
+          >
+            {full}
+          </a>
+        ) : (
+          <span key={`${sourceId}-${start}`} className="text-primary font-semibold">
+            {full}
+          </span>
+        )
+      );
+      lastIndex = start + full.length;
+    }
+
+    if (parts.length === 0) return text;
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+    return <>{parts}</>;
+  };
+
+  const fiveForcesOverview = fiveForces?.overview || fiveForces?.summary;
+  const swotSummary = swot?.summary || swot?.strategic_implication;
+  const hasFiveForces = !!(fiveForces && (forces.length > 0 || fiveForcesOverview));
+  const hasSwot = swot && (
+    normalizeSwotItems(swot.strengths).length > 0 ||
+    normalizeSwotItems(swot.weaknesses).length > 0 ||
+    normalizeSwotItems(swot.opportunities).length > 0 ||
+    normalizeSwotItems(swot.threats).length > 0
+  );
+
+  if (!hasSwot && !hasFiveForces) {
+    return (
+      <Card className="bg-card/70 border border-border/60 rounded-3xl shadow-sm">
+        <CardContent className="p-6 text-sm text-muted-foreground">
+          No SWOT or Porter's Five Forces data provided in this bundle.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const getSwotDisplay = (item: SwotItem | string) => {
+    if (typeof item === 'string') return { title: item, description: '', evidence: '', source: '', implication: '' };
+    return {
+      title: item.title || item.point || item.description || item.detail || item.evidence || 'Item',
+      description: item.description || item.detail || item.evidence || item.point || '',
+      evidence: item.evidence || '',
+      source: item.source || item.reference || item.url || '',
+      implication: item.implication || '',
+    };
+  };
+
+  const renderForceDrivers = (force: PorterForce) => {
+    const description = force.description || force.analysis;
+    return (
+      <div className="space-y-4">
+        {description && (
+          <p className="text-sm text-muted-foreground">
+            {renderWithSources(description)}
+          </p>
+        )}
+
+        {Array.isArray(force.drivers) && force.drivers.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Drivers</h4>
+            <ul className="list-disc pl-4 space-y-1 text-sm">
+              {force.drivers.map((d, i) => <li key={i}>{renderWithSources(d)}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {Array.isArray(force.mitigation) && force.mitigation.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Mitigations</h4>
+            <ul className="list-disc pl-4 space-y-1 text-sm">
+              {force.mitigation.map((m, i) => <li key={i} className="text-emerald-500">{renderWithSources(m)}</li>)}
+            </ul>
+          </div>
+        )}
+        {Array.isArray(force.signals) && force.signals.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Signals</h4>
+            <ul className="list-disc pl-4 space-y-1 text-sm">
+              {force.signals.map((s, i) => <li key={i} className="text-blue-500">{renderWithSources(s)}</li>)}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-md font-semibold flex items-center gap-2">
-        <Zap className="h-4 w-4 text-primary" />
-        Impact Pathways ({pathways.length})
-      </h3>
+    <div className="space-y-6">
+      {/* Porter Detail Dialog */}
+      <Dialog open={!!selectedForce} onOpenChange={(open) => !open && setSelectedForce(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedForce && normalizeForceName(selectedForce)}
+              {selectedForce && normalizeForcePressure(selectedForce) && (
+                <Badge variant={forceTone(normalizeForcePressure(selectedForce!))} className="ml-2">
+                  {normalizeForcePressure(selectedForce!)}
+                </Badge>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh] pr-4">
+            {selectedForce && renderForceDrivers(selectedForce)}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-        {pathways.map((pathway) => {
-          const assumption = getAssumptionById(pathway.trigger_assumption);
+      {/* SWOT Detail Dialog */}
+      <Dialog open={!!selectedSwot} onOpenChange={(open) => !open && setSelectedSwot(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="capitalize flex items-center gap-2">
+              {selectedSwot?.category} Analysis
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {selectedSwot && (() => {
+              const { title, description, evidence, source, implication } = getSwotDisplay(selectedSwot.item);
+              return (
+                <>
+                  <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
+                    <h3 className="font-semibold text-lg">{title}</h3>
+                  </div>
+                  {description && (
+                    <p className="text-sm text-foreground leading-relaxed">
+                      {renderWithSources(description)}
+                    </p>
+                  )}
+                  {implication && (
+                    <div className="text-xs bg-background/70 p-3 rounded border border-border/40">
+                      <span className="font-semibold text-muted-foreground">Implication:</span>{' '}
+                      <span className="text-sm text-foreground">{renderWithSources(implication)}</span>
+                    </div>
+                  )}
+                  {evidence && (
+                    <div className="text-xs bg-card p-3 rounded border border-border/40">
+                      <span className="font-semibold">Evidence:</span> {renderWithSources(evidence)}
+                    </div>
+                  )}
+                  {source && (
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <LinkIcon className="h-3 w-3" />
+                      Source: {source}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {hasFiveForces && (
+        <Card className="bg-card/70 border border-border/60 rounded-3xl shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-primary" />
+              Porter's Five Forces
+            </CardTitle>
+            {fiveForcesOverview && (
+              <CardDescription className="text-sm text-muted-foreground">
+                {renderWithSources(fiveForcesOverview)}
+              </CardDescription>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 items-stretch">
+              {[
+                { title: "Industry Rivalry", force: forceBuckets.rivalry },
+                { title: "Buyer Power", force: forceBuckets.buyers },
+                { title: "Supplier Power", force: forceBuckets.suppliers },
+                { title: "Threat of Substitutes", force: forceBuckets.substitutes },
+                { title: "Threat of New Entrants", force: forceBuckets.entrants },
+              ]
+                .filter(item => item.force)
+                .map((item, idx) => (
+                  <ForceTile
+                    key={idx}
+                    title={item.title}
+                    force={item.force}
+                    active={selectedForce === item.force}
+                    onClick={() => setSelectedForce(item.force!)}
+                  />
+                ))}
+            </div>
+            {forceBuckets.others.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Additional forces</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {forceBuckets.others.map((force, idx) => (
+                    <ForceTile
+                      key={idx}
+                      title={normalizeForceName(force)}
+                      force={force}
+                      active={selectedForce === force}
+                      onClick={() => setSelectedForce(force)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {hasSwot && (
+        <Card className="bg-card/70 border border-border/60 rounded-3xl shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Layers className="h-4 w-4 text-primary" />
+              SWOT
+            </CardTitle>
+            {swotSummary && (
+              <CardDescription className="text-sm text-muted-foreground">
+                {renderWithSources(swotSummary)}
+              </CardDescription>
+            )}
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <SwotBucket
+                title="Strengths"
+                items={normalizeSwotItems(swot?.strengths)}
+                icon={<TrendingUp className="h-4 w-4 text-emerald-500" />}
+                onItemClick={(item) => setSelectedSwot({ category: 'Strength', item })}
+                tone="positive"
+              />
+              <SwotBucket
+                title="Weaknesses"
+                items={normalizeSwotItems(swot?.weaknesses)}
+                icon={<AlertTriangle className="h-4 w-4 text-orange-500" />}
+                onItemClick={(item) => setSelectedSwot({ category: 'Weakness', item })}
+                tone="warning"
+              />
+              <SwotBucket
+                title="Opportunities"
+                items={normalizeSwotItems(swot?.opportunities)}
+                icon={<Target className="h-4 w-4 text-blue-500" />}
+                onItemClick={(item) => setSelectedSwot({ category: 'Opportunity', item })}
+                tone="opportunity"
+              />
+              <SwotBucket
+                title="Threats"
+                items={normalizeSwotItems(swot?.threats)}
+                icon={<Shield className="h-4 w-4 text-destructive" />}
+                onItemClick={(item) => setSelectedSwot({ category: 'Threat', item })}
+                tone="negative"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {researchSources.length > 0 && (
+        <Card className="bg-card/70 border border-border/60 rounded-3xl shadow-sm">
+          <CardHeader className="pb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <ExternalLink className="h-4 w-4 text-primary" />
+                Research sources
+              </CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">
+                Articles referenced in the competitive analysis.
+              </CardDescription>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs"
+              onClick={() => setShowSources(prev => !prev)}
+            >
+              {showSources ? 'Hide sources' : `Show sources (${researchSources.length})`}
+              <ChevronDown className={cn("ml-2 h-4 w-4 transition-transform", showSources && "rotate-180")} />
+            </Button>
+          </CardHeader>
+          {showSources && (
+            <CardContent className="space-y-2">
+              {researchSources.map((source, idx) => (
+                <div key={`${source.id || source.url || source.title}-${idx}`} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <ExternalLink className="h-3.5 w-3.5 mt-0.5 text-primary" />
+                  {source.id && (
+                    <Badge variant="outline" className="text-[10px] font-mono">
+                      {source.id}
+                    </Badge>
+                  )}
+                  {source.url ? (
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      {source.title}
+                    </a>
+                  ) : (
+                    <span>{source.title}</span>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          )}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function SwotBucket({ title, items, icon, onItemClick, tone = 'neutral' }: { title: string, items: (SwotItem | string)[], icon: React.ReactNode, onItemClick: (item: SwotItem | string) => void, tone?: 'positive' | 'negative' | 'neutral' | 'opportunity' | 'warning' }) {
+  if (!items || items.length === 0) return null;
+  const toneBorder =
+    tone === 'positive' ? 'border-emerald-400/50'
+    : tone === 'opportunity' ? 'border-blue-400/50'
+    : tone === 'warning' ? 'border-orange-400/50'
+    : tone === 'negative' ? 'border-destructive/50'
+    : 'border-border/40';
+  const toneBg =
+    tone === 'positive' ? 'bg-emerald-500/5'
+    : tone === 'opportunity' ? 'bg-blue-500/5'
+    : tone === 'warning' ? 'bg-orange-500/5'
+    : tone === 'negative' ? 'bg-destructive/5'
+    : 'bg-background/50';
+  return (
+    <div className={cn("space-y-3 rounded-2xl p-4 border", toneBorder, toneBg)}>
+      <h4 className="text-sm font-semibold flex items-center gap-2 text-foreground">
+        {icon} {title}
+      </h4>
+      <ul className="grid grid-cols-1 gap-2">
+        {items.map((item, idx) => {
+          const display = typeof item === 'string' ? item : item.title || 'Untitled';
           return (
-            <Card key={pathway.pathway_id} className="bg-card border-border/50">
-              <CardContent className="p-4 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <Badge variant="outline" className="text-xs font-mono">{pathway.pathway_id}</Badge>
-                  <Badge
-                    variant={pathway.severity >= 8 ? 'destructive' : pathway.severity >= 5 ? 'secondary' : 'outline'}
-                    className="text-xs"
-                  >
-                    Severity: {pathway.severity}
-                  </Badge>
-                </div>
-
-                <div>
-                  <span className="text-xs font-medium text-muted-foreground">Trigger:</span>
-                  <p className="text-sm text-foreground mt-1">{pathway.trigger_condition}</p>
-                </div>
-
-                <div>
-                  <span className="text-xs font-medium text-muted-foreground">Immediate Effects:</span>
-                  <ul className="text-sm text-muted-foreground mt-1 space-y-1">
-                    {pathway.immediate_effects.map((effect, idx) => (
-                      <li key={idx} className="flex items-start gap-2">
-                        <span className="text-destructive shrink-0">-</span>
-                        <span>{effect}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="flex items-center gap-2 text-xs pt-2 border-t border-border/50">
-                  <Clock className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-muted-foreground">Time to impact: {pathway.time_to_impact}</span>
-                </div>
-              </CardContent>
-            </Card>
+            <li
+              key={idx}
+              className="text-xs text-muted-foreground bg-card/60 p-3 rounded-lg border border-border/30 cursor-pointer hover:bg-primary/5 hover:border-primary/40 transition-all"
+              onClick={() => onItemClick(item)}
+            >
+              {display}
+            </li>
           );
         })}
+      </ul>
+    </div>
+  );
+}
+
+function ForceTile({ title, force, onClick, active = false }: { title: string; force?: PorterForce; onClick: () => void; active?: boolean }) {
+  const disabled = !force;
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-border/50 bg-background/70 p-4 space-y-3 transition-all",
+        active && "bg-primary/5 border-primary/60 shadow-sm",
+        !disabled && "cursor-pointer hover:border-primary/50 hover:shadow-sm",
+        disabled && "opacity-60"
+      )}
+      onClick={() => {
+        if (!disabled) onClick();
+      }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-foreground">{force ? normalizeForceName(force) : title}</p>
+          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{force?.description || force?.analysis || force?.summary || 'Tap to view details'}</p>
+        </div>
+        {normalizeForcePressure(force) && (
+          <Badge variant={forceTone(normalizeForcePressure(force))} className="text-xs capitalize">
+            {normalizeForcePressure(force)}
+          </Badge>
+        )}
       </div>
+      {Array.isArray(force?.drivers) && force?.drivers.length > 0 && (
+        <p className="text-[11px] text-muted-foreground line-clamp-2">
+          <span className="font-medium text-foreground">Drivers: </span>
+          {force.drivers.join(', ')}
+        </p>
+      )}
+      <div className="text-[10px] uppercase tracking-wide text-primary font-medium">Click to view details</div>
     </div>
   );
 }
@@ -715,17 +1221,17 @@ export function AssumptionClustersSection() {
           <Card key={idx} className="bg-card/70 border border-border/60 rounded-2xl shadow-sm backdrop-blur">
             <CardContent className="p-4 space-y-3">
               <div className="flex items-start justify-between">
-                <span className="text-sm font-medium text-foreground">{cluster.cluster_name}</span>
+                <span className="text-sm font-medium text-foreground">{cluster.cluster_name || 'Unnamed Cluster'}</span>
                 <Badge
                   variant={cluster.cascade_risk === 'High' ? 'destructive' : 'secondary'}
                   className="text-xs px-2.5 py-1 whitespace-nowrap"
                 >
-                  {cluster.cascade_risk} risk
+                  {cluster.cascade_risk || 'Unknown'} risk
                 </Badge>
               </div>
-              <p className="text-xs text-muted-foreground">{cluster.description}</p>
+              <p className="text-xs text-muted-foreground">{cluster.description || 'No description available.'}</p>
               <div className="flex flex-wrap gap-1">
-                {cluster.assumptions.map((assumption, aIdx) => (
+                {(cluster.assumptions || []).map((assumption, aIdx) => (
                   <Badge key={aIdx} variant="outline" className="text-xs font-mono">
                     {assumption}
                   </Badge>
@@ -1277,29 +1783,29 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">Filter:</span>
             <div className="flex items-center gap-1 rounded-full border border-border/60 bg-card/70 p-1">
-            {[
-              { value: 'all', label: 'All' },
-              { value: 'AT RISK', label: 'At risk' },
-              { value: 'MIXED', label: 'Mixed' },
-              { value: 'VALIDATED', label: 'Validated' },
-            ].map((filter) => {
-              const isActive = statusFilter === filter.value;
-              return (
-                <button
-                  key={filter.value}
-                  type="button"
-                  onClick={() => setStatusFilter(filter.value as typeof statusFilter)}
-                  className={cn(
-                    "rounded-full px-3 py-1 text-[11px] font-medium transition",
-                    isActive
-                      ? "bg-primary text-primary-foreground shadow"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {filter.label}
-                </button>
-              );
-            })}
+              {[
+                { value: 'all', label: 'All' },
+                { value: 'AT RISK', label: 'At risk' },
+                { value: 'MIXED', label: 'Mixed' },
+                { value: 'VALIDATED', label: 'Validated' },
+              ].map((filter) => {
+                const isActive = statusFilter === filter.value;
+                return (
+                  <button
+                    key={filter.value}
+                    type="button"
+                    onClick={() => setStatusFilter(filter.value as typeof statusFilter)}
+                    className={cn(
+                      "rounded-full px-3 py-1 text-[11px] font-medium transition",
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {filter.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
           <DropdownMenu>
@@ -1769,11 +2275,12 @@ export function StrategyComposition() {
           >
             Objectives & KPIs
           </TabsTrigger>
+
           <TabsTrigger
-            value="pathways"
+            value="competitive"
             className="rounded-full px-4 py-2 text-xs font-medium transition data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"
           >
-            Pathways
+            SWOT & 5 Forces
           </TabsTrigger>
         </TabsList>
 
@@ -1788,8 +2295,10 @@ export function StrategyComposition() {
           <KPIsSection />
         </TabsContent>
 
-        <TabsContent value="pathways" className="space-y-6 mt-6">
-          <ImpactPathwaysSection />
+
+
+        <TabsContent value="competitive" className="space-y-6 mt-6">
+          <CompetitiveAnalysisSection />
         </TabsContent>
       </Tabs>
     </div>
