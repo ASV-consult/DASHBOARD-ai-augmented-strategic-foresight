@@ -270,24 +270,42 @@ function SummaryPage({
   strategyIntent: string;
 }) {
   const diagnosis = impactData.executive_diagnosis;
+  const diagnosisAny = (diagnosis || {}) as Record<string, unknown>;
   const objectives = impactData.objective_scoreboard?.objectives || [];
   const breakpoints = impactData.breakpoints || [];
   const [showAllSummary, setShowAllSummary] = useState(false);
   const summaryParagraphs = diagnosis?.summary_paragraphs || [];
   const visibleSummary = showAllSummary ? summaryParagraphs : summaryParagraphs.slice(0, 2);
-  const bottomLineVerdict = diagnosis?.bottom_line_verdict;
+  const bottomLineVerdict =
+    diagnosis?.bottom_line_verdict ||
+    (typeof diagnosisAny.verdict === 'string' ? diagnosisAny.verdict : '');
   const diagnosticConclusion = diagnosis?.diagnostic_conclusion;
-  const suspicion = diagnosis?.state_of_suspicion;
+  const suspicion = !Array.isArray(diagnosis?.state_of_suspicion) ? diagnosis?.state_of_suspicion : undefined;
+  const suspicionList = Array.isArray(diagnosis?.state_of_suspicion) ? diagnosis.state_of_suspicion : [];
   const insideOutFindings = diagnosis?.inside_out_findings || [];
   const outsideInFindings = diagnosis?.outside_in_findings || [];
+  const hardDataAnchors = Array.isArray(diagnosisAny.hard_data_anchors)
+    ? (diagnosisAny.hard_data_anchors as Array<{ metric?: string; value?: string; source?: string }>)
+    : [];
+  const systemicCascadeSummary =
+    typeof diagnosisAny.systemic_cascade_summary === 'string' ? diagnosisAny.systemic_cascade_summary : '';
   const hasStructuredDiagnosis =
     !!bottomLineVerdict ||
     !!diagnosticConclusion ||
     !!suspicion?.core_concern ||
-    !!suspicion?.why_now;
+    !!suspicion?.why_now ||
+    suspicionList.length > 0;
   const hasFindings = insideOutFindings.length > 0 || outsideInFindings.length > 0;
   const assumptionHealth = impactData.objective_scoreboard?.assumption_health_summary;
   const hardDataFlags = impactData.objective_scoreboard?.hard_data_flags || [];
+  const mergedHardDataFlags =
+    hardDataFlags.length > 0
+      ? hardDataFlags
+      : hardDataAnchors.map(anchor => ({
+          metric_or_signal: anchor.metric || 'Hard data anchor',
+          value: anchor.value || '',
+          why_it_matters: anchor.source || '',
+        }));
 
   return (
     <div className="space-y-6">
@@ -346,7 +364,7 @@ function SummaryPage({
                   <p className="text-sm text-foreground leading-relaxed">{bottomLineVerdict}</p>
                 </div>
               )}
-              {(suspicion?.core_concern || suspicion?.why_now) && (
+              {(suspicion?.core_concern || suspicion?.why_now || suspicionList.length > 0) && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {suspicion?.core_concern && (
                     <div className="p-3 rounded-xl bg-muted/30 border border-border/50">
@@ -362,6 +380,21 @@ function SummaryPage({
                       <p className="text-sm text-foreground mt-1">{suspicion.why_now}</p>
                     </div>
                   )}
+                  {suspicionList.length > 0 && (
+                    <div className="p-3 rounded-xl bg-muted/30 border border-border/50 md:col-span-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        State of suspicion
+                      </p>
+                      <ul className="mt-2 space-y-1">
+                        {suspicionList.map((point, idx) => (
+                          <li key={`suspicion-${idx}`} className="text-sm text-foreground flex items-start gap-2">
+                            <ChevronRight className="h-3 w-3 mt-1 text-primary" />
+                            <span>{point}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
               {diagnosticConclusion && (
@@ -370,6 +403,14 @@ function SummaryPage({
                     Diagnostic conclusion
                   </p>
                   <p className="text-sm text-foreground leading-relaxed">{diagnosticConclusion}</p>
+                </div>
+              )}
+              {systemicCascadeSummary && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                    Systemic cascade summary
+                  </p>
+                  <p className="text-sm text-foreground leading-relaxed">{systemicCascadeSummary}</p>
                 </div>
               )}
             </div>
@@ -573,14 +614,14 @@ function SummaryPage({
 
         <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <BadgeCheck className="h-4 w-4 text-primary" />
-              {hardDataFlags.length > 0 ? 'Hard data flags' : 'Upside points'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {hardDataFlags.length > 0 ? (
-              hardDataFlags.slice(0, 3).map((flag, idx) => (
+              <CardTitle className="text-base flex items-center gap-2">
+                <BadgeCheck className="h-4 w-4 text-primary" />
+                {mergedHardDataFlags.length > 0 ? 'Hard data anchors' : 'Upside points'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+            {mergedHardDataFlags.length > 0 ? (
+              mergedHardDataFlags.slice(0, 3).map((flag, idx) => (
                 <div key={`${flag.metric_or_signal || 'flag'}-${idx}`} className="space-y-1">
                   <p className="text-sm font-medium text-foreground">{flag.metric_or_signal || 'Metric'}</p>
                   {flag.value && <p className="text-xs text-muted-foreground">{flag.value}</p>}
@@ -620,16 +661,40 @@ function MechanicsPage({
   const breakpoints = impactData.breakpoints || [];
   const pathwaySummary = impactData.pathway_activation_summary || [];
   const assumptionHealth = impactData.objective_scoreboard?.assumption_health_summary;
+  const assumptionHealthGroups = [
+    {
+      label: 'Foundational & Healthy',
+      tone: 'secondary' as const,
+      items: assumptionHealth?.foundational_and_healthy || [],
+    },
+    {
+      label: 'Critical & At Risk',
+      tone: 'destructive' as const,
+      items: assumptionHealth?.critical_and_at_risk || [],
+    },
+    {
+      label: 'Mixed / Conditional',
+      tone: 'outline' as const,
+      items: assumptionHealth?.mixed_or_conditional || [],
+    },
+  ];
   const clusterRiskSummary = impactData.objective_scoreboard?.cluster_risk_summary || [];
   const hardDataFlags = impactData.objective_scoreboard?.hard_data_flags || [];
   const foundationalPillars = truthTable?.foundational_pillars || [];
   const criticalAtRisk = truthTable?.critical_at_risk_pillars || [];
   const mixedAmbiguous = truthTable?.mixed_or_ambiguous || [];
   const dataBlindSpots = truthTable?.data_blind_spots || [];
+  const validatedExternalRealities = truthTable?.validated_external_realities || [];
+  const failingFragileMechanisms = truthTable?.failing_or_fragile_mechanisms || [];
   const hasRunBundleScoreboard =
     !!assumptionHealth || clusterRiskSummary.length > 0 || hardDataFlags.length > 0;
   const hasRunBundleTruthTable =
-    foundationalPillars.length > 0 || criticalAtRisk.length > 0 || mixedAmbiguous.length > 0 || dataBlindSpots.length > 0;
+    foundationalPillars.length > 0 ||
+    criticalAtRisk.length > 0 ||
+    mixedAmbiguous.length > 0 ||
+    dataBlindSpots.length > 0 ||
+    validatedExternalRealities.length > 0 ||
+    failingFragileMechanisms.length > 0;
 
   const [activeAssumption, setActiveAssumption] = useState<string | null>(null);
   const [activePathway, setActivePathway] = useState<string | null>(null);
@@ -896,23 +961,49 @@ function MechanicsPage({
             <CardContent className="space-y-3 text-sm">
               {assumptionHealth ? (
                 <>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {typeof assumptionHealth.validated === 'number' && (
-                      <Badge variant="secondary" className="text-xs">
-                        Validated: {assumptionHealth.validated}
-                      </Badge>
-                    )}
-                    {typeof assumptionHealth.mixed === 'number' && (
-                      <Badge variant="outline" className="text-xs">
-                        Mixed: {assumptionHealth.mixed}
-                      </Badge>
-                    )}
-                    {typeof assumptionHealth.at_risk === 'number' && (
-                      <Badge variant="destructive" className="text-xs">
-                        At risk: {assumptionHealth.at_risk}
-                      </Badge>
-                    )}
-                  </div>
+                  {(
+                    typeof assumptionHealth.validated === 'number' ||
+                    typeof assumptionHealth.mixed === 'number' ||
+                    typeof assumptionHealth.at_risk === 'number'
+                  ) && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {typeof assumptionHealth.validated === 'number' && (
+                        <Badge variant="secondary" className="text-xs">
+                          Validated: {assumptionHealth.validated}
+                        </Badge>
+                      )}
+                      {typeof assumptionHealth.mixed === 'number' && (
+                        <Badge variant="outline" className="text-xs">
+                          Mixed: {assumptionHealth.mixed}
+                        </Badge>
+                      )}
+                      {typeof assumptionHealth.at_risk === 'number' && (
+                        <Badge variant="destructive" className="text-xs">
+                          At risk: {assumptionHealth.at_risk}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                  {assumptionHealthGroups.some(group => group.items.length > 0) && (
+                    <div className="space-y-2">
+                      {assumptionHealthGroups.map(group => {
+                        if (group.items.length === 0) return null;
+                        return (
+                          <div key={group.label} className="rounded-xl border border-border/50 bg-muted/20 p-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-semibold text-foreground">{group.label}</p>
+                              <Badge variant={group.tone} className="text-[10px]">
+                                {group.items.length}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {group.items[0]?.assumption || 'No assumption statement provided'}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   {assumptionHealth.interpretation && (
                     <p className="text-xs text-muted-foreground">{assumptionHealth.interpretation}</p>
                   )}
@@ -1149,6 +1240,77 @@ function MechanicsPage({
 
       {hasRunBundleTruthTable && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <BadgeCheck className="h-4 w-4 text-primary" />
+                Validated external realities
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {validatedExternalRealities.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No validated external realities provided.</p>
+              ) : (
+                validatedExternalRealities.map((entry, idx) => (
+                  <div key={`validated-${idx}`} className="p-3 rounded-xl bg-muted/30 border border-border/50">
+                    <p className="text-sm font-semibold text-foreground">
+                      {entry.assumption_statement || 'Assumption'}
+                    </p>
+                    {entry.truth_status && (
+                      <Badge variant="secondary" className="text-[10px] mt-2">
+                        {entry.truth_status}
+                      </Badge>
+                    )}
+                    {entry.implication && <p className="text-xs text-muted-foreground mt-2">{entry.implication}</p>}
+                    {entry.strategic_implication && (
+                      <p className="text-xs text-muted-foreground mt-1">{entry.strategic_implication}</p>
+                    )}
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-primary" />
+                Failing or fragile mechanisms
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {failingFragileMechanisms.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No fragile mechanisms provided.</p>
+              ) : (
+                failingFragileMechanisms.map((entry, idx) => (
+                  <div key={`fragile-${idx}`} className="p-3 rounded-xl bg-muted/30 border border-border/50">
+                    <p className="text-sm font-semibold text-foreground">
+                      {entry.assumption_statement || 'Assumption'}
+                    </p>
+                    {entry.truth_status && (
+                      <Badge variant="destructive" className="text-[10px] mt-2">
+                        {entry.truth_status}
+                      </Badge>
+                    )}
+                    {entry.strategic_implication && (
+                      <p className="text-xs text-muted-foreground mt-2">{entry.strategic_implication}</p>
+                    )}
+                    {entry.evidence_basis && entry.evidence_basis.length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                        {entry.evidence_basis.slice(0, 2).map(point => (
+                          <li key={point} className="flex items-start gap-2">
+                            <ChevronRight className="h-3 w-3 mt-0.5 text-primary" />
+                            <span>{point}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
@@ -1851,9 +2013,14 @@ function EvidencePaperPage({
   opportunityIds: Set<string>;
   warningIds: Set<string>;
 }) {
-  const [activeTab, setActiveTab] = useState('evidence');
+  const [activeTab, setActiveTab] = useState('paper');
   const [search, setSearch] = useState('');
   const [selectedSignal, setSelectedSignal] = useState<Signal | null>(null);
+  const diagnosisAny = (impactData.executive_diagnosis || {}) as Record<string, unknown>;
+  const diagnosisHardDataAnchors = Array.isArray(diagnosisAny.hard_data_anchors)
+    ? (diagnosisAny.hard_data_anchors as Array<{ metric?: string; value?: string; source?: string }>)
+    : [];
+  const riskConfirmationStatus = impactData.objective_scoreboard?.risk_confirmation_status || {};
 
   const evidenceRows = useMemo(() => {
     const rows = new Map<
@@ -1915,6 +2082,12 @@ function EvidencePaperPage({
       source.toLowerCase().includes(term)
     );
   });
+
+  const topSignalsFallback = useMemo(() => {
+    return [...allSignals]
+      .sort((a, b) => (b.combined_score || b.outlier_flags?.combined_score || b.impact_score || 0) - (a.combined_score || a.outlier_flags?.combined_score || a.impact_score || 0))
+      .slice(0, 10);
+  }, [allSignals]);
 
   const strategicConclusion =
     impactData.strategic_impact_analysis?.strategic_conclusion || impactData.strategic_conclusion;
@@ -2041,6 +2214,13 @@ function EvidencePaperPage({
           .join(', ');
   };
 
+  const scrollToHeading = (id: string) => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
     <>
       <SignalDetailDialog
@@ -2062,10 +2242,94 @@ function EvidencePaperPage({
 
       <TabsContent value="evidence" className="space-y-4 mt-6">
         {evidenceRows.length === 0 ? (
-          <EmptyState
-            title="No signal links attached in this payload"
-            description="Provide signal_id mappings to enable click-through."
-          />
+          <div className="space-y-4">
+            {diagnosisHardDataAnchors.length === 0 &&
+            Object.keys(riskConfirmationStatus).length === 0 &&
+            topSignalsFallback.length === 0 ? (
+              <EmptyState
+                title="No signal links attached in this payload"
+                description="Provide signal_id mappings to enable click-through."
+              />
+            ) : (
+              <>
+                {diagnosisHardDataAnchors.length > 0 && (
+                  <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Flame className="h-4 w-4 text-primary" />
+                        Hard data anchors from diagnosis
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {diagnosisHardDataAnchors.map((anchor, idx) => (
+                        <div key={`anchor-${idx}`} className="rounded-xl border border-border/50 bg-muted/20 p-3">
+                          <p className="text-sm font-medium text-foreground">{anchor.metric || 'Metric'}</p>
+                          {anchor.value && <p className="text-xs text-muted-foreground mt-1">{anchor.value}</p>}
+                          {anchor.source && <p className="text-xs text-muted-foreground mt-1">{anchor.source}</p>}
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {Object.keys(riskConfirmationStatus).length > 0 && (
+                  <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <ShieldAlert className="h-4 w-4 text-primary" />
+                        Risk confirmation status
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {Object.entries(riskConfirmationStatus).map(([key, value]) => (
+                        <div key={key} className="rounded-xl border border-border/50 bg-muted/20 p-3">
+                          <p className="text-xs font-semibold text-foreground">{formatLabel(key)}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{value}</p>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {topSignalsFallback.length > 0 && (
+                  <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <List className="h-4 w-4 text-primary" />
+                        High-impact signals (fallback)
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground">
+                        Evidence links were not mapped in this payload, so this shows top-scoring signals instead.
+                      </p>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {topSignalsFallback.map(signal => (
+                        <button
+                          key={signal.signal_id}
+                          type="button"
+                          className="w-full text-left rounded-xl border border-border/50 bg-background/70 p-3 hover:border-primary/40 hover:bg-primary/5 transition"
+                          onClick={() => setSelectedSignal(signal)}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <Badge variant="outline" className="font-mono text-[10px]">
+                              {signal.signal_id}
+                            </Badge>
+                            <Badge
+                              variant={signal.impact_direction === 'Negative' ? 'destructive' : 'secondary'}
+                              className="text-[10px]"
+                            >
+                              {(signal.combined_score || signal.outlier_flags?.combined_score || signal.impact_score || 0).toFixed(1)}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-foreground mt-2 line-clamp-2">{getSignalTitle(signal)}</p>
+                        </button>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            )}
+          </div>
         ) : (
           <>
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -2201,13 +2465,14 @@ function EvidencePaperPage({
                 </CardHeader>
                 <CardContent className="space-y-2 text-xs text-muted-foreground">
                   {toc.map(item => (
-                    <a
+                    <button
+                      type="button"
                       key={item.id}
-                      href={`#${item.id}`}
-                      className={cn('block hover:text-foreground', item.depth > 2 && 'pl-4')}
+                      onClick={() => scrollToHeading(item.id)}
+                      className={cn('block text-left hover:text-foreground', item.depth > 2 && 'pl-4')}
                     >
                       {item.text}
-                    </a>
+                    </button>
                   ))}
                 </CardContent>
               </Card>
@@ -2320,7 +2585,7 @@ export function StrategicImpactWorkstreams() {
     return map;
   }, [impactData]);
 
-  const [activeTab, setActiveTab] = useState('summary');
+  const [activeTab, setActiveTab] = useState('evidence');
 
   return (
     <div className="space-y-6">

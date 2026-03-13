@@ -1,11 +1,21 @@
 import React, { createContext, useContext, useState, useMemo, ReactNode } from 'react';
-import { ForesightData, Signal, Assumption, BuildingBlocks, Workstream, DeepDiveItem } from '@/types/foresight';
+import { ForesightData, Signal, Assumption, BuildingBlocks, Workstream } from '@/types/foresight';
+import { FinancialAnalysisData } from '@/types/financial';
+import { SharePriceAnalysisData } from '@/types/share-price';
 import { getSignalScore } from '@/lib/signal-utils';
 
 interface ForesightContextType {
   data: ForesightData | null;
   setData: (data: ForesightData | null) => void;
+  financialData: FinancialAnalysisData | null;
+  setFinancialData: (data: FinancialAnalysisData | null) => void;
+  sharePriceData: SharePriceAnalysisData | null;
+  setSharePriceData: (data: SharePriceAnalysisData | null) => void;
   isLoaded: boolean;
+  hasForesightData: boolean;
+  hasFinancialData: boolean;
+  hasSharePriceData: boolean;
+  resetStreams: () => void;
   // Computed helpers
   allSignals: Signal[];
   coreAssumptions: Assumption[];
@@ -32,6 +42,8 @@ const ForesightContext = createContext<ForesightContextType | undefined>(undefin
 
 export function ForesightProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<ForesightData | null>(null);
+  const [financialData, setFinancialData] = useState<FinancialAnalysisData | null>(null);
+  const [sharePriceData, setSharePriceData] = useState<SharePriceAnalysisData | null>(null);
   const [outlierScoreThreshold, setOutlierScoreThreshold] = useState(5);
 
   // Extract signals from the new schema
@@ -84,12 +96,14 @@ export function ForesightProvider({ children }: { children: ReactNode }) {
 
   // Company name
   const companyName = useMemo(() => {
-    if (!data) return '';
-    if (data.meta?.company) return data.meta.company;
-    if (data.strategy_context?.company?.name) return data.strategy_context.company.name;
-    if (data.company_strategy?.company?.name) return data.company_strategy.company.name;
+    if (data?.meta?.company) return data.meta.company;
+    if (data?.strategy_context?.company?.name) return data.strategy_context.company.name;
+    if (data?.company_strategy?.company?.name) return data.company_strategy.company.name;
+    if (financialData?.company_profile?.name) return financialData.company_profile.name;
+    if (financialData?.run_meta?.company) return financialData.run_meta.company;
+    if (sharePriceData?._meta?.company) return sharePriceData._meta.company;
     return '';
-  }, [data]);
+  }, [data, financialData, sharePriceData]);
 
   // Categorize signals into outlier quadrants based on v2.1 spec
   const { threats, opportunities, earlyWarnings, noiseSignals, threatIds, opportunityIds, warningIds } = useMemo(() => {
@@ -154,10 +168,24 @@ export function ForesightProvider({ children }: { children: ReactNode }) {
 
   const getAssumptionById = (id: string) => coreAssumptions.find(a => a.id === id);
 
+  const resetStreams = () => {
+    setData(null);
+    setFinancialData(null);
+    setSharePriceData(null);
+  };
+
   const value: ForesightContextType = {
     data,
     setData,
-    isLoaded: data !== null,
+    financialData,
+    setFinancialData,
+    sharePriceData,
+    setSharePriceData,
+    isLoaded: data !== null || financialData !== null || sharePriceData !== null,
+    hasForesightData: data !== null,
+    hasFinancialData: financialData !== null,
+    hasSharePriceData: sharePriceData !== null,
+    resetStreams,
     allSignals,
     coreAssumptions,
     buildingBlocks,

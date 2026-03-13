@@ -430,10 +430,17 @@ export interface StrategicImpactExecutiveDiagnosis {
   validated_upside_points?: StrategicImpactUpsidePoint[];
   constraints?: StrategicImpactConstraint[];
   bottom_line_verdict?: string;
+  verdict?: string;
   state_of_suspicion?: {
     core_concern?: string;
     why_now?: string;
-  };
+  } | string[];
+  hard_data_anchors?: Array<{
+    metric?: string;
+    value?: string;
+    source?: string;
+  }>;
+  systemic_cascade_summary?: string;
   inside_out_findings?: Array<{
     finding?: string;
     hard_data_anchors?: string[];
@@ -488,6 +495,21 @@ export interface StrategicImpactObjectiveScoreboard {
     mixed?: number;
     at_risk?: number;
     interpretation?: string;
+    foundational_and_healthy?: Array<{
+      assumption?: string;
+      status?: string;
+      why_it_matters?: string;
+    }>;
+    critical_and_at_risk?: Array<{
+      assumption?: string;
+      status?: string;
+      why_it_matters?: string;
+    }>;
+    mixed_or_conditional?: Array<{
+      assumption?: string;
+      status?: string;
+      why_it_matters?: string;
+    }>;
   };
   cluster_risk_summary?: Array<{
     cluster?: string;
@@ -500,6 +522,7 @@ export interface StrategicImpactObjectiveScoreboard {
     value?: string;
     why_it_matters?: string;
   }>;
+  risk_confirmation_status?: Record<string, string>;
 }
 
 export interface StrategicImpactBreakpointWhy {
@@ -558,6 +581,20 @@ export interface StrategicImpactTruthTable {
   critical_at_risk_pillars?: StrategicImpactTruthTableEntry[];
   mixed_or_ambiguous?: StrategicImpactTruthTableEntry[];
   data_blind_spots?: string[];
+  validated_external_realities?: Array<{
+    assumption_statement?: string;
+    truth_status?: string;
+    implication?: string;
+    evidence_basis?: string[];
+    strategic_implication?: string;
+  }>;
+  failing_or_fragile_mechanisms?: Array<{
+    assumption_statement?: string;
+    truth_status?: string;
+    implication?: string;
+    evidence_basis?: string[];
+    strategic_implication?: string;
+  }>;
 }
 
 export interface StrategicImpactSequencingItem {

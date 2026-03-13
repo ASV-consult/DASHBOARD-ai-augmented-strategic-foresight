@@ -1,49 +1,191 @@
+import { useRef } from 'react';
 import { useForesight } from '@/contexts/ForesightContext';
 import { Button } from '@/components/ui/button';
-import { X, Building2, Calendar } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { useStreamUploader } from '@/hooks/use-stream-uploader';
+import { Upload, X, Building2, Calendar } from 'lucide-react';
 
-export function DashboardHeader() {
-  const { data, setData, companyName } = useForesight();
-  
-  if (!data) return null;
-  
-  // Support both v2.1 and legacy schema
-  const company = data.strategy_context?.company || data.company_strategy?.company;
-  const strategy_snapshot = data.strategy_context?.strategy_snapshot || data.company_strategy?.strategy_snapshot;
+const toDateLabel = (value?: string) => {
+  if (!value) return 'N/A';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toISOString().slice(0, 10);
+};
+
+interface DashboardHeaderProps {
+  onHomeClick?: () => void;
+  onNavigate?: (
+    view:
+      | 'streams-home'
+      | 'global-executive-overview'
+      | 'foresight-overview'
+      | 'financial-overview'
+      | 'macro-overview',
+  ) => void;
+}
+
+export function DashboardHeader({ onHomeClick, onNavigate }: DashboardHeaderProps) {
+  const {
+    data,
+    financialData,
+    sharePriceData,
+    companyName,
+    hasForesightData,
+    hasFinancialData,
+    hasSharePriceData,
+    resetStreams,
+  } = useForesight();
+  const { uploadFiles } = useStreamUploader();
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  if (!data && !financialData && !sharePriceData) return null;
+
+  const strategyCompany = data?.strategy_context?.company || data?.company_strategy?.company;
+  const strategySnapshot =
+    data?.strategy_context?.strategy_snapshot || data?.company_strategy?.strategy_snapshot;
+  const financialCompany = financialData?.company_profile;
+
+  const industry = strategyCompany?.industry || financialCompany?.industry || 'Industry';
+  const asOf =
+    strategyCompany?.as_of_date ||
+    data?.meta?.generated_at ||
+    financialData?.generated_at_utc ||
+    financialData?.run_meta?.created_at ||
+    sharePriceData?._meta?.generated_at;
+
+  const summaryLine =
+    strategySnapshot?.one_line_positioning ||
+    financialData?.executive?.executive_thesis ||
+    'Parallel strategy, financial, and risk streams ready for synthesis.';
 
   return (
-    <header className="border-b border-border bg-card">
-      <div className="container py-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Building2 className="h-5 w-5 text-primary" />
+    <header className="sticky top-0 z-40 border-b border-border/60 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div className="px-5 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={onHomeClick}
+              className="group flex min-w-0 items-center gap-3 text-left"
+              title="Back to Streams Home"
+            >
+              <div className="rounded-lg bg-muted p-2">
+                <Building2 className="h-4 w-4 text-primary" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground truncate">{companyName || company?.name || 'Company'}</h1>
-                <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                  <span>{company?.industry || 'Industry'}</span>
+                <h1 className="truncate text-lg font-semibold text-foreground transition group-hover:text-primary">
+                  {companyName || strategyCompany?.name || financialCompany?.name || 'Company'}
+                </h1>
+                <div className="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  <span>{industry}</span>
                   <span className="flex items-center gap-1">
                     <Calendar className="h-3 w-3" />
-                    {company?.as_of_date || data.meta?.generated_at?.split('T')[0] || 'N/A'}
+                    {toDateLabel(asOf)}
                   </span>
+                  {financialCompany?.ticker && (
+                    <Badge variant="outline" className="font-mono text-[11px]">
+                      {financialCompany.ticker}
+                    </Badge>
+                  )}
                 </div>
               </div>
+            </button>
+            <p className="mt-2 line-clamp-1 text-xs text-muted-foreground">{summaryLine}</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge
+                variant={hasForesightData ? 'default' : 'secondary'}
+                className="rounded-full px-2.5 py-0.5 text-[10px]"
+              >
+                Strategic Foresight {hasForesightData ? 'Loaded' : 'Missing'}
+              </Badge>
+              <Badge
+                variant={hasFinancialData ? 'default' : 'secondary'}
+                className="rounded-full px-2.5 py-0.5 text-[10px]"
+              >
+                Financial Analysis {hasFinancialData ? 'Loaded' : 'Missing'}
+              </Badge>
+              <Badge
+                variant={hasSharePriceData ? 'default' : 'secondary'}
+                className="rounded-full px-2.5 py-0.5 text-[10px]"
+              >
+                Share Price {hasSharePriceData ? 'Loaded' : 'Missing'}
+              </Badge>
+              <Badge variant="outline" className="rounded-full px-2.5 py-0.5 text-[10px]">
+                Macro Risk Pending
+              </Badge>
             </div>
-            {strategy_snapshot?.one_line_positioning && (
-              <p className="mt-3 text-sm text-muted-foreground line-clamp-2">
-                {strategy_snapshot.one_line_positioning}
-              </p>
-            )}
           </div>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept=".json"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.length) {
+                  void uploadFiles(e.target.files);
+                }
+                e.target.value = '';
+              }}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full border-primary/30 bg-primary/[0.06] px-3 text-xs text-primary hover:bg-primary/[0.12]"
+              onClick={() => uploadInputRef.current?.click()}
+              title="Upload one or multiple JSON files"
+            >
+              <Upload className="mr-2 h-3.5 w-3.5" />
+              Upload JSON files
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={resetStreams}
+              title="Clear all loaded streams"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/60 pt-2">
           <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setData(null)}
-            className="flex-shrink-0"
+            size="sm"
+            variant="secondary"
+            className="h-7 rounded-full px-3 text-[11px]"
+            onClick={() => onNavigate?.('streams-home')}
           >
-            <X className="h-4 w-4" />
+            Streams Home
+          </Button>
+          <Button
+            size="sm"
+            className="h-7 rounded-full bg-sky-600 px-3 text-[11px] text-white hover:bg-sky-700"
+            onClick={() => onNavigate?.('foresight-overview')}
+          >
+            Strategic Executive
+          </Button>
+          <Button
+            size="sm"
+            className="h-7 rounded-full bg-emerald-600 px-3 text-[11px] text-white hover:bg-emerald-700"
+            onClick={() => onNavigate?.('financial-overview')}
+          >
+            Financial Executive
+          </Button>
+          <Button
+            size="sm"
+            className="h-7 rounded-full bg-amber-500 px-3 text-[11px] text-black hover:bg-amber-600"
+            onClick={() => onNavigate?.('macro-overview')}
+          >
+            Macro Executive
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 rounded-full px-3 text-[11px]"
+            onClick={() => onNavigate?.('global-executive-overview')}
+          >
+            Unified Executive
           </Button>
         </div>
       </div>

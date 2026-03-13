@@ -24,6 +24,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
+import { AssumptionSpiderCharts } from '@/components/views/AssumptionSpiderCharts';
 
 const buildingBlockIcons: Record<string, React.ReactNode> = {
   direction_and_positioning: <Compass className="h-4 w-4" />,
@@ -38,12 +39,74 @@ const buildingBlockLabels: Record<string, string> = {
   direction_and_positioning: 'Direction & Positioning',
   value_creation: 'Value Creation',
   value_defence: 'Strategic Defence',
+  Strategic_defence: 'Strategic Defence',
+  Strategic_defense: 'Strategic Defence',
   key_levers: 'Key Levers',
+  cross_cutting: 'Cross-cutting',
 };
 
 const formatBuildingBlock = (block: string) => {
   return buildingBlockLabels[block] || block.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 };
+
+const normalizeBuildingBlockKey = (block?: string) => {
+  if (!block) return 'cross_cutting';
+  if (block === 'Strategic_defence' || block === 'Strategic_defense') return 'value_defence';
+  return block;
+};
+
+const cleanNarrative = (text?: string) => {
+  if (!text) return '';
+  return text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/\[(S\d+)\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const summarizeWords = (text?: string, maxWords = 12) => {
+  const cleaned = cleanNarrative(text);
+  if (!cleaned) return '';
+  const words = cleaned.split(' ');
+  if (words.length <= maxWords) return cleaned;
+  return `${words.slice(0, maxWords).join(' ')}...`;
+};
+
+const summarizeSentence = (text?: string) => {
+  const cleaned = cleanNarrative(text);
+  if (!cleaned) return '';
+  const first = cleaned.split(/[.!?]/).find(part => part.trim().length > 0);
+  return (first || cleaned).trim();
+};
+
+function splitHeadlineAndBody(raw?: string) {
+  const text = (raw || '').trim();
+  if (!text) return { title: '', description: '' };
+
+  const markdownHeadline = text.match(/^\*\*(.+?)\*\*:\s*(.+)$/);
+  if (markdownHeadline) {
+    return {
+      title: cleanNarrative(markdownHeadline[1]),
+      description: cleanNarrative(markdownHeadline[2]),
+    };
+  }
+
+  const plainHeadline = text.match(/^([^:]{12,140}):\s*(.+)$/);
+  if (plainHeadline) {
+    return {
+      title: cleanNarrative(plainHeadline[1]),
+      description: cleanNarrative(plainHeadline[2]),
+    };
+  }
+
+  return {
+    title: summarizeWords(text, 12),
+    description: cleanNarrative(text),
+  };
+}
 
 interface AssumptionWithSignals extends Assumption {
   challengingSignals: Signal[];
@@ -104,11 +167,14 @@ const normalizeSwotItems = (items?: Array<SwotItem | string>) => {
   if (!items) return [];
   return items.map(item => {
     if (typeof item === 'string') {
-      return { title: item, description: '' };
+      const parsed = splitHeadlineAndBody(item);
+      return { title: parsed.title, description: parsed.description };
     }
+    const canonical = item.title || item.point || item.description || item.detail || item.evidence || '';
+    const parsed = splitHeadlineAndBody(canonical);
     return {
-      title: item.title || item.point || item.description || item.detail || item.evidence || 'Item',
-      description: item.description || item.detail || item.evidence || item.point || '',
+      title: cleanNarrative(item.title || item.point || parsed.title || 'Item'),
+      description: cleanNarrative(item.description || item.detail || item.evidence || item.point || parsed.description || ''),
       source: item.source || item.reference || item.url,
       evidence: item.evidence,
     };
@@ -125,6 +191,14 @@ const forceTone = (pressure?: string) => {
   if (val.includes('medium')) return 'secondary';
   if (val.includes('low')) return 'default';
   return 'secondary';
+};
+
+const forcePressureScore = (pressure?: string) => {
+  const val = (pressure || '').toLowerCase();
+  if (val.includes('high') || val.includes('strong')) return 90;
+  if (val.includes('medium') || val.includes('moderate')) return 60;
+  if (val.includes('low') || val.includes('weak')) return 30;
+  return 45;
 };
 
 const formatForceKey = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -453,6 +527,21 @@ function KPIsSection() {
 
   return (
     <div className="space-y-8">
+      <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+        <CardContent className="p-4 flex flex-wrap items-center gap-3 text-xs">
+          <span className="text-muted-foreground">How to read this view:</span>
+          <Badge variant="destructive" className="text-[11px]">
+            {criticalKpis.length} critical KPIs
+          </Badge>
+          <Badge variant="outline" className="text-[11px]">
+            {otherKpis.length} supporting KPIs
+          </Badge>
+          <span className="text-muted-foreground">
+            Open any KPI card for full definition, anchors, and evidence context.
+          </span>
+        </CardContent>
+      </Card>
+
       {/* KPI Detail Dialog */}
       <Dialog open={!!selectedKpi} onOpenChange={() => setSelectedKpi(null)}>
         <DialogContent className="max-w-2xl">
@@ -792,6 +881,12 @@ function CompetitiveAnalysisSection() {
   const [selectedForce, setSelectedForce] = useState<PorterForce | null>(null);
   const [selectedSwot, setSelectedSwot] = useState<{ category: string, item: SwotItem | string } | null>(null);
   const [showSources, setShowSources] = useState(false);
+  const [expandedSwot, setExpandedSwot] = useState<Record<string, boolean>>({
+    Strengths: false,
+    Weaknesses: false,
+    Opportunities: false,
+    Threats: false,
+  });
 
   const renderWithSources = (text?: string, options?: { stopPropagation?: boolean }) => {
     if (!text) return null;
@@ -848,6 +943,44 @@ function CompetitiveAnalysisSection() {
     normalizeSwotItems(swot.threats).length > 0
   );
 
+  const forceDistribution = useMemo(() => {
+    const stats = { high: 0, medium: 0, low: 0, unknown: 0 };
+    forces.forEach((force) => {
+      const pressure = normalizeForcePressure(force).toLowerCase();
+      if (pressure.includes('high') || pressure.includes('strong')) stats.high += 1;
+      else if (pressure.includes('medium') || pressure.includes('moderate')) stats.medium += 1;
+      else if (pressure.includes('low') || pressure.includes('weak')) stats.low += 1;
+      else stats.unknown += 1;
+    });
+    return stats;
+  }, [forces]);
+
+  const forceRows = useMemo(
+    () => {
+      const rows = [
+        { title: 'Threat of New Entrants', force: forceBuckets.entrants },
+        { title: 'Supplier Power', force: forceBuckets.suppliers },
+        { title: 'Industry Rivalry', force: forceBuckets.rivalry },
+        { title: 'Buyer Power', force: forceBuckets.buyers },
+        { title: 'Threat of Substitutes', force: forceBuckets.substitutes },
+      ];
+
+      const canonicalRows = rows.filter((item) => item.force);
+      const additionalRows = forceBuckets.others.map((force) => ({
+        title: normalizeForceName(force),
+        force,
+      }));
+
+      return [...canonicalRows, ...additionalRows].sort((a, b) => {
+        const aScore = forcePressureScore(normalizeForcePressure(a.force));
+        const bScore = forcePressureScore(normalizeForcePressure(b.force));
+        if (aScore !== bScore) return bScore - aScore;
+        return a.title.localeCompare(b.title);
+      });
+    },
+    [forceBuckets],
+  );
+
   if (!hasSwot && !hasFiveForces) {
     return (
       <Card className="bg-card/70 border border-border/60 rounded-3xl shadow-sm">
@@ -859,20 +992,37 @@ function CompetitiveAnalysisSection() {
   }
 
   const getSwotDisplay = (item: SwotItem | string) => {
-    if (typeof item === 'string') return { title: item, description: '', evidence: '', source: '', implication: '' };
+    if (typeof item === 'string') {
+      const parsed = splitHeadlineAndBody(item);
+      return { title: parsed.title, description: parsed.description, evidence: '', source: '', implication: '' };
+    }
+    const canonical = item.title || item.point || item.description || item.detail || item.evidence || '';
+    const parsed = splitHeadlineAndBody(canonical);
     return {
-      title: item.title || item.point || item.description || item.detail || item.evidence || 'Item',
-      description: item.description || item.detail || item.evidence || item.point || '',
-      evidence: item.evidence || '',
-      source: item.source || item.reference || item.url || '',
-      implication: item.implication || '',
+      title: cleanNarrative(item.title || item.point || parsed.title || 'Item'),
+      description: cleanNarrative(item.description || item.detail || item.evidence || item.point || parsed.description || ''),
+      evidence: cleanNarrative(item.evidence || ''),
+      source: cleanNarrative(item.source || item.reference || item.url || ''),
+      implication: cleanNarrative(item.implication || ''),
     };
   };
+
+  const swotStrengths = normalizeSwotItems(swot?.strengths);
+  const swotWeaknesses = normalizeSwotItems(swot?.weaknesses);
+  const swotOpportunities = normalizeSwotItems(swot?.opportunities);
+  const swotThreats = normalizeSwotItems(swot?.threats);
 
   const renderForceDrivers = (force: PorterForce) => {
     const description = force.description || force.analysis;
     return (
       <div className="space-y-4">
+        <div className="rounded-xl border border-border/50 bg-muted/20 p-3">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Force summary</p>
+          <p className="text-sm text-foreground mt-1">
+            {summarizeSentence(description) || 'No detailed summary provided.'}
+          </p>
+        </div>
+
         {description && (
           <p className="text-sm text-muted-foreground">
             {renderWithSources(description)}
@@ -901,6 +1051,26 @@ function CompetitiveAnalysisSection() {
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Signals</h4>
             <ul className="list-disc pl-4 space-y-1 text-sm">
               {force.signals.map((s, i) => <li key={i} className="text-blue-500">{renderWithSources(s)}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {Array.isArray(force.threats) && force.threats.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Threats</h4>
+            <ul className="list-disc pl-4 space-y-1 text-sm">
+              {force.threats.map((threat, i) => <li key={i} className="text-destructive">{renderWithSources(threat)}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {Array.isArray(force.opportunities) && force.opportunities.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Opportunities</h4>
+            <ul className="list-disc pl-4 space-y-1 text-sm">
+              {force.opportunities.map((opportunity, i) => (
+                <li key={i} className="text-emerald-600">{renderWithSources(opportunity)}</li>
+              ))}
             </ul>
           </div>
         )}
@@ -946,9 +1116,12 @@ function CompetitiveAnalysisSection() {
                     <h3 className="font-semibold text-lg">{title}</h3>
                   </div>
                   {description && (
-                    <p className="text-sm text-foreground leading-relaxed">
-                      {renderWithSources(description)}
-                    </p>
+                    <div className="rounded-xl border border-border/50 bg-background/80 p-3">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Detail</p>
+                      <p className="text-sm text-foreground leading-relaxed mt-1">
+                        {renderWithSources(description)}
+                      </p>
+                    </div>
                   )}
                   {implication && (
                     <div className="text-xs bg-background/70 p-3 rounded border border-border/40">
@@ -987,42 +1160,79 @@ function CompetitiveAnalysisSection() {
               </CardDescription>
             )}
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 items-stretch">
-              {[
-                { title: "Industry Rivalry", force: forceBuckets.rivalry },
-                { title: "Buyer Power", force: forceBuckets.buyers },
-                { title: "Supplier Power", force: forceBuckets.suppliers },
-                { title: "Threat of Substitutes", force: forceBuckets.substitutes },
-                { title: "Threat of New Entrants", force: forceBuckets.entrants },
-              ]
-                .filter(item => item.force)
-                .map((item, idx) => (
-                  <ForceTile
-                    key={idx}
-                    title={item.title}
-                    force={item.force}
-                    active={selectedForce === item.force}
-                    onClick={() => setSelectedForce(item.force!)}
-                  />
-                ))}
+          <CardContent className="space-y-5">
+            <div className="rounded-xl border border-border/50 bg-muted/20 p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">How to read this</p>
+              <p className="text-sm text-foreground mt-1">
+                Each force shows how strongly it pressures margin and strategic freedom: High means urgent structural pressure,
+                Medium means active management needed, Low means currently limited pressure.
+              </p>
             </div>
-            {forceBuckets.others.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Additional forces</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {forceBuckets.others.map((force, idx) => (
-                    <ForceTile
-                      key={idx}
-                      title={normalizeForceName(force)}
-                      force={force}
-                      active={selectedForce === force}
-                      onClick={() => setSelectedForce(force)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <Badge variant="destructive" className="text-[11px]">
+                High: {forceDistribution.high}
+              </Badge>
+              <Badge variant="secondary" className="text-[11px]">
+                Medium: {forceDistribution.medium}
+              </Badge>
+              <Badge variant="outline" className="text-[11px]">
+                Low: {forceDistribution.low}
+              </Badge>
+              {forceDistribution.unknown > 0 && (
+                <Badge variant="outline" className="text-[11px]">
+                  Unrated: {forceDistribution.unknown}
+                </Badge>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {forceRows.map(({ title, force }) => {
+                const pressure = normalizeForcePressure(force) || 'Unrated';
+                const pressureScore = forcePressureScore(pressure);
+                const pressureClass =
+                  pressureScore >= 85
+                    ? 'bg-destructive'
+                    : pressureScore >= 55
+                      ? 'bg-amber-500'
+                      : pressureScore >= 35
+                        ? 'bg-emerald-500'
+                        : 'bg-slate-400';
+
+                return (
+                  <button
+                    key={`${title}-${normalizeForceName(force)}`}
+                    type="button"
+                    className={cn(
+                      "rounded-2xl border border-border/50 bg-background/70 p-4 text-left transition",
+                      "hover:border-primary/50 hover:bg-primary/5",
+                      selectedForce === force && "border-primary/60 bg-primary/10",
+                    )}
+                    onClick={() => force && setSelectedForce(force)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">{title}</p>
+                      <Badge variant={forceTone(pressure)} className="text-[10px] capitalize">
+                        {pressure}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground min-h-[34px]">
+                      {summarizeSentence(force?.description || force?.analysis) || 'Open details for full assessment'}
+                    </p>
+                    <div className="mt-3 space-y-1">
+                      <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <span>Pressure intensity</span>
+                        <span>{pressureScore}%</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
+                        <div className={cn("h-full rounded-full", pressureClass)} style={{ width: `${pressureScore}%` }} />
+                      </div>
+                    </div>
+                    <p className="mt-3 text-[11px] font-medium text-primary">Click to open full analysis</p>
+                  </button>
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -1040,35 +1250,49 @@ function CompetitiveAnalysisSection() {
               </CardDescription>
             )}
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {swotSummary && (
+              <div className="rounded-xl border border-border/50 bg-muted/20 p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Strategic takeaway</p>
+                <p className="text-sm text-foreground mt-1">{summarizeWords(swotSummary, 24)}</p>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <SwotBucket
+              <SwotQuadrant
                 title="Strengths"
-                items={normalizeSwotItems(swot?.strengths)}
+                items={swotStrengths}
                 icon={<TrendingUp className="h-4 w-4 text-emerald-500" />}
                 onItemClick={(item) => setSelectedSwot({ category: 'Strength', item })}
                 tone="positive"
+                expanded={expandedSwot.Strengths}
+                onToggle={() => setExpandedSwot(prev => ({ ...prev, Strengths: !prev.Strengths }))}
               />
-              <SwotBucket
+              <SwotQuadrant
                 title="Weaknesses"
-                items={normalizeSwotItems(swot?.weaknesses)}
+                items={swotWeaknesses}
                 icon={<AlertTriangle className="h-4 w-4 text-orange-500" />}
                 onItemClick={(item) => setSelectedSwot({ category: 'Weakness', item })}
                 tone="warning"
+                expanded={expandedSwot.Weaknesses}
+                onToggle={() => setExpandedSwot(prev => ({ ...prev, Weaknesses: !prev.Weaknesses }))}
               />
-              <SwotBucket
+              <SwotQuadrant
                 title="Opportunities"
-                items={normalizeSwotItems(swot?.opportunities)}
+                items={swotOpportunities}
                 icon={<Target className="h-4 w-4 text-blue-500" />}
                 onItemClick={(item) => setSelectedSwot({ category: 'Opportunity', item })}
                 tone="opportunity"
+                expanded={expandedSwot.Opportunities}
+                onToggle={() => setExpandedSwot(prev => ({ ...prev, Opportunities: !prev.Opportunities }))}
               />
-              <SwotBucket
+              <SwotQuadrant
                 title="Threats"
-                items={normalizeSwotItems(swot?.threats)}
+                items={swotThreats}
                 icon={<Shield className="h-4 w-4 text-destructive" />}
                 onItemClick={(item) => setSelectedSwot({ category: 'Threat', item })}
                 tone="negative"
+                expanded={expandedSwot.Threats}
+                onToggle={() => setExpandedSwot(prev => ({ ...prev, Threats: !prev.Threats }))}
               />
             </div>
           </CardContent>
@@ -1129,7 +1353,23 @@ function CompetitiveAnalysisSection() {
   );
 }
 
-function SwotBucket({ title, items, icon, onItemClick, tone = 'neutral' }: { title: string, items: (SwotItem | string)[], icon: React.ReactNode, onItemClick: (item: SwotItem | string) => void, tone?: 'positive' | 'negative' | 'neutral' | 'opportunity' | 'warning' }) {
+function SwotQuadrant({
+  title,
+  items,
+  icon,
+  onItemClick,
+  tone = 'neutral',
+  expanded = false,
+  onToggle,
+}: {
+  title: string;
+  items: (SwotItem | string)[];
+  icon: React.ReactNode;
+  onItemClick: (item: SwotItem | string) => void;
+  tone?: 'positive' | 'negative' | 'neutral' | 'opportunity' | 'warning';
+  expanded?: boolean;
+  onToggle?: () => void;
+}) {
   if (!items || items.length === 0) return null;
   const toneBorder =
     tone === 'positive' ? 'border-emerald-400/50'
@@ -1143,61 +1383,40 @@ function SwotBucket({ title, items, icon, onItemClick, tone = 'neutral' }: { tit
     : tone === 'warning' ? 'bg-orange-500/5'
     : tone === 'negative' ? 'bg-destructive/5'
     : 'bg-background/50';
+  const visibleItems = expanded ? items : items.slice(0, 3);
   return (
     <div className={cn("space-y-3 rounded-2xl p-4 border", toneBorder, toneBg)}>
-      <h4 className="text-sm font-semibold flex items-center gap-2 text-foreground">
-        {icon} {title}
-      </h4>
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold flex items-center gap-2 text-foreground">
+          {icon} {title}
+        </h4>
+        <Badge variant="outline" className="text-[10px]">
+          {items.length}
+        </Badge>
+      </div>
       <ul className="grid grid-cols-1 gap-2">
-        {items.map((item, idx) => {
-          const display = typeof item === 'string' ? item : item.title || 'Untitled';
+        {visibleItems.map((item, idx) => {
+          const parsed = typeof item === 'string'
+            ? splitHeadlineAndBody(item)
+            : splitHeadlineAndBody(item.title || item.point || item.description || item.detail || item.evidence || '');
+          const display = parsed.title || parsed.description || 'Untitled';
           return (
             <li
               key={idx}
               className="text-xs text-muted-foreground bg-card/60 p-3 rounded-lg border border-border/30 cursor-pointer hover:bg-primary/5 hover:border-primary/40 transition-all"
               onClick={() => onItemClick(item)}
             >
-              {display}
+              <p className="text-foreground font-medium line-clamp-2">{summarizeWords(display, 10)}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Click to expand full evidence</p>
             </li>
           );
         })}
       </ul>
-    </div>
-  );
-}
-
-function ForceTile({ title, force, onClick, active = false }: { title: string; force?: PorterForce; onClick: () => void; active?: boolean }) {
-  const disabled = !force;
-  return (
-    <div
-      className={cn(
-        "rounded-2xl border border-border/50 bg-background/70 p-4 space-y-3 transition-all",
-        active && "bg-primary/5 border-primary/60 shadow-sm",
-        !disabled && "cursor-pointer hover:border-primary/50 hover:shadow-sm",
-        disabled && "opacity-60"
+      {items.length > 3 && (
+        <Button variant="ghost" size="sm" className="h-7 px-3 text-[11px]" onClick={onToggle}>
+          {expanded ? 'Show fewer points' : `Show all points (${items.length})`}
+        </Button>
       )}
-      onClick={() => {
-        if (!disabled) onClick();
-      }}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-sm font-semibold text-foreground">{force ? normalizeForceName(force) : title}</p>
-          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{force?.description || force?.analysis || force?.summary || 'Tap to view details'}</p>
-        </div>
-        {normalizeForcePressure(force) && (
-          <Badge variant={forceTone(normalizeForcePressure(force))} className="text-xs capitalize">
-            {normalizeForcePressure(force)}
-          </Badge>
-        )}
-      </div>
-      {Array.isArray(force?.drivers) && force?.drivers.length > 0 && (
-        <p className="text-[11px] text-muted-foreground line-clamp-2">
-          <span className="font-medium text-foreground">Drivers: </span>
-          {force.drivers.join(', ')}
-        </p>
-      )}
-      <div className="text-[10px] uppercase tracking-wide text-primary font-medium">Click to view details</div>
     </div>
   );
 }
@@ -1673,7 +1892,6 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
   const [statusFilter, setStatusFilter] = useState<'all' | 'AT RISK' | 'MIXED' | 'VALIDATED'>('all');
   const [impactSort, setImpactSort] = useState<'desc' | 'asc' | 'id'>('desc');
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
-  const [buildingBlockFilter, setBuildingBlockFilter] = useState<string[]>([]);
 
   const assumptionHealthEntries = useMemo(() => {
     const rootHealth = data?.assumption_health || [];
@@ -1695,29 +1913,6 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
     return Array.from(types).sort((a, b) => a.localeCompare(b));
   }, [coreAssumptions]);
 
-  const availableBuildingBlocks = useMemo(() => {
-    const blocks = new Set<string>();
-    coreAssumptions.forEach(assumption => {
-      (assumption.supports_building_blocks || []).forEach(block => blocks.add(block));
-    });
-    const order = [
-      'direction_and_positioning',
-      'value_creation',
-      'value_defence',
-      'Strategic_defence',
-      'Strategic_defense',
-      'key_levers',
-    ];
-    return Array.from(blocks).sort((a, b) => {
-      const aIdx = order.indexOf(a);
-      const bIdx = order.indexOf(b);
-      if (aIdx === -1 && bIdx === -1) return a.localeCompare(b);
-      if (aIdx === -1) return 1;
-      if (bIdx === -1) return -1;
-      return aIdx - bIdx;
-    });
-  }, [coreAssumptions]);
-
   const assumptionsWithSignals: AssumptionWithSignals[] = useMemo(() => {
     return coreAssumptions.map(assumption => {
       const relatedSignals = allSignals.filter(s =>
@@ -1732,8 +1927,6 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
     });
   }, [coreAssumptions, allSignals, assumptionHealthMap]);
 
-  if (assumptionsWithSignals.length === 0) return null;
-
   const filteredAssumptions = useMemo(() => {
     return assumptionsWithSignals.filter(assumption => {
       if (statusFilter !== 'all' && assumption.health?.verification_status !== statusFilter) {
@@ -1743,17 +1936,9 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
       if (typeFilter.length > 0 && !typeFilter.includes(assumption.category)) {
         return false;
       }
-
-      if (buildingBlockFilter.length > 0) {
-        const blocks = assumption.supports_building_blocks || [];
-        if (!blocks.some(block => buildingBlockFilter.includes(block))) {
-          return false;
-        }
-      }
-
       return true;
     });
-  }, [assumptionsWithSignals, statusFilter, typeFilter, buildingBlockFilter]);
+  }, [assumptionsWithSignals, statusFilter, typeFilter]);
 
   const sortedAssumptions = useMemo(() => {
     const list = [...filteredAssumptions];
@@ -1771,6 +1956,26 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
     });
     return list;
   }, [filteredAssumptions, impactSort]);
+
+  const assumptionById = useMemo(() => {
+    const map = new Map<string, AssumptionWithSignals>();
+    assumptionsWithSignals.forEach((assumption) => map.set(assumption.id, assumption));
+    return map;
+  }, [assumptionsWithSignals]);
+
+  const spiderAssumptions = useMemo(() => {
+    return filteredAssumptions.map((assumption) => ({
+      id: assumption.id,
+      statement: assumption.statement,
+      category: assumption.category,
+      supports_building_blocks: assumption.supports_building_blocks,
+      health: assumption.health,
+      challengingSignals: assumption.challengingSignals,
+      validatingSignals: assumption.validatingSignals,
+    }));
+  }, [filteredAssumptions]);
+
+  if (assumptionsWithSignals.length === 0) return null;
 
   return (
     <div className="space-y-4">
@@ -1842,40 +2047,6 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-7 rounded-full px-3 text-[11px] font-medium">
-                <span className="flex items-center gap-1">
-                  Blocks {buildingBlockFilter.length > 0 ? `(${buildingBlockFilter.length})` : 'All'}
-                  <ChevronDown className="h-3 w-3 opacity-70" />
-                </span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuLabel className="text-xs">Building blocks</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
-                checked={buildingBlockFilter.length === 0}
-                onCheckedChange={() => setBuildingBlockFilter([])}
-              >
-                All blocks
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuSeparator />
-              {availableBuildingBlocks.map((block) => (
-                <DropdownMenuCheckboxItem
-                  key={block}
-                  checked={buildingBlockFilter.includes(block)}
-                  onCheckedChange={(checked) => {
-                    setBuildingBlockFilter((prev) => (
-                      checked ? [...prev, block] : prev.filter((value) => value !== block)
-                    ));
-                  }}
-                >
-                  {formatBuildingBlock(block)}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">Sort:</span>
             <div className="flex items-center gap-1 rounded-full border border-border/60 bg-card/70 p-1">
@@ -1889,7 +2060,7 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                Impact ↓
+                Impact High-Low
               </button>
               <button
                 type="button"
@@ -1901,7 +2072,7 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                Impact ↑
+                Impact Low-High
               </button>
               <button
                 type="button"
@@ -1924,9 +2095,21 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
         Click to see health analysis & signals
       </span>
 
+      <AssumptionSpiderCharts
+        assumptions={spiderAssumptions}
+        title="Assumptions Comparison Spider"
+        subtitle="Toggle between building blocks and individual assumption score footprint. Higher score expands wider; click assumptions for detail."
+        onAssumptionClick={(assumption) => {
+          const fullAssumption = assumptionById.get(assumption.id);
+          if (fullAssumption) {
+            onAssumptionClick(fullAssumption);
+          }
+        }}
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {sortedAssumptions.length === 0 ? (
-          <div className="text-sm text-muted-foreground">No assumptions match this filter.</div>
+          <div className="text-sm text-muted-foreground">No assumptions match this view and filter set.</div>
         ) : sortedAssumptions.map(assumption => {
           const health = assumption.health;
           const { borderColor, statusColor } = getHealthColor(health);
@@ -2013,10 +2196,40 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
 
 // Assumptions Definition Section
 export function AssumptionsDefinitionSection() {
-  const { coreAssumptions } = useForesight();
+  const { coreAssumptions, data } = useForesight();
   const [selectedAssumption, setSelectedAssumption] = useState<Assumption | null>(null);
 
   if (coreAssumptions.length === 0) return null;
+
+  const assumptionHealthEntries = [
+    ...(data?.strategy_context?.assumption_health || []),
+    ...(data?.assumption_health || []),
+  ];
+  const assumptionHealthMap = new Map(
+    assumptionHealthEntries.map(entry => [entry.assumption_id, entry.verification_status])
+  );
+
+  const canonicalBlock = (block?: string) => {
+    if (!block) return 'cross_cutting';
+    if (block === 'Strategic_defence' || block === 'Strategic_defense') return 'value_defence';
+    return block;
+  };
+
+  const groupedByBlock = coreAssumptions.reduce((acc, assumption) => {
+    const key = canonicalBlock(assumption.supports_building_blocks?.[0]);
+    const list = acc.get(key) || [];
+    list.push(assumption);
+    acc.set(key, list);
+    return acc;
+  }, new Map<string, Assumption[]>());
+  const orderedColumns = ['value_creation', 'direction_and_positioning', 'value_defence'] as const;
+  const columnData = orderedColumns.map((block) => ({
+    block,
+    assumptions: groupedByBlock.get(block) || [],
+  }));
+  const otherBlocks = Array.from(groupedByBlock.entries()).filter(
+    ([block]) => !orderedColumns.includes(block as typeof orderedColumns[number]),
+  );
 
   return (
     <div className="space-y-4">
@@ -2027,7 +2240,7 @@ export function AssumptionsDefinitionSection() {
               <div>
                 <DialogTitle className="text-xl">{selectedAssumption?.id}</DialogTitle>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {selectedAssumption?.category} {selectedAssumption?.as_of_date ? `• As of ${selectedAssumption.as_of_date}` : ''}
+                  {selectedAssumption?.category} {selectedAssumption?.as_of_date ? `| As of ${selectedAssumption.as_of_date}` : ''}
                 </p>
               </div>
               {selectedAssumption?.impact_severity_if_broken !== undefined && (
@@ -2151,67 +2364,90 @@ export function AssumptionsDefinitionSection() {
       <div className="flex items-center justify-between">
         <h3 className="text-md font-semibold flex items-center gap-2">
           <Target className="h-4 w-4 text-primary" />
-          Core Assumptions (Definition)
+          Core Assumption Support Map
         </h3>
         <span className="text-xs text-muted-foreground">{coreAssumptions.length} assumptions</span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {coreAssumptions.map(assumption => (
-          <Card
-            key={assumption.id}
-            className="bg-card/70 border border-border/60 rounded-2xl shadow-sm backdrop-blur cursor-pointer hover:border-primary/40 hover:shadow-md transition-all"
-            onClick={() => setSelectedAssumption(assumption)}
-          >
-            <CardContent className="p-5 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="font-mono text-xs">{assumption.id}</Badge>
-                  <Badge variant="secondary" className="text-xs capitalize">{assumption.category}</Badge>
-                </div>
-                {assumption.impact_severity_if_broken !== undefined && (
-                  <Badge variant={assumption.impact_severity_if_broken >= 8 ? 'destructive' : 'secondary'} className="text-xs">
-                    Severity {assumption.impact_severity_if_broken}
-                  </Badge>
-                )}
+      <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+        <CardContent className="p-4 text-xs text-muted-foreground">
+          These assumptions are selected because they are load-bearing for strategy execution, observable through signals,
+          and linked to concrete risk domains. Open any card to inspect full evidence and failure modes.
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        {columnData.map(({ block, assumptions }) => (
+          <Card key={block} className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <span className="text-primary">{buildingBlockIcons[block] || <Layers className="h-4 w-4" />}</span>
+                  {formatBuildingBlock(block)}
+                </CardTitle>
+                <Badge variant="outline" className="text-[11px]">
+                  {assumptions.length} assumptions
+                </Badge>
               </div>
-
-              <p className="text-sm text-foreground leading-relaxed line-clamp-3">{assumption.statement}</p>
-
-              {assumption.numeric_anchor && (
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  <span className="font-medium text-foreground">Anchor:</span> {assumption.numeric_anchor}
-                </p>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-3">
+              {assumptions.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No assumptions mapped to this level in current output.</p>
+              ) : (
+                assumptions.map(assumption => {
+                  const status = assumptionHealthMap.get(assumption.id);
+                  return (
+                    <button
+                      key={assumption.id}
+                      type="button"
+                      className="text-left rounded-xl border border-border/50 bg-background/70 p-3 hover:border-primary/40 hover:bg-primary/5 transition"
+                      onClick={() => setSelectedAssumption(assumption)}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline" className="font-mono text-xs">{assumption.id}</Badge>
+                        <Badge variant="secondary" className="text-xs capitalize">{assumption.category}</Badge>
+                        {status && (
+                          <Badge variant={getStatusBadgeVariant(status)} className="text-[10px]">
+                            {status}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-foreground mt-2">{summarizeWords(assumption.statement, 18)}</p>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                        <span className="font-semibold text-foreground">Chosen because:</span>{' '}
+                        {summarizeWords(
+                          assumption.why_it_matters ||
+                            `It supports ${formatBuildingBlock(block)} and protects against key strategic risks.`,
+                          20,
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                        <span className="font-semibold text-foreground">Coverage:</span>{' '}
+                        {(assumption.external_risk_domains || []).slice(0, 3).join(', ') || 'Cross-cutting strategic dependency'}
+                      </p>
+                    </button>
+                  );
+                })
               )}
-
-              {assumption.why_it_matters && (
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  <span className="font-medium text-foreground">Why it matters:</span> {assumption.why_it_matters}
-                </p>
-              )}
-
-              <div className="flex flex-wrap gap-1.5">
-                {assumption.supports_building_blocks?.map(bb => (
-                  <Badge key={bb} className="text-[11px] bg-primary/10 text-primary border-0">
-                    {formatBuildingBlock(bb)}
-                  </Badge>
-                ))}
-                {assumption.external_risk_domains?.map(domain => (
-                  <Badge key={domain} variant="outline" className="text-[11px]">
-                    {domain}
-                  </Badge>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                {assumption.evidence_strength && <span>Evidence: {assumption.evidence_strength}</span>}
-                {assumption.confidence_level !== undefined && <span>Confidence: {assumption.confidence_level}%</span>}
-                {assumption.leading_indicators?.length ? <span>{assumption.leading_indicators.length} indicators</span> : null}
-              </div>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      {otherBlocks.length > 0 && (
+        <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Other linked blocks</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {otherBlocks.map(([block, assumptions]) => (
+              <Badge key={block} variant="outline" className="text-xs">
+                {formatBuildingBlock(block)}: {assumptions.length}
+              </Badge>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
@@ -2291,6 +2527,12 @@ export function StrategyComposition() {
         </TabsContent>
 
         <TabsContent value="objectives" className="space-y-6 mt-6">
+          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
+            <CardContent className="p-4 text-xs text-muted-foreground">
+              Start with strategic goals to understand intent and time horizon, then validate whether KPI coverage is
+              sufficient to monitor execution risk. Detailed rationale stays behind each card click.
+            </CardContent>
+          </Card>
           <StrategicObjectivesSection />
           <KPIsSection />
         </TabsContent>

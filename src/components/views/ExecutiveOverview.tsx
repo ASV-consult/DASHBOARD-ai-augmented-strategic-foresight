@@ -5,15 +5,16 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SignalDetailDialog } from '@/components/SignalDetailDialog';
 import { SignalCard } from '@/components/SignalCard';
-import { Signal, Assumption } from '@/types/foresight';
+import { AssumptionHealth, Signal } from '@/types/foresight';
+import { AssumptionSpiderCharts } from '@/components/views/AssumptionSpiderCharts';
 import { 
   getSignalScore, 
   sortByScore, 
   getTopSignals,
-  formatBuildingBlock,
   getAssumptionSensitivity
 } from '@/lib/signal-utils';
 import {
+  ArrowRight,
   LayoutDashboard,
   Target,
   Radio,
@@ -24,7 +25,8 @@ import {
   Calendar,
   Building2,
   AlertCircle,
-  Layers
+  Layers,
+  FileText
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -46,35 +48,132 @@ function PipelineStage({ icon, label, onClick, isActive, color }: PipelineStageP
     <button
       onClick={onClick}
       className={cn(
-        "group flex h-[120px] w-[110px] flex-col items-center justify-center gap-2 rounded-3xl border border-border/50 bg-background/60 px-3 py-3 text-center shadow-[0_10px_30px_-22px_rgba(15,23,42,0.35)] backdrop-blur transition-all hover:-translate-y-1 hover:border-primary/60 hover:bg-primary/5",
+        "group flex h-[128px] w-[122px] flex-col items-center justify-center gap-2 rounded-3xl border border-border/50 bg-background/60 px-3 py-3 text-center shadow-[0_10px_30px_-22px_rgba(15,23,42,0.35)] backdrop-blur transition-all hover:-translate-y-1 hover:border-primary/60 hover:bg-primary/5 xl:h-[148px] xl:w-[138px] xl:gap-3",
         isActive 
           ? "border-primary/60 bg-primary/10 shadow-[0_20px_40px_-25px_rgba(59,130,246,0.35)]" 
           : "hover:border-primary/40"
       )}
     >
       <div className={cn(
-        "flex h-10 w-10 items-center justify-center rounded-xl ring-1 ring-border/60 shadow-sm transition group-hover:ring-primary/40",
+        "flex h-11 w-11 items-center justify-center rounded-xl ring-1 ring-border/60 shadow-sm transition group-hover:ring-primary/40 xl:h-12 xl:w-12",
         color || "bg-primary/10 text-primary"
       )}>
         {icon}
       </div>
-      <span className="min-h-[28px] text-[10px] font-semibold uppercase tracking-wide text-muted-foreground leading-snug whitespace-normal max-w-[100px] flex items-center text-center">
+      <span className="min-h-[34px] max-w-[112px] text-[10px] font-semibold uppercase tracking-wide text-muted-foreground leading-snug whitespace-normal flex items-center text-center xl:max-w-[120px] xl:text-[11px]">
         {label}
       </span>
+      {typeof count === 'number' && (
+        <span className="rounded-full border border-border/60 bg-background/80 px-2 py-0.5 text-[10px] font-semibold text-foreground">
+          {count}
+        </span>
+      )}
     </button>
   );
 }
 
 function PipelineConnector({ label }: { label: string }) {
   return (
-    <div className="flex w-[90px] flex-col items-center gap-1 text-center shrink-0">
-      <ChevronRight className="h-5 w-5 text-muted-foreground" />
-      <span className="min-h-[28px] text-[10px] font-medium text-muted-foreground leading-snug max-w-[90px] text-center">
+    <div className="flex w-[100px] shrink-0 flex-col items-center gap-1 text-center xl:w-[114px]">
+      <ChevronRight className="h-5 w-5 text-muted-foreground xl:h-6 xl:w-6" />
+      <span className="min-h-[30px] max-w-[100px] text-[10px] font-medium leading-snug text-muted-foreground text-center xl:max-w-[112px] xl:text-[11px]">
         {label}
       </span>
     </div>
   );
 }
+
+const cleanNarrative = (text?: string) => {
+  if (!text) return '';
+  return text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/^#+\s*/gm, '')
+    .replace(/\[(S\d+)\]/g, '')
+    .replace(/\[(.*?)\]\((.*?)\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const summarizeWords = (text?: string, maxWords = 12) => {
+  const cleaned = cleanNarrative(text);
+  if (!cleaned) return '';
+  const words = cleaned.split(' ');
+  if (words.length <= maxWords) return cleaned;
+  return `${words.slice(0, maxWords).join(' ')}...`;
+};
+
+const extractBlufFromPaper = (markdown?: string) => {
+  if (!markdown) return '';
+  const lines = markdown.split(/\r?\n/);
+  let inVerdictSection = false;
+  const buffer: string[] = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      if (inVerdictSection && buffer.length > 0) break;
+      continue;
+    }
+    if (line.startsWith('#')) {
+      const heading = line.replace(/^#+\s*/, '').toLowerCase();
+      if (heading.includes('verdict') || heading.includes('bottom line')) {
+        inVerdictSection = true;
+        continue;
+      }
+      if (inVerdictSection) break;
+    }
+    if (inVerdictSection) {
+      buffer.push(line);
+    }
+  }
+
+  if (buffer.length > 0) {
+    return cleanNarrative(buffer.join(' '));
+  }
+
+  const fallback = cleanNarrative(markdown);
+  return summarizeWords(fallback, 30);
+};
+
+const normalizeForceEntries = (fiveForces: any) => {
+  if (!fiveForces) return [] as Array<{ name: string; intensity: string; description: string }>;
+  const ignored = new Set(['summary', 'overview', 'confidence', 'forces', 'forces_research_sources', 'base_research_sources']);
+
+  if (Array.isArray(fiveForces.forces)) {
+    return fiveForces.forces.map((force: any) => ({
+      name: force?.name || force?.force || 'Force',
+      intensity: force?.intensity || force?.rating || force?.pressure || force?.level || 'Unknown',
+      description: force?.description || force?.analysis || force?.summary || '',
+    }));
+  }
+
+  if (fiveForces.forces && typeof fiveForces.forces === 'object') {
+    return Object.entries(fiveForces.forces).map(([key, force]: [string, any]) => ({
+      name: force?.name || force?.force || key.replace(/_/g, ' '),
+      intensity: force?.intensity || force?.rating || force?.pressure || force?.level || 'Unknown',
+      description: force?.description || force?.analysis || force?.summary || '',
+    }));
+  }
+
+  return Object.entries(fiveForces)
+    .filter(([key, value]) => !ignored.has(key) && typeof value === 'object' && value !== null)
+    .map(([key, force]: [string, any]) => ({
+      name: force?.name || force?.force || key.replace(/_/g, ' '),
+      intensity: force?.intensity || force?.rating || force?.pressure || force?.level || 'Unknown',
+      description: force?.description || force?.analysis || force?.summary || '',
+    }));
+};
+
+const pressureRank = (value?: string) => {
+  const normalized = (value || '').toLowerCase();
+  if (normalized.includes('high') || normalized.includes('strong')) return 3;
+  if (normalized.includes('medium') || normalized.includes('moderate')) return 2;
+  if (normalized.includes('low') || normalized.includes('weak')) return 1;
+  return 0;
+};
 
 export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
   const { 
@@ -92,7 +191,7 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
   } = useForesight();
   
   const [selectedSignal, setSelectedSignal] = useState<Signal | null>(null);
-  const [showHighlights, setShowHighlights] = useState(false);
+  const [showHighlights, setShowHighlights] = useState(true);
 
   // Get company info
   const companyName = data?.meta?.company || data?.strategy_context?.company?.name || 'Company';
@@ -141,10 +240,126 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
     };
   }, [allSignals]);
 
+  const assumptionHealthEntries = useMemo(() => {
+    const rootHealth = data?.assumption_health || [];
+    const nestedHealth = data?.strategy_context?.assumption_health || [];
+    return [...rootHealth, ...nestedHealth];
+  }, [data?.assumption_health, data?.strategy_context?.assumption_health]);
+
+  const assumptionHealthMap = useMemo(() => {
+    const map = new Map<string, AssumptionHealth>();
+    assumptionHealthEntries.forEach((health) => map.set(health.assumption_id, health));
+    return map;
+  }, [assumptionHealthEntries]);
+
+  const spiderAssumptions = useMemo(() => {
+    return coreAssumptions.map((assumption) => {
+      const relatedSignals = allSignals.filter(
+        (signal) => signal.related_assumption_id === assumption.id || signal.assumption_id === assumption.id,
+      );
+      return {
+        id: assumption.id,
+        statement: assumption.statement,
+        category: assumption.category,
+        supports_building_blocks: assumption.supports_building_blocks,
+        health: assumptionHealthMap.get(assumption.id),
+        challengingSignals: relatedSignals.filter((signal) => signal.impact_direction === 'Negative'),
+        validatingSignals: relatedSignals.filter((signal) => signal.impact_direction === 'Positive'),
+      };
+    });
+  }, [coreAssumptions, allSignals, assumptionHealthMap]);
+
   const scoredAssumptionsCount =
     data?.strategy_context?.assumption_health?.length ||
     data?.assumption_health?.length ||
     coreAssumptions.length;
+
+  const strategicVerdict = useMemo(() => {
+    const diagnosis: any = data?.strategic_impact_analysis?.executive_diagnosis;
+    const directVerdict = diagnosis?.bottom_line_verdict || diagnosis?.verdict;
+    if (directVerdict) return cleanNarrative(directVerdict);
+
+    const conclusion =
+      data?.strategic_impact_analysis?.strategic_impact_analysis?.strategic_conclusion ||
+      data?.strategic_impact_analysis?.strategic_conclusion;
+
+    if (typeof conclusion === 'string') {
+      return extractBlufFromPaper(conclusion);
+    }
+    if (conclusion && typeof conclusion === 'object') {
+      const summary = (conclusion as any).executive_summary || '';
+      const fromPaper = extractBlufFromPaper(summary);
+      if (fromPaper) return fromPaper;
+    }
+
+    return cleanNarrative(data?.strategy_context?.strategy_snapshot?.strategy_summary || '');
+  }, [data]);
+
+  const strategicAtGlance = useMemo(() => {
+    const fiveForces = data?.strategy_context?.porter_five_forces || data?.strategy_context?.porter_5_forces;
+    const forces = normalizeForceEntries(fiveForces).sort((a, b) => pressureRank(b.intensity) - pressureRank(a.intensity));
+    const topForce = forces[0];
+
+    const swot = data?.strategy_context?.swot_analysis;
+    const weakness = Array.isArray(swot?.weaknesses) ? swot?.weaknesses[0] : '';
+    const opportunity = Array.isArray(swot?.opportunities) ? swot?.opportunities[0] : '';
+
+    const healthEntries = [
+      ...(data?.strategy_context?.assumption_health || []),
+      ...(data?.assumption_health || []),
+    ];
+    const atRisk = healthEntries.filter((item: any) =>
+      String(item?.verification_status || '').toUpperCase().includes('RISK')
+    ).length;
+    const mixed = healthEntries.filter((item: any) =>
+      String(item?.verification_status || '').toUpperCase().includes('MIXED')
+    ).length;
+
+    return {
+      topForce,
+      swotSignal: summarizeWords(`${typeof weakness === 'string' ? weakness : ''} ${typeof opportunity === 'string' ? opportunity : ''}`, 18),
+      assumptionPulse:
+        healthEntries.length > 0
+          ? `${atRisk} at risk, ${mixed} mixed assumptions`
+          : `${coreAssumptions.length} assumptions under monitoring`,
+    };
+  }, [data, coreAssumptions.length]);
+
+  const signalBalance = useMemo(() => {
+    const positive = allSignals.filter((signal) => signal.impact_direction === 'Positive').length;
+    const negative = allSignals.filter((signal) => signal.impact_direction === 'Negative').length;
+    const totalDirectional = Math.max(positive + negative, 1);
+    const warningShare = Math.max(earlyWarnings.length, 0);
+
+    return {
+      positive,
+      negative,
+      warnings: earlyWarnings.length,
+      positiveShare: Math.round((positive / totalDirectional) * 100),
+      negativeShare: Math.round((negative / totalDirectional) * 100),
+      warningShare:
+        allSignals.length > 0 ? Math.min(100, Math.round((warningShare / allSignals.length) * 100)) : 0,
+    };
+  }, [allSignals, earlyWarnings.length]);
+
+  const leadingWorkstream = useMemo(() => {
+    const workstream = workstreams[0];
+    if (!workstream) return null;
+
+    return {
+      title:
+        workstream.detailed_analysis?.customized_title ||
+        workstream.recommendation?.project_title ||
+        workstream.detailed_analysis?.workstream_name ||
+        workstream.id,
+      summary: summarizeWords(
+        workstream.detailed_analysis?.executive_summary?.issue ||
+          workstream.detailed_analysis?.rationale ||
+          workstream.recommendation?.product_name,
+        22,
+      ),
+    };
+  }, [workstreams]);
 
   if (!data) {
     return (
@@ -222,7 +437,7 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
         <CardContent className="pt-0 pb-6">
           <div className="flex flex-nowrap items-center justify-center gap-3 py-4 px-2">
             <PipelineStage
-              icon={<Building2 className="h-5 w-5" />}
+              icon={<Building2 className="h-6 w-6 xl:h-7 xl:w-7" />}
               label="Input company name"
               count={1}
               onClick={() => onNavigate('overview')}
@@ -230,7 +445,7 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
             />
             <PipelineConnector label="Research + Strategic analysis" />
             <PipelineStage
-              icon={<Layers className="h-5 w-5" />}
+              icon={<Layers className="h-6 w-6 xl:h-7 xl:w-7" />}
               label="Strategic Decomposition"
               count={buildingBlocks ? 4 : 0}
               onClick={() => onNavigate('strategy')}
@@ -238,7 +453,7 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
             />
             <PipelineConnector label="Assumption extraction" />
             <PipelineStage
-              icon={<Radio className="h-5 w-5" />}
+              icon={<Radio className="h-6 w-6 xl:h-7 xl:w-7" />}
               label="Core Assumptions"
               count={coreAssumptions.length}
               onClick={() => onNavigate('core-assumptions')}
@@ -246,7 +461,7 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
             />
             <PipelineConnector label="Signal Scanning + Scoring" />
             <PipelineStage
-              icon={<Target className="h-5 w-5" />}
+              icon={<Target className="h-6 w-6 xl:h-7 xl:w-7" />}
               label="Signals"
               count={allSignals.length}
               onClick={() => onNavigate('signals')}
@@ -254,7 +469,7 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
             />
             <PipelineConnector label="Signal Aggregation + Analysis" />
             <PipelineStage
-              icon={<AlertTriangle className="h-5 w-5" />}
+              icon={<AlertTriangle className="h-6 w-6 xl:h-7 xl:w-7" />}
               label="Core Assumptions Scored"
               count={scoredAssumptionsCount}
               onClick={() => onNavigate('assumptions')}
@@ -262,7 +477,7 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
             />
             <PipelineConnector label="Impact Formulation" />
             <PipelineStage
-              icon={<Briefcase className="h-5 w-5" />}
+              icon={<Briefcase className="h-6 w-6 xl:h-7 xl:w-7" />}
               label="Strategic Impact"
               count={workstreams.length}
               onClick={() => onNavigate('workstreams')}
@@ -274,17 +489,198 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
       <div className="text-center text-sm text-muted-foreground px-6 -mt-2">
         Use the pipeline as your primary navigation to move from inputs to strategic impact. Supporting details sit below.
       </div>
-      <div className="text-center text-lg font-semibold text-foreground mt-5">
-        Model highlights at a glance
+      <div className="mt-4 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.95fr)] xl:items-start">
+        {spiderAssumptions.length > 0 ? (
+          <AssumptionSpiderCharts
+            assumptions={spiderAssumptions}
+            title="Assumption Health Footprint"
+            subtitle="Use the spider to compare building-block pressure and assumption score footprint without leaving the executive view."
+            onAssumptionClick={() => onNavigate('assumptions')}
+          />
+        ) : (
+          <Card className="rounded-3xl border border-border/60 bg-card/70 shadow-sm">
+            <CardContent className="p-6 text-sm text-muted-foreground">
+              Assumption scoring is not available yet for this payload.
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="rounded-3xl border border-border/60 bg-card/78 shadow-[0_24px_55px_-32px_rgba(15,23,42,0.35)] backdrop-blur">
+          <CardHeader className="pb-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  One-view executive summary
+                </p>
+                <CardTitle className="mt-2 flex items-center gap-2 text-xl font-semibold">
+                  <FileText className="h-5 w-5 text-primary" />
+                  Strategic Impact Verdict (Bottom Line Up Front)
+                </CardTitle>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  The essential strategic readout sits here while the assumption-health visual stays
+                  on the left for rapid comparison in a single desktop view.
+                </p>
+              </div>
+              <Button
+                variant="default"
+                size="sm"
+                className="rounded-full bg-emerald-600 px-4 text-xs text-white hover:bg-emerald-700"
+                onClick={() => onNavigate('workstreams')}
+              >
+                Open Strategic Impact
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="rounded-[28px] border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.10] via-background/95 to-background p-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Strategic Impact Verdict (Bottom Line Up Front)
+              </p>
+              <p className="mt-3 text-base leading-7 text-foreground">
+                {strategicVerdict || 'No strategic verdict provided in the current payload.'}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Competitive pressure
+                  </p>
+                </div>
+                <p className="mt-2 text-sm font-medium leading-6 text-foreground">
+                  {strategicAtGlance.topForce
+                    ? `${strategicAtGlance.topForce.name}: ${strategicAtGlance.topForce.intensity}`
+                    : 'No five-forces pressure level yet'}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
+                <div className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-primary" />
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Assumption pulse
+                  </p>
+                </div>
+                <p className="mt-2 text-sm font-medium leading-6 text-foreground">
+                  {strategicAtGlance.assumptionPulse}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-emerald-600" />
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    SWOT storyline
+                  </p>
+                </div>
+                <p className="mt-2 text-sm font-medium leading-6 text-foreground">
+                  {strategicAtGlance.swotSignal || 'No SWOT highlights in this payload'}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
+                <div className="flex items-center gap-2">
+                  <Briefcase className="h-4 w-4 text-primary" />
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Recommended motion
+                  </p>
+                </div>
+                <p className="mt-2 text-sm font-medium leading-6 text-foreground">
+                  {leadingWorkstream?.title || 'Strategic impact workstreams not generated yet'}
+                </p>
+                {leadingWorkstream?.summary ? (
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{leadingWorkstream.summary}</p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="rounded-[26px] border border-border/50 bg-background/72 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Signal balance
+                  </p>
+                  <p className="mt-1 text-sm text-foreground">
+                    {signalBalance.positive} validating, {signalBalance.negative} challenging, {signalBalance.warnings} early warnings
+                  </p>
+                </div>
+                <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px]">
+                  {allSignals.length} total signals
+                </Badge>
+              </div>
+              <div className="mt-4 space-y-3">
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Validating signals</span>
+                    <span className="font-semibold text-emerald-600">{signalBalance.positiveShare}%</span>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-emerald-500/10">
+                    <div
+                      className="h-full rounded-full bg-emerald-500"
+                      style={{ width: `${signalBalance.positiveShare}%` }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Challenging signals</span>
+                    <span className="font-semibold text-destructive">{signalBalance.negativeShare}%</span>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-destructive/10">
+                    <div
+                      className="h-full rounded-full bg-destructive"
+                      style={{ width: `${signalBalance.negativeShare}%` }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Early warning concentration</span>
+                    <span className="font-semibold text-amber-600">{signalBalance.warningShare}%</span>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-amber-500/10">
+                    <div
+                      className="h-full rounded-full bg-amber-500"
+                      style={{ width: `${signalBalance.warningShare}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full px-4"
+                onClick={() => onNavigate('assumptions')}
+              >
+                Open Assumptions Detail
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full px-4"
+                onClick={() => onNavigate('outliers')}
+              >
+                Open Signal Outliers
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
-      <div className="flex justify-center mt-2">
+      <div className="mt-5 flex flex-col items-center gap-2 text-center">
+        <div className="text-lg font-semibold text-foreground">Supporting highlights</div>
         <Button
           variant="outline"
           size="sm"
           className="rounded-full px-4"
           onClick={() => setShowHighlights(prev => !prev)}
         >
-          {showHighlights ? 'Hide highlights' : 'See highlights'}
+          {showHighlights ? 'Hide detailed highlights' : 'See detailed highlights'}
         </Button>
       </div>
 
