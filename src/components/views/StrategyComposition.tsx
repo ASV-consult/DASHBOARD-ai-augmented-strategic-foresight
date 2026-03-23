@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForesight } from '@/contexts/ForesightContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,12 +10,18 @@ import {
 import { Button } from '@/components/ui/button';
 import { Signal, Assumption, StrategicObjective, FinancialTarget, KPI, ImpactPathway, AssumptionCluster, AssumptionHealth, PorterFiveForces, PorterForce, SwotAnalysis, SwotItem } from '@/types/foresight';
 import { cn } from '@/lib/utils';
-import { getHealthColor, getStatusBadgeVariant } from '@/lib/foresight-utils';
-import { getSignalScore } from '@/lib/signal-utils';
+import {
+  formatConfidenceShorthand,
+  getAssumptionDisplayLabel,
+  getHealthColor,
+  getStatusBadgeVariant,
+} from '@/lib/foresight-utils';
+import { getSignalScore, parseSignalSource } from '@/lib/signal-utils';
 import { SignalDetailDialog } from '@/components/SignalDetailDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -43,6 +49,52 @@ const buildingBlockLabels: Record<string, string> = {
   Strategic_defense: 'Strategic Defence',
   key_levers: 'Key Levers',
   cross_cutting: 'Cross-cutting',
+};
+
+const buildingBlockDescriptions: Record<string, string> = {
+  direction_and_positioning: 'Stand out and win in your chosen market.',
+  value_creation: 'Build and capture value.',
+  value_defence: 'Secure unique value against market threats.',
+  Strategic_defence: 'Secure unique value against market threats.',
+  Strategic_defense: 'Secure unique value against market threats.',
+  key_levers: 'Execution levers that accelerate or unlock the strategy.',
+  cross_cutting: 'Cross-cutting strategic support.',
+};
+
+const buildingBlockToneStyles: Record<
+  string,
+  { card: string; icon: string; accent: string; badge: string }
+> = {
+  direction_and_positioning: {
+    card: 'border-border/60 hover:border-border/90',
+    icon: 'bg-sky-500/10 text-sky-600 group-hover:ring-sky-400/50',
+    accent: '',
+    badge: 'border-border/60 text-muted-foreground',
+  },
+  value_creation: {
+    card: 'border-border/60 hover:border-border/90',
+    icon: 'bg-blue-500/10 text-blue-600 group-hover:ring-blue-400/50',
+    accent: '',
+    badge: 'border-border/60 text-muted-foreground',
+  },
+  value_defence: {
+    card: 'border-border/60 hover:border-border/90',
+    icon: 'bg-emerald-500/10 text-emerald-600 group-hover:ring-emerald-400/50',
+    accent: '',
+    badge: 'border-border/60 text-muted-foreground',
+  },
+  key_levers: {
+    card: 'border-orange-300/60 hover:border-orange-400/70',
+    icon: 'bg-orange-500/10 text-orange-600 group-hover:ring-orange-400/50',
+    accent: '',
+    badge: 'border-orange-400/40 text-orange-700',
+  },
+  cross_cutting: {
+    card: 'border-border/60 hover:border-border/90',
+    icon: 'bg-slate-500/10 text-slate-600 group-hover:ring-slate-400/50',
+    accent: '',
+    badge: 'border-border/60 text-muted-foreground',
+  },
 };
 
 const formatBuildingBlock = (block: string) => {
@@ -315,7 +367,7 @@ function StrategySnapshotCard() {
           </div>
           {snapshot.confidence && (
             <Badge variant="secondary" className="text-[11px] uppercase tracking-wide">
-              {snapshot.confidence} confidence
+              {formatConfidenceShorthand(snapshot.confidence)}
             </Badge>
           )}
         </div>
@@ -336,12 +388,6 @@ function StrategySnapshotCard() {
               As of {company.as_of_date}
             </span>
           )}
-          {snapshot.time_horizon && (
-            <span className="flex items-center gap-1 rounded-full border border-border/50 bg-background/70 px-3 py-1">
-              <Clock className="h-3 w-3" />
-              {snapshot.time_horizon}
-            </span>
-          )}
         </div>
       </CardContent>
     </Card>
@@ -360,9 +406,9 @@ function ConfidenceIndicator({ level }: { level?: string }) {
   };
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-background/70 px-2.5 py-1">
       <div className={cn("h-2 w-2 rounded-full", getColor())} />
-      <span className="text-xs text-muted-foreground capitalize">{level}</span>
+      <span className="text-xs text-muted-foreground capitalize">{formatConfidenceShorthand(level)}</span>
     </div>
   );
 }
@@ -370,18 +416,27 @@ function ConfidenceIndicator({ level }: { level?: string }) {
 // Strategic Objectives Section - Redesigned
 // Strategic Objectives Section - Redesigned
 function StrategicObjectivesSection() {
-  const { data, getAssumptionById } = useForesight();
+  const { data } = useForesight();
   const objectives = data?.strategy_context?.strategic_objectives;
+  const criticalDependencies = data?.strategy_context?.value_chain?.critical_dependencies || [];
   const [expandedGoal, setExpandedGoal] = useState<string | null>(null);
 
-  if (!objectives) return null;
+  const primaryGoals = objectives?.primary_goals || [];
+  const financialTargets = objectives?.financial_targets || [];
 
-  const primaryGoals = objectives.primary_goals || [];
-  const financialTargets = objectives.financial_targets || [];
+  if (primaryGoals.length === 0 && financialTargets.length === 0) {
+    return (
+      <Card className="rounded-3xl border border-border/60 bg-card/70 shadow-sm">
+        <CardContent className="space-y-2 p-5 text-sm text-muted-foreground">
+          <p className="font-medium text-foreground">Strategic goals</p>
+          <p>Work in progress. Goal detail, rationale, and dependencies will appear here once the output layer includes them consistently.</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-8">
-      {/* Primary Goals */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -389,90 +444,120 @@ function StrategicObjectivesSection() {
             Strategic Goals
           </h3>
           <Badge variant="secondary" className="rounded-full px-3">
-            {primaryGoals.length} Objectives
+            {primaryGoals.length} goals
           </Badge>
         </div>
 
-        <div className="grid gap-3">
-          {primaryGoals.map((goal, idx) => {
-            const isExpanded = expandedGoal === goal.objective_id;
-            const linkedAssumptions = goal.linked_assumptions || [];
+        {primaryGoals.length === 0 ? (
+          <Card className="rounded-3xl border border-dashed border-border/70 bg-background/70 shadow-sm">
+            <CardContent className="p-5 text-sm text-muted-foreground">
+              Work in progress. Strategic goal cards will be populated once the output includes a stable goal layer.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4">
+            {primaryGoals.map((goal, idx) => {
+              const isExpanded = expandedGoal === goal.objective_id;
+              const goalDependencies = criticalDependencies
+                .filter((dependency) => (goal.linked_assumptions || []).includes(dependency.linked_assumption))
+                .slice(0, 4);
 
-            return (
-              <div
-                key={goal.objective_id || idx}
-                className={cn(
-                  "group relative overflow-hidden rounded-2xl border bg-card/70 transition-all shadow-sm backdrop-blur hover:shadow-md",
-                  isExpanded ? "border-primary/50 shadow-md bg-primary/5" : "border-border/60 hover:border-primary/40"
-                )}
-              >
-                <div
-                  className="p-5 cursor-pointer"
-                  onClick={() => setExpandedGoal(isExpanded ? null : goal.objective_id)}
+              return (
+                <Card
+                  key={goal.objective_id || idx}
+                  className={cn(
+                    'overflow-hidden rounded-3xl border bg-card/75 shadow-sm transition-all',
+                    isExpanded ? 'border-primary/45 bg-primary/5' : 'border-border/60 hover:border-primary/35',
+                  )}
                 >
-                  <div className="flex items-start gap-4">
-                    <div className={cn(
-                      "mt-1 h-8 w-8 rounded-full flex items-center justify-center shrink-0 transition-colors",
-                      isExpanded ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground"
-                    )}>
-                      <CheckCircle2 className="h-4 w-4" />
-                    </div>
-
-                    <div className="flex-1 space-y-3">
-                      <div className="flex items-start justify-between gap-4">
-                        <h4 className="text-base font-medium leading-normal text-foreground group-hover:text-primary transition-colors">
-                          {goal.objective}
-                        </h4>
-                        <ChevronRight className={cn("h-5 w-5 text-muted-foreground transition-transform shrink-0", isExpanded && "rotate-90")} />
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-4 text-sm">
-                        <div className="flex items-center gap-1.5 text-muted-foreground bg-secondary/50 px-2 py-1 rounded-md">
-                          <Clock className="h-3.5 w-3.5" />
-                          <span className="font-medium text-xs">{goal.target_date}</span>
+                  <button
+                    type="button"
+                    className="w-full text-left"
+                    onClick={() => setExpandedGoal(isExpanded ? null : goal.objective_id)}
+                  >
+                    <CardContent className="p-5">
+                      <div className="flex items-start gap-4">
+                        <div className={cn(
+                          'mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl',
+                          isExpanded ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary',
+                        )}>
+                          <CheckCircle2 className="h-4 w-4" />
                         </div>
-                        <div className="h-4 w-px bg-border" />
-                        <ConfidenceIndicator level={goal.confidence} />
-                        <ConfidenceIndicator level={goal.evidence_strength} />
+                        <div className="flex-1 space-y-3">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                Strategic goal
+                              </p>
+                              <h4 className="mt-2 text-base font-semibold leading-normal text-foreground">
+                                {goal.objective}
+                              </h4>
+                            </div>
+                            <ChevronRight className={cn('mt-1 h-5 w-5 shrink-0 text-muted-foreground transition-transform', isExpanded && 'rotate-90')} />
+                          </div>
 
-                        {linkedAssumptions.length > 0 && (
-                          <Badge variant="outline" className="ml-auto text-xs border-dashed">
-                            {linkedAssumptions.length} assumptions
-                          </Badge>
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <Badge variant="outline" className="rounded-full px-3 py-1">
+                              <Clock className="mr-1 h-3 w-3" />
+                              {goal.target_date || 'Target date pending'}
+                            </Badge>
+                            <ConfidenceIndicator level={goal.confidence} />
+                            <ConfidenceIndicator level={goal.evidence_strength} />
+                            <Badge variant="outline" className="rounded-full px-3 py-1 border-dashed">
+                              {goalDependencies.length > 0 ? `${goalDependencies.length} dependencies` : 'Dependencies WIP'}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </button>
+
+                  {isExpanded && (
+                    <CardContent className="grid gap-4 border-t border-border/50 bg-background/60 p-5 lg:grid-cols-3">
+                      <div className="rounded-2xl border border-border/50 bg-background/85 p-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Goal origin</p>
+                        <p className="mt-2 text-sm text-foreground">
+                          {goal.evidence_refs?.length
+                            ? goal.evidence_refs.join(', ')
+                            : 'Placeholder: origin trace for this goal still needs to be added to the output.'}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-border/50 bg-background/85 p-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Reasoning</p>
+                        <p className="mt-2 text-sm text-foreground">
+                          {goal.evidence_strength
+                            ? `Current evidence label: ${goal.evidence_strength}. Goal rationale will be expanded in a later model/output iteration.`
+                            : 'Placeholder: rationale for this goal is still work in progress.'}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-border/50 bg-background/85 p-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dependencies</p>
+                        {goalDependencies.length > 0 ? (
+                          <div className="mt-2 space-y-2 text-sm">
+                            {goalDependencies.map((dependency, dependencyIdx) => (
+                              <div key={`${dependency.activity}-${dependencyIdx}`} className="rounded-xl border border-border/40 bg-background/80 p-3">
+                                <p className="font-medium text-foreground">{dependency.activity}</p>
+                                <p className="mt-1 text-muted-foreground">
+                                  This strategic goal currently depends on {dependency.depends_on}.
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-sm text-foreground">
+                            Placeholder: goal-specific dependencies still need to be modeled explicitly.
+                          </p>
                         )}
                       </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Expanded Content */}
-                {isExpanded && linkedAssumptions.length > 0 && (
-                  <div className="px-5 pb-5 pt-0 ml-12 animation-fade-in">
-                    <div className="pt-4 border-t border-border/50 space-y-3">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        Supported By Assumptions
-                      </p>
-                      <div className="grid gap-2">
-                        {linkedAssumptions.map((aId, aIdx) => {
-                          const assumption = getAssumptionById(aId);
-                          return (
-                            <div key={aIdx} className="flex items-center gap-3 text-sm p-2 rounded-lg bg-background/50 border border-border/50">
-                              <span className="font-mono text-xs font-bold text-primary shrink-0">{aId}</span>
-                              <span className="text-muted-foreground line-clamp-1">{assumption?.statement}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                    </CardContent>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Financial Targets - Hero Cards */}
       {financialTargets.length > 0 && (
         <div className="space-y-4">
           <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -516,28 +601,22 @@ function StrategicObjectivesSection() {
 
 // KPIs Section - Redesigned
 function KPIsSection() {
-  const { data, getAssumptionById } = useForesight();
+  const { data } = useForesight();
   const kpis = data?.strategy_context?.key_performance_indicators?.critical_metrics || [];
   const [selectedKpi, setSelectedKpi] = useState<KPI | null>(null);
 
-  if (kpis.length === 0) return null;
-
   const criticalKpis = kpis.filter(k => k.strategic_importance === 'Critical');
-  const otherKpis = kpis.filter(k => k.strategic_importance !== 'Critical');
 
   return (
     <div className="space-y-8">
       <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
         <CardContent className="p-4 flex flex-wrap items-center gap-3 text-xs">
-          <span className="text-muted-foreground">How to read this view:</span>
+          <span className="text-muted-foreground">Focus:</span>
           <Badge variant="destructive" className="text-[11px]">
             {criticalKpis.length} critical KPIs
           </Badge>
-          <Badge variant="outline" className="text-[11px]">
-            {otherKpis.length} supporting KPIs
-          </Badge>
           <span className="text-muted-foreground">
-            Open any KPI card for full definition, anchors, and evidence context.
+            Only critical KPIs are shown here. Supporting metrics remain hidden for now while this section is still being refined.
           </span>
         </CardContent>
       </Card>
@@ -614,39 +693,31 @@ function KPIsSection() {
                 </div>
               )}
 
-              {false && selectedKpi.linked_assumptions?.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium mb-3">Linked Assumptions</h4>
-                  <ScrollArea className="h-[200px] pr-4">
-                    <div className="space-y-2">
-                      {selectedKpi.linked_assumptions.map((aId, idx) => {
-                        const assumption = getAssumptionById(aId);
-                        return (
-                          <Card key={idx} className="bg-muted/30 border border-border/50 rounded-xl">
-                            <CardContent className="p-3">
-                              <div className="flex items-center gap-2 mb-1">
-                                <Badge variant="outline" className="text-[10px] h-5">{aId}</Badge>
-                              </div>
-                              <p className="text-xs text-muted-foreground">{assumption?.statement}</p>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                  </ScrollArea>
-                </div>
-              )}
+              <div className="rounded-xl border border-dashed border-border/60 bg-background/70 p-3 text-sm text-muted-foreground">
+                Work in progress: KPI traceability and fuller reasoning will be added here once the output provides a more stable KPI rationale layer.
+              </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Critical Metrics */}
-      {criticalKpis.length > 0 && (
+      <Card className="rounded-3xl border border-dashed border-destructive/30 bg-destructive/[0.04] shadow-sm">
+        <CardContent className="flex flex-col items-center gap-2 p-6 text-center">
+          <Badge variant="outline" className="rounded-full border-destructive/30 bg-background/80 px-4 py-1 text-[11px] tracking-[0.18em] text-destructive">
+            WORK IN PROGRESS
+          </Badge>
+          <p className="text-lg font-semibold text-foreground">Critical KPI layer is still being narrowed.</p>
+          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+            Only the decision-critical KPI set will remain here. Traceability and rationale are still being refined.
+          </p>
+        </CardContent>
+      </Card>
+
+      {criticalKpis.length > 0 ? (
         <div className="space-y-4">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <AlertCircle className="h-5 w-5 text-destructive" />
-            Critical Metrics
+            Critical KPIs
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -665,17 +736,21 @@ function KPIsSection() {
                   </div>
 
                   <div className="space-y-1">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Current Status</span>
+                    <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Current status</span>
                     <div className="text-xl font-bold text-foreground break-words line-clamp-2 leading-snug">
-                      {kpi.current_value || 'N/A'}
+                      {kpi.current_value || 'Placeholder'}
                     </div>
+                  </div>
+
+                  <div className="rounded-xl border border-dashed border-border/60 bg-background/70 p-3 text-xs text-muted-foreground">
+                    Work in progress: the final KPI set will focus on the most decision-critical monitoring points only.
                   </div>
 
                   <div className="pt-4 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground mt-auto">
                     {kpi.evidence_strength ? (
-                      <span>Evidence {kpi.evidence_strength}</span>
+                      <span>{formatConfidenceShorthand(kpi.evidence_strength)}</span>
                     ) : (
-                      <span className="text-muted-foreground">Evidence N/A</span>
+                      <span className="text-muted-foreground">Confidence pending</span>
                     )}
                     <Badge variant="secondary" className="text-[10px] h-5 bg-destructive/10 text-destructive-foreground hover:bg-destructive/20 border-0">
                       Critical
@@ -686,64 +761,12 @@ function KPIsSection() {
             ))}
           </div>
         </div>
-      )}
-
-      {/* Supporting Metrics */}
-      {otherKpis.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold flex items-center gap-2">
-            <Activity className="h-5 w-5 text-primary" />
-            Supporting Metrics
-          </h3>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {otherKpis.map((kpi, idx) => (
-              <Card
-                key={kpi.kpi_id || idx}
-                className="group cursor-pointer transition-all bg-card/80 border border-border/60 rounded-3xl shadow-[0_16px_40px_-30px_rgba(15,23,42,0.4)] hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-[0_24px_50px_-28px_rgba(59,130,246,0.35)]"
-                onClick={() => setSelectedKpi(kpi)}
-              >
-                <CardContent className="p-6 space-y-4 overflow-hidden min-h-[300px] flex flex-col">
-                  <div className="space-y-2">
-                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Supporting metric</p>
-                    <h4 className="text-base font-semibold text-foreground leading-snug break-words">
-                      {kpi.name}
-                    </h4>
-                  </div>
-                  {kpi.current_value && (
-                    <div className="bg-primary/5 border border-primary/30 rounded-2xl p-4">
-                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Current</span>
-                      <div className="text-xl font-semibold text-primary break-words leading-snug mt-1">
-                        {kpi.current_value}
-                      </div>
-                    </div>
-                  )}
-                  {kpi.description && (
-                    <p className="text-sm text-muted-foreground leading-relaxed break-words">
-                      {kpi.description}
-                    </p>
-                  )}
-                  <div className="flex flex-col gap-2 text-[11px] uppercase tracking-wide mt-auto">
-                    <Badge
-                      variant="outline"
-                      className="text-[11px] h-auto px-4 py-2 opacity-90 rounded-full whitespace-normal break-words text-left"
-                    >
-                      {kpi.strategic_importance}
-                    </Badge>
-                    {kpi.evidence_strength && (
-                      <Badge
-                        variant="secondary"
-                        className="text-[11px] h-auto px-4 py-2 rounded-full whitespace-normal break-words text-left"
-                      >
-                        Evidence {kpi.evidence_strength}
-                      </Badge>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
+      ) : (
+        <Card className="rounded-2xl border border-dashed border-border/70 bg-background/70 shadow-sm">
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            Critical KPIs will be surfaced here once the KPI layer is narrowed to the decision-critical set.
+          </CardContent>
+        </Card>
       )}
     </div>
   );
@@ -764,12 +787,12 @@ function ValueChainSection() {
         </div>
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Value Chain</p>
-          <h3 className="text-lg font-semibold text-foreground">Activities and Dependencies</h3>
+          <h3 className="text-lg font-semibold text-foreground">Primary and support activities</h3>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-7">
-        <Card className="relative overflow-hidden rounded-3xl border border-border/50 bg-card/60 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.35)] backdrop-blur before:absolute before:inset-x-0 before:top-0 before:h-1 before:bg-primary/70">
+        <Card className="relative overflow-hidden rounded-3xl border border-sky-300/35 bg-card/80 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.35)] before:absolute before:inset-x-0 before:top-0 before:h-1 before:bg-sky-500/80">
           <CardHeader className="pb-3 pt-5">
             <CardTitle className="text-xs font-semibold uppercase tracking-wide text-foreground">Primary Activities</CardTitle>
           </CardHeader>
@@ -779,9 +802,11 @@ function ValueChainSection() {
                 {valueChain.primary_activities.map((activity, idx) => (
                   <li
                     key={idx}
-                    className="flex items-start gap-3 rounded-2xl border border-border/50 bg-background/70 px-4 py-3"
+                    className="flex items-start gap-3 rounded-2xl border border-sky-300/25 bg-background/78 px-4 py-3"
                   >
-                    <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary/70 shrink-0" />
+                    <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-500/15 text-[11px] font-semibold text-sky-700">
+                      {idx + 1}
+                    </span>
                     <span className="text-foreground">{activity}</span>
                   </li>
                 ))}
@@ -792,7 +817,7 @@ function ValueChainSection() {
           </CardContent>
         </Card>
 
-        <Card className="relative overflow-hidden rounded-3xl border border-border/50 bg-card/60 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.35)] backdrop-blur before:absolute before:inset-x-0 before:top-0 before:h-1 before:bg-muted-foreground/60">
+        <Card className="relative overflow-hidden rounded-3xl border border-emerald-300/35 bg-card/80 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.35)] before:absolute before:inset-x-0 before:top-0 before:h-1 before:bg-emerald-500/80">
           <CardHeader className="pb-3 pt-5">
             <CardTitle className="text-xs font-semibold uppercase tracking-wide text-foreground">Support Activities</CardTitle>
           </CardHeader>
@@ -802,9 +827,11 @@ function ValueChainSection() {
                 {valueChain.support_activities.map((activity, idx) => (
                   <li
                     key={idx}
-                    className="flex items-start gap-3 rounded-2xl border border-border/50 bg-background/70 px-4 py-3"
+                    className="flex items-start gap-3 rounded-2xl border border-emerald-300/25 bg-background/78 px-4 py-3"
                   >
-                    <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-muted-foreground/60 shrink-0" />
+                    <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-[11px] font-semibold text-emerald-700">
+                      {idx + 1}
+                    </span>
                     <span className="text-foreground">{activity}</span>
                   </li>
                 ))}
@@ -816,28 +843,6 @@ function ValueChainSection() {
         </Card>
       </div>
 
-      {valueChain.critical_dependencies && valueChain.critical_dependencies.length > 0 && (
-        <Card className="relative overflow-hidden rounded-3xl border border-border/50 bg-card/60 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.35)] backdrop-blur before:absolute before:inset-x-0 before:top-0 before:h-1 before:bg-amber-500/70">
-          <CardHeader className="pb-3 pt-5">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wide flex items-center gap-2 text-foreground">
-              <AlertCircle className="h-4 w-4 text-amber-500" />
-              Critical Dependencies
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {valueChain.critical_dependencies.slice(0, 4).map((dep, idx) => (
-                <div key={idx} className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/50 bg-background/70 px-4 py-3 text-xs">
-                  <span className="font-medium text-foreground">{dep.activity}</span>
-                  <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-muted-foreground">{dep.depends_on}</span>
-                  <Badge variant="outline" className="ml-auto text-xs">{dep.linked_assumption}</Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
@@ -881,12 +886,6 @@ function CompetitiveAnalysisSection() {
   const [selectedForce, setSelectedForce] = useState<PorterForce | null>(null);
   const [selectedSwot, setSelectedSwot] = useState<{ category: string, item: SwotItem | string } | null>(null);
   const [showSources, setShowSources] = useState(false);
-  const [expandedSwot, setExpandedSwot] = useState<Record<string, boolean>>({
-    Strengths: false,
-    Weaknesses: false,
-    Opportunities: false,
-    Threats: false,
-  });
 
   const renderWithSources = (text?: string, options?: { stopPropagation?: boolean }) => {
     if (!text) return null;
@@ -1264,8 +1263,6 @@ function CompetitiveAnalysisSection() {
                 icon={<TrendingUp className="h-4 w-4 text-emerald-500" />}
                 onItemClick={(item) => setSelectedSwot({ category: 'Strength', item })}
                 tone="positive"
-                expanded={expandedSwot.Strengths}
-                onToggle={() => setExpandedSwot(prev => ({ ...prev, Strengths: !prev.Strengths }))}
               />
               <SwotQuadrant
                 title="Weaknesses"
@@ -1273,8 +1270,6 @@ function CompetitiveAnalysisSection() {
                 icon={<AlertTriangle className="h-4 w-4 text-orange-500" />}
                 onItemClick={(item) => setSelectedSwot({ category: 'Weakness', item })}
                 tone="warning"
-                expanded={expandedSwot.Weaknesses}
-                onToggle={() => setExpandedSwot(prev => ({ ...prev, Weaknesses: !prev.Weaknesses }))}
               />
               <SwotQuadrant
                 title="Opportunities"
@@ -1282,8 +1277,6 @@ function CompetitiveAnalysisSection() {
                 icon={<Target className="h-4 w-4 text-blue-500" />}
                 onItemClick={(item) => setSelectedSwot({ category: 'Opportunity', item })}
                 tone="opportunity"
-                expanded={expandedSwot.Opportunities}
-                onToggle={() => setExpandedSwot(prev => ({ ...prev, Opportunities: !prev.Opportunities }))}
               />
               <SwotQuadrant
                 title="Threats"
@@ -1291,8 +1284,6 @@ function CompetitiveAnalysisSection() {
                 icon={<Shield className="h-4 w-4 text-destructive" />}
                 onItemClick={(item) => setSelectedSwot({ category: 'Threat', item })}
                 tone="negative"
-                expanded={expandedSwot.Threats}
-                onToggle={() => setExpandedSwot(prev => ({ ...prev, Threats: !prev.Threats }))}
               />
             </div>
           </CardContent>
@@ -1359,16 +1350,12 @@ function SwotQuadrant({
   icon,
   onItemClick,
   tone = 'neutral',
-  expanded = false,
-  onToggle,
 }: {
   title: string;
   items: (SwotItem | string)[];
   icon: React.ReactNode;
   onItemClick: (item: SwotItem | string) => void;
   tone?: 'positive' | 'negative' | 'neutral' | 'opportunity' | 'warning';
-  expanded?: boolean;
-  onToggle?: () => void;
 }) {
   if (!items || items.length === 0) return null;
   const toneBorder =
@@ -1383,7 +1370,6 @@ function SwotQuadrant({
     : tone === 'warning' ? 'bg-orange-500/5'
     : tone === 'negative' ? 'bg-destructive/5'
     : 'bg-background/50';
-  const visibleItems = expanded ? items : items.slice(0, 3);
   return (
     <div className={cn("space-y-3 rounded-2xl p-4 border", toneBorder, toneBg)}>
       <div className="flex items-center justify-between gap-2">
@@ -1395,28 +1381,31 @@ function SwotQuadrant({
         </Badge>
       </div>
       <ul className="grid grid-cols-1 gap-2">
-        {visibleItems.map((item, idx) => {
+        {items.map((item, idx) => {
           const parsed = typeof item === 'string'
             ? splitHeadlineAndBody(item)
             : splitHeadlineAndBody(item.title || item.point || item.description || item.detail || item.evidence || '');
+          const description =
+            typeof item === 'string'
+              ? parsed.description
+              : cleanNarrative(item.description || item.detail || item.evidence || parsed.description || '');
           const display = parsed.title || parsed.description || 'Untitled';
           return (
             <li
               key={idx}
-              className="text-xs text-muted-foreground bg-card/60 p-3 rounded-lg border border-border/30 cursor-pointer hover:bg-primary/5 hover:border-primary/40 transition-all"
+              className="cursor-pointer rounded-xl border border-border/30 bg-card/60 p-3 text-xs text-muted-foreground transition-all hover:border-primary/40 hover:bg-primary/5"
               onClick={() => onItemClick(item)}
             >
-              <p className="text-foreground font-medium line-clamp-2">{summarizeWords(display, 10)}</p>
-              <p className="text-[11px] text-muted-foreground mt-1">Click to expand full evidence</p>
+              <p className="text-sm font-medium leading-5 text-foreground">{display}</p>
+              {description ? (
+                <p className="mt-1 text-[11px] leading-5 text-muted-foreground">{description}</p>
+              ) : (
+                <p className="mt-1 text-[11px] text-muted-foreground">Click to expand full evidence</p>
+              )}
             </li>
           );
         })}
       </ul>
-      {items.length > 3 && (
-        <Button variant="ghost" size="sm" className="h-7 px-3 text-[11px]" onClick={onToggle}>
-          {expanded ? 'Show fewer points' : `Show all points (${items.length})`}
-        </Button>
-      )}
     </div>
   );
 }
@@ -1441,11 +1430,8 @@ export function AssumptionClustersSection() {
             <CardContent className="p-4 space-y-3">
               <div className="flex items-start justify-between">
                 <span className="text-sm font-medium text-foreground">{cluster.cluster_name || 'Unnamed Cluster'}</span>
-                <Badge
-                  variant={cluster.cascade_risk === 'High' ? 'destructive' : 'secondary'}
-                  className="text-xs px-2.5 py-1 whitespace-nowrap"
-                >
-                  {cluster.cascade_risk || 'Unknown'} risk
+                <Badge variant="outline" className="text-xs px-2.5 py-1 whitespace-nowrap">
+                  {(cluster.assumptions || []).length} assumptions
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground">{cluster.description || 'No description available.'}</p>
@@ -1497,8 +1483,16 @@ function BuildingBlocksSection() {
                   <p key={idx} className="text-muted-foreground leading-relaxed">{block.text}</p>
                 )
               ))}
+              {selectedBlock?.details?.blockKey && (
+                <div className="rounded-xl border border-border/50 bg-background/70 p-3">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Why this block matters</p>
+                  <p className="mt-1 text-sm text-foreground">
+                    {buildingBlockDescriptions[selectedBlock.details.blockKey] || 'Description pending.'}
+                  </p>
+                </div>
+              )}
               {selectedBlock?.confidence && (
-                <Badge variant="secondary" className="text-xs">Confidence: {selectedBlock.confidence}</Badge>
+                <Badge variant="secondary" className="text-xs">{formatConfidenceShorthand(selectedBlock.confidence)}</Badge>
               )}
 
               {selectedBlock?.details?.main_revenue_streams && (
@@ -1553,48 +1547,65 @@ function BuildingBlocksSection() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {Object.entries(buildingBlocks).slice(0, 4).map(([key, value]) => (
-            <Card
-              key={key}
-              className="group relative overflow-hidden rounded-3xl border border-border/50 bg-background/70 shadow-[0_16px_40px_-30px_rgba(15,23,42,0.35)] transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-[0_24px_50px_-35px_rgba(15,23,42,0.45)] cursor-pointer"
-              onClick={() => {
-                const summaryArray = Array.isArray((value as any).summary) ? (value as any).summary : [(value as any).summary];
-                setSelectedBlock({
-                  title: formatBuildingBlock(key),
-                  summary: summaryArray,
-                  confidence: (value as any).confidence,
-                  details: value,
-                });
-              }}
-            >
-              <CardContent className="p-5 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-border/60 transition group-hover:ring-primary/40">
-                      {buildingBlockIcons[key]}
+          {Object.entries(buildingBlocks).slice(0, 4).map(([key, value]) => {
+            const toneKey = key === 'key_levers' ? 'key_levers' : normalizeBuildingBlockKey(key);
+            const blockTone = buildingBlockToneStyles[toneKey] || buildingBlockToneStyles.cross_cutting;
+            const summaryArray = Array.isArray((value as any).summary) ? (value as any).summary : [(value as any).summary];
+
+            return (
+              <Card
+                key={key}
+                className={cn(
+                  'group relative overflow-hidden rounded-3xl border bg-card/80 shadow-[0_16px_40px_-30px_rgba(15,23,42,0.35)] transition-all hover:-translate-y-1 hover:shadow-[0_24px_50px_-35px_rgba(15,23,42,0.45)] cursor-pointer',
+                  blockTone.card,
+                  blockTone.accent,
+                )}
+                onClick={() => {
+                  setSelectedBlock({
+                    title: formatBuildingBlock(key),
+                    summary: summaryArray,
+                    confidence: (value as any).confidence,
+                    details: { ...(value as any), blockKey: key },
+                  });
+                }}
+              >
+                <CardContent className="space-y-4 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        'flex h-10 w-10 items-center justify-center rounded-2xl ring-1 ring-border/60 transition',
+                        blockTone.icon,
+                      )}>
+                        {buildingBlockIcons[key]}
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                          {key === 'key_levers' ? 'Lever' : 'Building block'}
+                        </p>
+                        <h4 className="text-sm font-semibold text-foreground">
+                          {formatBuildingBlock(key)}
+                        </h4>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Block</p>
-                      <h4 className="text-sm font-semibold text-foreground">
-                        {formatBuildingBlock(key)}
-                      </h4>
-                    </div>
+                    {(value as any).confidence && (
+                      <Badge variant="outline" className={cn('text-[10px] uppercase tracking-wide', blockTone.badge)}>
+                        {formatConfidenceShorthand((value as any).confidence)}
+                      </Badge>
+                    )}
                   </div>
-                  {(value as any).confidence && (
-                    <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-                      {(value as any).confidence}
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
-                  {Array.isArray((value as any).summary) ? (value as any).summary[0] : (value as any).summary}
-                </p>
-                <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-                  Click for details
-                </span>
-              </CardContent>
-            </Card>
-          ))}
+                  <p className="rounded-2xl border border-border/40 bg-background/80 px-3 py-2 text-sm font-medium text-foreground">
+                    {buildingBlockDescriptions[key] || 'Description pending.'}
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+                    {summaryArray[0]}
+                  </p>
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                    Click for details
+                  </span>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </>
@@ -1604,41 +1615,147 @@ function BuildingBlocksSection() {
 // Signal Card for Assumption Detail
 function SignalCard({ signal, type, onClick }: { signal: Signal; type: 'challenging' | 'validating'; onClick: () => void }) {
   const isChallenge = type === 'challenging';
+  const parsedSource = parseSignalSource(signal.source || '');
+  const sourceLabel = parsedSource.title || parsedSource.domain || signal.source || 'Source not provided';
+  const signalHeadline = cleanNarrative(signal.signal_content || signal.strategic_analysis || 'Signal detail unavailable.');
+  const signalContext = cleanNarrative(
+    signal.signal_content && signal.strategic_analysis && signal.signal_content !== signal.strategic_analysis
+      ? signal.strategic_analysis
+      : ''
+  );
+  const combinedScore = signal.outlier_flags?.combined_score ?? signal.impact_score ?? getSignalScore(signal);
   return (
     <Card
       className={cn(
-        "mb-3 cursor-pointer transition-all hover:scale-[1.01] hover:shadow-md",
+        "mb-3 cursor-pointer rounded-2xl transition-all hover:scale-[1.01] hover:shadow-md",
         isChallenge
           ? "border-2 border-destructive/40 hover:border-destructive/60"
           : "border-2 border-primary/40 hover:border-primary/60"
       )}
       onClick={onClick}
     >
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <Badge variant="outline" className={cn(
-            "text-xs",
-            isChallenge ? "border-destructive/50 text-destructive" : "border-primary/50 text-primary"
-          )}>
-            {signal.archetype}
-          </Badge>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-xs">
-              Score: {signal.outlier_flags?.combined_score?.toFixed(1) || signal.impact_score}
-            </Badge>
-            <Badge variant="outline" className="text-xs flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {signal.time_horizon}
-            </Badge>
+      <CardContent className="space-y-4 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className={cn(
+                "text-xs",
+                isChallenge ? "border-destructive/50 text-destructive" : "border-primary/50 text-primary"
+              )}>
+                {isChallenge ? 'Challenging signal' : 'Validating signal'}
+              </Badge>
+              <Badge variant="outline" className="text-xs font-mono">
+                {signal.related_assumption_id || signal.assumption_id}
+              </Badge>
+              <Badge variant="outline" className="text-xs flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {signal.time_horizon || 'Horizon n/a'}
+              </Badge>
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold leading-6 text-foreground break-words">
+                {signalHeadline}
+              </p>
+              {signalContext ? (
+                <p className="mt-2 text-sm leading-6 text-muted-foreground break-words">
+                  {signalContext}
+                </p>
+              ) : null}
+            </div>
+          </div>
+          <div className="shrink-0 rounded-2xl border border-border/60 bg-background/80 px-3 py-2 text-right">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Score</p>
+            <p className={cn(
+              "mt-1 text-lg font-semibold",
+              isChallenge ? "text-destructive" : "text-emerald-600"
+            )}>
+              {combinedScore.toFixed(1)}
+            </p>
           </div>
         </div>
-        <p className="text-sm text-foreground leading-relaxed mb-3">{signal.signal_content || signal.strategic_analysis}</p>
-        <div className="flex items-center gap-1 mt-3 text-xs text-primary">
-          <ExternalLink className="h-3 w-3" />
-          <span>View details</span>
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+          <div className="min-w-0 rounded-2xl border border-border/50 bg-background/75 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Source</p>
+            <p className="mt-1 text-xs leading-5 text-foreground break-words whitespace-normal">{sourceLabel}</p>
+            {parsedSource.domain ? <p className="mt-1 text-[11px] text-muted-foreground break-all">{parsedSource.domain}</p> : null}
+          </div>
+          <div className="rounded-2xl border border-border/50 bg-background/75 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Signal reading</p>
+            <p className={cn("mt-1 text-sm font-medium", isChallenge ? "text-destructive" : "text-emerald-600")}>
+              {signal.impact_direction || (isChallenge ? 'Negative pressure' : 'Positive support')}
+            </p>
+            <p className="mt-3 flex items-center gap-1 text-xs text-primary">
+              <ExternalLink className="h-3 w-3" />
+              Open signal detail
+            </p>
+          </div>
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function SignalBrowserRow({ signal, type, onClick }: { signal: Signal; type: 'challenging' | 'validating'; onClick: () => void }) {
+  const isChallenge = type === 'challenging';
+  const parsedSource = parseSignalSource(signal.source || '');
+  const sourceLabel = parsedSource.title || parsedSource.domain || signal.source || 'Source not provided';
+  const signalHeadline = cleanNarrative(signal.signal_content || signal.strategic_analysis || 'Signal detail unavailable.');
+  const signalContext = cleanNarrative(
+    signal.signal_content && signal.strategic_analysis && signal.signal_content !== signal.strategic_analysis
+      ? signal.strategic_analysis
+      : ''
+  );
+  const combinedScore = signal.outlier_flags?.combined_score ?? signal.impact_score ?? getSignalScore(signal);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "w-full rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md",
+        isChallenge ? "border-destructive/25 hover:border-destructive/45" : "border-primary/25 hover:border-primary/45"
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div className={cn("mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full", isChallenge ? "bg-destructive" : "bg-emerald-500")} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className={cn(
+              "text-[11px]",
+              isChallenge ? "border-destructive/40 text-destructive" : "border-primary/40 text-primary"
+            )}>
+              {isChallenge ? 'Challenging' : 'Validating'}
+            </Badge>
+            <Badge variant="outline" className="text-[11px] font-mono">
+              {signal.related_assumption_id || signal.assumption_id}
+            </Badge>
+            <Badge variant="outline" className="text-[11px]">
+              {signal.time_horizon || 'Horizon n/a'}
+            </Badge>
+          </div>
+          <p className="mt-3 text-sm font-semibold leading-6 text-foreground line-clamp-3">
+            {signalHeadline}
+          </p>
+          {signalContext ? (
+            <p className="mt-2 text-xs leading-5 text-muted-foreground line-clamp-2">
+              {signalContext}
+            </p>
+          ) : null}
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="max-w-full break-words">{sourceLabel}</span>
+            <span className={cn("font-medium", isChallenge ? "text-destructive" : "text-emerald-600")}>
+              {signal.impact_direction || (isChallenge ? 'Negative pressure' : 'Positive support')}
+            </span>
+          </div>
+        </div>
+        <div className="shrink-0 rounded-xl border border-border/60 bg-background/85 px-3 py-2 text-right">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Score</p>
+          <p className={cn("mt-1 text-lg font-semibold", isChallenge ? "text-destructive" : "text-emerald-600")}>
+            {combinedScore.toFixed(1)}
+          </p>
+        </div>
+      </div>
+    </button>
   );
 }
 
@@ -1648,12 +1765,404 @@ function AssumptionDetail({ assumption, onClose, onSignalClick }: {
   onClose: () => void;
   onSignalClick: (signal: Signal) => void
 }) {
-  const [scoreSort, setScoreSort] = useState<'desc' | 'asc'>('desc');
+  const [showFullDescription, setShowFullDescription] = useState(false);
+  const [signalFilter, setSignalFilter] = useState<'all' | 'challenging' | 'validating'>('all');
   const health = assumption.health;
-  const { borderColor, statusColor } = getHealthColor(health);
+  const { statusColor } = getHealthColor(health);
+  const assumptionLabel = getAssumptionDisplayLabel(assumption.id, assumption.statement);
   const total = assumption.validatingSignals.length + assumption.challengingSignals.length;
   const validatingPercent = total > 0 ? Math.round((assumption.validatingSignals.length / total) * 100) : 50;
   const challengingPercent = 100 - validatingPercent;
+  const challengingCount = health?.negative_signals ?? assumption.challengingSignals.length;
+  const validatingCount = health?.positive_signals ?? assumption.validatingSignals.length;
+
+  const sortedChallenging = useMemo(() => {
+    return [...assumption.challengingSignals].sort((a, b) => {
+      return getSignalScore(b) - getSignalScore(a);
+    });
+  }, [assumption.challengingSignals]);
+
+  const sortedValidating = useMemo(() => {
+    return [...assumption.validatingSignals].sort((a, b) => {
+      return getSignalScore(b) - getSignalScore(a);
+    });
+  }, [assumption.validatingSignals]);
+
+  const feedSignals = useMemo(() => {
+    const merged = [
+      ...sortedChallenging.map((signal) => ({ signal, type: 'challenging' as const })),
+      ...sortedValidating.map((signal) => ({ signal, type: 'validating' as const })),
+    ];
+
+    merged.sort((a, b) => getSignalScore(b.signal) - getSignalScore(a.signal));
+
+    if (signalFilter === 'all') return merged;
+    return merged.filter((entry) => entry.type === signalFilter);
+  }, [sortedChallenging, sortedValidating, signalFilter]);
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-background">
+      <div className="border-b border-border bg-card shadow-md">
+        <div className="mx-auto max-w-7xl px-6 py-4">
+          <div className="flex items-start justify-between gap-6">
+            <div className="flex items-start gap-4">
+              <Button variant="ghost" size="icon" onClick={onClose} className="mt-1">
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <span
+                    className="rounded-md px-3 py-1 font-mono text-xl font-bold"
+                    style={{ backgroundColor: `${statusColor}20`, color: statusColor }}
+                  >
+                    {assumption.id}
+                  </span>
+                  <Badge variant="secondary" className="text-sm">{assumption.category}</Badge>
+                  {health ? (
+                    <Badge variant={getStatusBadgeVariant(health.verification_status)} className="text-sm">
+                      {health.verification_status}
+                    </Badge>
+                  ) : null}
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Assumption detail
+                  </p>
+                  <h2 className="mt-2 max-w-4xl text-xl font-semibold text-foreground">{assumptionLabel}</h2>
+                  <div className="mt-3 max-w-5xl rounded-2xl border border-border/60 bg-background/80 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Full assumption wording
+                    </p>
+                    <p className="mt-2 text-sm leading-7 text-foreground">
+                      {assumption.statement}
+                    </p>
+                  </div>
+                </div>
+
+                {assumption.supports_building_blocks?.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Key building blocks:</span>
+                    {assumption.supports_building_blocks.map((block) => (
+                      <Badge key={block} className="flex items-center gap-1 border-0 bg-primary/10 text-xs text-primary">
+                        {buildingBlockIcons[block] || null}
+                        {formatBuildingBlock(block)}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="max-w-3xl rounded-2xl border border-border/60 bg-background/70 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Signal mix</p>
+                      <p className="mt-1 text-sm text-foreground">
+                        Structured view of the evidence currently linked to this assumption.
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px] uppercase tracking-wide">
+                      {total} linked signals
+                    </Badge>
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className="h-3 w-3 rounded-full bg-destructive" />
+                      <span className="text-muted-foreground">{challengingCount} challenging</span>
+                    </div>
+                    <div className="flex-1 rounded-full border border-border bg-background">
+                      <div className="flex h-2.5 overflow-hidden rounded-full">
+                        <div className="bg-destructive transition-all" style={{ width: `${challengingPercent}%` }} />
+                        <div className="bg-primary transition-all" style={{ width: `${validatingPercent}%` }} />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className="h-3 w-3 rounded-full bg-primary" />
+                      <span className="text-muted-foreground">{validatingCount} validating</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0">
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4 py-6">
+        <div className="mx-auto max-w-7xl space-y-6">
+          <Collapsible open={showFullDescription} onOpenChange={setShowFullDescription}>
+            <Card className="rounded-3xl border border-border/60 bg-card/80 shadow-sm">
+              <CollapsibleTrigger asChild>
+                <button type="button" className="w-full text-left">
+                  <CardHeader className="pb-4">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <CardTitle className="text-base">Context and rationale</CardTitle>
+                        <CardDescription className="mt-1 text-sm">
+                          Open the supporting rationale, evidence base, historical validity, and failure scenario behind this assumption.
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-3 py-2 text-xs font-medium text-foreground">
+                        <span>{showFullDescription ? 'Hide context' : 'Open context'}</span>
+                        <ChevronDown className={cn('h-4 w-4 transition-transform', showFullDescription ? 'rotate-180' : '')} />
+                      </div>
+                    </div>
+                  </CardHeader>
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Why it matters</p>
+                    <p className="mt-2 text-sm text-foreground">
+                      {assumption.why_it_matters || 'Placeholder: fuller strategic rationale still needs to be added to the output.'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Evidence base</p>
+                    <p className="mt-2 text-sm text-foreground">
+                      {assumption.evidence_base || 'Placeholder: evidence base still needs to be expanded.'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Historical validity</p>
+                    <p className="mt-2 text-sm text-foreground">
+                      {assumption.historical_validity || 'Placeholder: historical validity is not yet available.'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Failure scenario</p>
+                    <p className="mt-2 text-sm text-foreground">
+                      {assumption.failure_scenario || 'Placeholder: failure scenario is still work in progress.'}
+                    </p>
+                  </div>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
+
+          {health ? (
+            <Card className="overflow-hidden rounded-3xl border-2 shadow-sm" style={{ borderColor: statusColor }}>
+              <CardHeader className="border-b border-border/60 bg-card/80 pb-4">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Activity className="h-5 w-5" style={{ color: statusColor }} />
+                      <CardTitle className="text-lg">Assumption Health Analysis</CardTitle>
+                      <Badge variant={getStatusBadgeVariant(health.verification_status)} className="text-[11px]">
+                        {health.verification_status}
+                      </Badge>
+                    </div>
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      Clear read on the current assumption posture: overall verdict, what supports it, what pushes back, and where the key risk sits.
+                    </p>
+                  </div>
+
+                  <div className="grid min-w-[280px] grid-cols-3 gap-3">
+                    <div className="rounded-2xl border border-border/60 bg-background/90 p-3 text-right">
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Net impact</p>
+                      <p
+                        className={cn(
+                          'mt-2 text-2xl font-semibold',
+                          health.net_impact_score < 0 ? 'text-destructive' : 'text-emerald-600',
+                        )}
+                      >
+                        {health.net_impact_score > 0 ? '+' : ''}
+                        {health.net_impact_score.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-border/60 bg-background/90 p-3 text-right">
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Confidence</p>
+                      <p className="mt-2 text-2xl font-semibold text-foreground">
+                        {Math.round(health.confidence_score * 100)}%
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-border/60 bg-background/90 p-3 text-right">
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Signal volume</p>
+                      <p className="mt-2 text-2xl font-semibold text-foreground">{health.signal_volume}</p>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-5 p-5">
+                <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+                  <div className="rounded-2xl border border-border/60 bg-background/90 p-4">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4" style={{ color: statusColor }} />
+                      <h4 className="text-sm font-semibold text-foreground">Strategic verdict</h4>
+                    </div>
+                    <p className="mt-3 text-sm leading-7 text-foreground">{health.strategic_verdict}</p>
+                  </div>
+
+                  <div className="rounded-2xl border border-border/60 bg-background/90 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Signal balance
+                        </p>
+                        <p className="mt-1 text-sm text-foreground">
+                          {health.negative_signals} challenging vs {health.positive_signals} validating
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px]">
+                        {health.signal_volume} total
+                      </Badge>
+                    </div>
+                    <div className="mt-4">
+                      <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Negative pressure</span>
+                        <span>{Math.round(challengingPercent)}%</span>
+                      </div>
+                      <div className="h-2.5 overflow-hidden rounded-full bg-border/60">
+                        <div className="h-full rounded-full bg-destructive" style={{ width: `${challengingPercent}%` }} />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Positive support</span>
+                        <span>{Math.round(validatingPercent)}%</span>
+                      </div>
+                      <div className="h-2.5 overflow-hidden rounded-full bg-border/60">
+                        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${validatingPercent}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-emerald-500/35 bg-background/90 p-4">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      <h4 className="text-sm font-semibold text-emerald-700">Validating evidence</h4>
+                    </div>
+                    <p className="mt-3 text-sm leading-7 text-foreground">
+                      {health.supporting_evidence_analysis || 'No validating evidence summary available yet.'}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-destructive/35 bg-background/90 p-4">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-destructive" />
+                      <h4 className="text-sm font-semibold text-destructive">Challenging evidence</h4>
+                    </div>
+                    <p className="mt-3 text-sm leading-7 text-foreground">
+                      {health.challenging_evidence_analysis || 'No challenging evidence summary available yet.'}
+                    </p>
+                  </div>
+                </div>
+
+                {health.key_risk_factors.length > 0 ? (
+                  <div className="rounded-2xl border border-border/60 bg-background/90 p-4">
+                    <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <AlertTriangle className="h-4 w-4 text-destructive" />
+                      Key risk factors
+                    </h4>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {health.key_risk_factors.map((risk, idx) => (
+                        <div key={idx} className="rounded-xl border border-destructive/20 px-3 py-3">
+                          <div className="flex items-start gap-2">
+                            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-destructive" />
+                            <p className="text-sm leading-6 text-foreground">{risk}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          <Card className="rounded-3xl border border-border/60 bg-card/90 shadow-sm">
+            <CardHeader className="gap-5 border-b border-border/60 pb-5">
+              <div>
+                <CardTitle className="text-lg">Evidence signals</CardTitle>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => setSignalFilter('all')}
+                  className={cn(
+                    "rounded-2xl border bg-background/85 p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-sm",
+                    signalFilter === 'all' ? "border-foreground/30 ring-1 ring-foreground/10" : "border-border/60"
+                  )}
+                >
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Total linked signals</p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">{total}</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSignalFilter('challenging')}
+                  className={cn(
+                    "rounded-2xl border bg-background/85 p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-sm",
+                    signalFilter === 'challenging' ? "border-destructive/45 ring-1 ring-destructive/15" : "border-destructive/25"
+                  )}
+                >
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Challenging</p>
+                  <p className="mt-2 text-2xl font-semibold text-destructive">{assumption.challengingSignals.length}</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSignalFilter('validating')}
+                  className={cn(
+                    "rounded-2xl border bg-background/85 p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-sm",
+                    signalFilter === 'validating' ? "border-primary/45 ring-1 ring-primary/15" : "border-primary/25"
+                  )}
+                >
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Validating</p>
+                  <p className="mt-2 text-2xl font-semibold text-primary">{assumption.validatingSignals.length}</p>
+                </button>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-5">
+              <div className="rounded-2xl border border-border/60 bg-background/90">
+                <ScrollArea className="h-[72vh] px-5 py-5">
+                  {feedSignals.length === 0 ? (
+                    <div className="flex h-40 flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 text-center">
+                      <p className="text-sm text-muted-foreground">No signals available in this view.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {feedSignals.map(({ signal, type }) => (
+                        <SignalBrowserRow
+                          key={`${type}-${signal.signal_id}`}
+                          signal={signal}
+                          type={type}
+                          onClick={() => onSignalClick(signal)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Legacy Assumption Detail Modal
+function LegacyAssumptionDetail({ assumption, onClose, onSignalClick }: {
+  assumption: AssumptionWithSignals;
+  onClose: () => void;
+  onSignalClick: (signal: Signal) => void
+}) {
+  const [scoreSort, setScoreSort] = useState<'desc' | 'asc'>('desc');
+  const [showFullDescription, setShowFullDescription] = useState(false);
+  const health = assumption.health;
+  const { borderColor, statusColor } = getHealthColor(health);
+  const assumptionLabel = getAssumptionDisplayLabel(assumption.id, assumption.statement);
+  const total = assumption.validatingSignals.length + assumption.challengingSignals.length;
+  const validatingPercent = total > 0 ? Math.round((assumption.validatingSignals.length / total) * 100) : 50;
+  const challengingPercent = 100 - validatingPercent;
+  const challengingCount = health?.negative_signals ?? assumption.challengingSignals.length;
+  const validatingCount = health?.positive_signals ?? assumption.validatingSignals.length;
 
   const sortedChallenging = useMemo(() => {
     return [...assumption.challengingSignals].sort((a, b) => {
@@ -1693,12 +2202,15 @@ function AssumptionDetail({ assumption, onClose, onSignalClick }: {
                     </Badge>
                   )}
                 </div>
-                <h2 className="text-lg font-medium text-foreground max-w-3xl">{assumption.statement}</h2>
-                {health && (
-                  <p className="text-sm text-muted-foreground max-w-4xl">
-                    <span className="font-semibold text-foreground">Strategic verdict:</span> {health.strategic_verdict}
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Assumption detail
                   </p>
-                )}
+                  <h2 className="mt-2 text-xl font-semibold text-foreground max-w-4xl">{assumptionLabel}</h2>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground max-w-4xl">
+                    Use the sections below to open the full assumption wording, review the verdict, and inspect the supporting signals.
+                  </p>
+                </div>
 
                 {assumption.supports_building_blocks?.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -1712,18 +2224,25 @@ function AssumptionDetail({ assumption, onClose, onSignalClick }: {
                   </div>
                 )}
 
-                <div className="flex items-center gap-4 mt-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    <div className="w-3 h-3 rounded-full bg-destructive" />
-                    <span className="text-muted-foreground">{health?.negative_signals || assumption.challengingSignals.length} challenging</span>
+                <div className="mt-3 max-w-3xl rounded-2xl border border-border/60 bg-background/70 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className="h-3 w-3 rounded-full bg-destructive" />
+                      <span className="text-muted-foreground">{challengingCount} challenging</span>
+                    </div>
+                    <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px] uppercase tracking-wide">
+                      {total} linked signals
+                    </Badge>
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className="h-3 w-3 rounded-full bg-primary" />
+                      <span className="text-muted-foreground">{validatingCount} validating</span>
+                    </div>
                   </div>
-                  <div className="w-40 h-2 rounded-full overflow-hidden flex border border-border">
-                    <div className="bg-destructive transition-all" style={{ width: `${challengingPercent}%` }} />
-                    <div className="bg-primary transition-all" style={{ width: `${validatingPercent}%` }} />
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <div className="w-3 h-3 rounded-full bg-primary" />
-                    <span className="text-muted-foreground">{health?.positive_signals || assumption.validatingSignals.length} validating</span>
+                  <div className="mt-3 h-2.5 overflow-hidden rounded-full border border-border bg-background">
+                    <div className="flex h-full">
+                      <div className="bg-destructive transition-all" style={{ width: `${challengingPercent}%` }} />
+                      <div className="bg-primary transition-all" style={{ width: `${validatingPercent}%` }} />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1737,72 +2256,188 @@ function AssumptionDetail({ assumption, onClose, onSignalClick }: {
 
       <div className="py-6 px-4">
         <div className="max-w-7xl mx-auto space-y-6">
+          <Collapsible open={showFullDescription} onOpenChange={setShowFullDescription}>
+            <Card className="rounded-3xl border border-border/60 bg-card/80 shadow-sm">
+              <CollapsibleTrigger asChild>
+                <button type="button" className="w-full text-left">
+                  <CardHeader className="pb-4">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <CardTitle className="text-base">Full assumption description</CardTitle>
+                        <CardDescription className="mt-1 text-sm">
+                          Keep the main view focused on the verdict and signals, and open this section when you want the full wording and rationale.
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-3 py-2 text-xs font-medium text-foreground">
+                        <span>{showFullDescription ? 'Hide full framing' : 'Open full framing'}</span>
+                        <ChevronDown className={cn("h-4 w-4 transition-transform", showFullDescription ? "rotate-180" : "")} />
+                      </div>
+                    </div>
+                  </CardHeader>
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-border/50 bg-background/80 p-4 lg:col-span-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Full statement</p>
+                    <p className="mt-2 text-sm leading-7 text-foreground">{assumption.statement}</p>
+                  </div>
+                  <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Why it matters</p>
+                    <p className="mt-2 text-sm text-foreground">
+                      {assumption.why_it_matters || 'Placeholder: fuller strategic rationale still needs to be added to the output.'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Evidence base</p>
+                    <p className="mt-2 text-sm text-foreground">
+                      {assumption.evidence_base || 'Placeholder: evidence base still needs to be expanded.'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Historical validity</p>
+                    <p className="mt-2 text-sm text-foreground">
+                      {assumption.historical_validity || 'Placeholder: historical validity is not yet available.'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Failure scenario</p>
+                    <p className="mt-2 text-sm text-foreground">
+                      {assumption.failure_scenario || 'Placeholder: failure scenario is still work in progress.'}
+                    </p>
+                  </div>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
+
           {/* Health Analysis Section */}
           {health && (
-            <Card className="border-2" style={{ borderColor: statusColor }}>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Activity className="h-5 w-5" style={{ color: statusColor }} />
-                    Assumption Health Analysis
-                  </CardTitle>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <span className="text-xs text-muted-foreground block">Net Impact</span>
-                      <span className={cn(
-                        "text-lg font-bold",
-                        health.net_impact_score < 0 ? "text-destructive" : "text-primary"
-                      )}>
-                        {health.net_impact_score > 0 ? '+' : ''}{health.net_impact_score.toFixed(2)}
-                      </span>
+            <Card className="overflow-hidden rounded-3xl border-2 shadow-sm" style={{ borderColor: statusColor }}>
+              <CardHeader className="border-b border-border/60 bg-card/80 pb-4">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Activity className="h-5 w-5" style={{ color: statusColor }} />
+                      <CardTitle className="text-lg">Assumption Health Analysis</CardTitle>
+                      <Badge variant={getStatusBadgeVariant(health.verification_status)} className="text-[11px]">
+                        {health.verification_status}
+                      </Badge>
                     </div>
-                    <div className="text-right">
-                      <span className="text-xs text-muted-foreground block">Confidence</span>
-                      <span className="text-lg font-bold text-foreground">
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      Clear read on the current assumption posture: overall verdict, what supports it, what pushes back, and where the key risk sits.
+                    </p>
+                  </div>
+
+                  <div className="grid min-w-[280px] grid-cols-3 gap-3">
+                    <div className="rounded-2xl border border-border/60 bg-background/90 p-3 text-right">
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Net impact</p>
+                      <p
+                        className={cn(
+                          'mt-2 text-2xl font-semibold',
+                          health.net_impact_score < 0 ? 'text-destructive' : 'text-emerald-600',
+                        )}
+                      >
+                        {health.net_impact_score > 0 ? '+' : ''}
+                        {health.net_impact_score.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-border/60 bg-background/90 p-3 text-right">
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Confidence</p>
+                      <p className="mt-2 text-2xl font-semibold text-foreground">
                         {Math.round(health.confidence_score * 100)}%
-                      </span>
+                      </p>
                     </div>
-                    <div className="text-right">
-                      <span className="text-xs text-muted-foreground block">Signal Volume</span>
-                      <span className="text-lg font-bold text-foreground">{health.signal_volume}</span>
+                    <div className="rounded-2xl border border-border/60 bg-background/90 p-3 text-right">
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Signal volume</p>
+                      <p className="mt-2 text-2xl font-semibold text-foreground">{health.signal_volume}</p>
                     </div>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-medium text-foreground mb-2">Strategic Verdict</h4>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{health.strategic_verdict}</p>
+              <CardContent className="space-y-5 p-5">
+                <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+                  <div className="rounded-2xl border border-border/60 bg-background/90 p-4">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4" style={{ color: statusColor }} />
+                      <h4 className="text-sm font-semibold text-foreground">Strategic verdict</h4>
+                    </div>
+                    <p className="mt-3 text-sm leading-7 text-foreground">{health.strategic_verdict}</p>
+                  </div>
+
+                  <div className="rounded-2xl border border-border/60 bg-background/90 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Signal balance
+                        </p>
+                        <p className="mt-1 text-sm text-foreground">
+                          {health.negative_signals} challenging vs {health.positive_signals} validating
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px]">
+                        {health.signal_volume} total
+                      </Badge>
+                    </div>
+                    <div className="mt-4">
+                      <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Negative pressure</span>
+                        <span>{Math.round(challengingPercent)}%</span>
+                      </div>
+                      <div className="h-2.5 overflow-hidden rounded-full bg-border/60">
+                        <div className="h-full rounded-full bg-destructive" style={{ width: `${challengingPercent}%` }} />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Positive support</span>
+                        <span>{Math.round(validatingPercent)}%</span>
+                      </div>
+                      <div className="h-2.5 overflow-hidden rounded-full bg-border/60">
+                        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${validatingPercent}%` }} />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                {health.supporting_evidence_analysis && (
-                  <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 space-y-1">
-                    <h4 className="text-sm font-semibold text-emerald-600">Validating Evidence</h4>
-                    <p className="text-sm text-emerald-900/80 leading-relaxed">{health.supporting_evidence_analysis}</p>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-emerald-500/35 bg-background/90 p-4">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      <h4 className="text-sm font-semibold text-emerald-700">Validating evidence</h4>
+                    </div>
+                    <p className="mt-3 text-sm leading-7 text-foreground">
+                      {health.supporting_evidence_analysis || 'No validating evidence summary available yet.'}
+                    </p>
                   </div>
-                )}
 
-                {health.challenging_evidence_analysis && (
-                  <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 space-y-1">
-                    <h4 className="text-sm font-semibold text-destructive">Challenging Evidence</h4>
-                    <p className="text-sm text-destructive/90 leading-relaxed">{health.challenging_evidence_analysis}</p>
+                  <div className="rounded-2xl border border-destructive/35 bg-background/90 p-4">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-destructive" />
+                      <h4 className="text-sm font-semibold text-destructive">Challenging evidence</h4>
+                    </div>
+                    <p className="mt-3 text-sm leading-7 text-foreground">
+                      {health.challenging_evidence_analysis || 'No challenging evidence summary available yet.'}
+                    </p>
                   </div>
-                )}
+                </div>
 
                 {health.key_risk_factors.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <div className="rounded-2xl border border-border/60 bg-background/90 p-4">
+                    <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
                       <AlertTriangle className="h-4 w-4 text-destructive" />
-                      Key Risk Factors
+                      Key risk factors
                     </h4>
-                    <ul className="space-y-1">
+                    <div className="grid gap-2 md:grid-cols-2">
                       {health.key_risk_factors.map((risk, idx) => (
-                        <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
-                          <span className="text-destructive shrink-0">-</span>
-                          <span>{risk}</span>
-                        </li>
+                        <div key={idx} className="rounded-xl border border-destructive/20 px-3 py-3">
+                          <div className="flex items-start gap-2">
+                            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-destructive" />
+                            <p className="text-sm leading-6 text-foreground">{risk}</p>
+                          </div>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -1887,11 +2522,21 @@ function AssumptionDetail({ assumption, onClose, onSignalClick }: {
 }
 
 // Core Assumptions Section
-function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: AssumptionWithSignals) => void }) {
+function CoreAssumptionsSection({
+  onAssumptionClick,
+  focusAssumptionId,
+}: {
+  onAssumptionClick: (a: AssumptionWithSignals) => void;
+  focusAssumptionId?: string | null;
+}) {
   const { data, coreAssumptions, allSignals } = useForesight();
   const [statusFilter, setStatusFilter] = useState<'all' | 'AT RISK' | 'MIXED' | 'VALIDATED'>('all');
   const [impactSort, setImpactSort] = useState<'desc' | 'asc' | 'id'>('desc');
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [showSpider, setShowSpider] = useState(false);
+  const [groupMode, setGroupMode] = useState<'building_blocks' | 'dependency_clusters'>('building_blocks');
+  const [clusterFilter, setClusterFilter] = useState<string>('all');
+  const clusters = data?.strategy_context?.assumption_dependencies?.critical_clusters || [];
 
   const assumptionHealthEntries = useMemo(() => {
     const rootHealth = data?.assumption_health || [];
@@ -1936,9 +2581,15 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
       if (typeFilter.length > 0 && !typeFilter.includes(assumption.category)) {
         return false;
       }
+      if (clusterFilter !== 'all') {
+        const selectedCluster = clusters.find((cluster) => cluster.cluster_name === clusterFilter);
+        if (!selectedCluster || !(selectedCluster.assumptions || []).includes(assumption.id)) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [assumptionsWithSignals, statusFilter, typeFilter]);
+  }, [assumptionsWithSignals, statusFilter, typeFilter, clusterFilter, clusters]);
 
   const sortedAssumptions = useMemo(() => {
     const list = [...filteredAssumptions];
@@ -1963,10 +2614,19 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
     return map;
   }, [assumptionsWithSignals]);
 
+  useEffect(() => {
+    if (!focusAssumptionId) return;
+    const focusedAssumption = assumptionById.get(focusAssumptionId);
+    if (focusedAssumption) {
+      onAssumptionClick(focusedAssumption);
+    }
+  }, [focusAssumptionId, assumptionById, onAssumptionClick]);
+
   const spiderAssumptions = useMemo(() => {
     return filteredAssumptions.map((assumption) => ({
       id: assumption.id,
       statement: assumption.statement,
+      displayLabel: getAssumptionDisplayLabel(assumption.id, assumption.statement, 4),
       category: assumption.category,
       supports_building_blocks: assumption.supports_building_blocks,
       health: assumption.health,
@@ -1975,19 +2635,167 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
     }));
   }, [filteredAssumptions]);
 
+  const groupedAssumptions = useMemo(() => {
+    const canonicalBlock = (block?: string) => {
+      if (!block) return 'cross_cutting';
+      if (block === 'Strategic_defence' || block === 'Strategic_defense') return 'value_defence';
+      return block;
+    };
+
+    const groups = sortedAssumptions.reduce((acc, assumption) => {
+      const key = canonicalBlock(assumption.supports_building_blocks?.[0]);
+      const list = acc.get(key) || [];
+      list.push(assumption);
+      acc.set(key, list);
+      return acc;
+    }, new Map<string, AssumptionWithSignals[]>());
+
+    return [
+      { key: 'value_creation', label: 'Value Creation', assumptions: groups.get('value_creation') || [] },
+      {
+        key: 'direction_and_positioning',
+        label: 'Direction & Positioning',
+        assumptions: groups.get('direction_and_positioning') || [],
+      },
+      { key: 'value_defence', label: 'Strategic Defence', assumptions: groups.get('value_defence') || [] },
+    ];
+  }, [sortedAssumptions]);
+
+  const clusterGroups = useMemo(() => {
+    const visibleClusters =
+      clusterFilter === 'all'
+        ? clusters
+        : clusters.filter((cluster) => cluster.cluster_name === clusterFilter);
+
+    return visibleClusters.map((cluster) => ({
+      ...cluster,
+      assumptions: sortedAssumptions.filter((assumption) => (cluster.assumptions || []).includes(assumption.id)),
+    }));
+  }, [clusters, sortedAssumptions, clusterFilter]);
+
   if (assumptionsWithSignals.length === 0) return null;
+
+  const renderAssumptionCard = (assumption: AssumptionWithSignals) => {
+    const health = assumption.health;
+    const { borderColor, statusColor } = getHealthColor(health);
+    const positiveSignals = health?.positive_signals ?? assumption.validatingSignals.length;
+    const negativeSignals = health?.negative_signals ?? assumption.challengingSignals.length;
+    const totalSignals = positiveSignals + negativeSignals;
+    const negativePercent = totalSignals > 0 ? (negativeSignals / totalSignals) * 100 : 50;
+    const positivePercent = 100 - negativePercent;
+    const computedImpact =
+      assumption.validatingSignals.reduce((sum, signal) => sum + getSignalScore(signal), 0) -
+      assumption.challengingSignals.reduce((sum, signal) => sum + getSignalScore(signal), 0);
+    const impactScore = health?.net_impact_score ?? computedImpact;
+
+    return (
+      <Card
+        key={assumption.id}
+        className="cursor-pointer rounded-xl bg-card transition-all hover:scale-[1.01]"
+        style={{ borderWidth: '3px', borderColor }}
+        onClick={() => onAssumptionClick(assumption)}
+      >
+        <CardContent className="space-y-4 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm font-bold" style={{ color: statusColor }}>{assumption.id}</span>
+                {health && (
+                  <Badge variant={getStatusBadgeVariant(health.verification_status)} className="text-xs">
+                    {health.verification_status}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-sm font-semibold text-foreground">
+                {getAssumptionDisplayLabel(assumption.id, assumption.statement, 4)}
+              </p>
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Net impact</span>
+              <div className={cn('text-xl font-semibold', impactScore < 0 ? 'text-destructive' : 'text-emerald-500')}>
+                {impactScore > 0 ? '+' : ''}
+                {impactScore.toFixed(2)}
+              </div>
+            </div>
+          </div>
+
+          <p className="text-sm leading-relaxed text-muted-foreground">{assumption.statement}</p>
+
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">Type</span>
+            <Badge variant="secondary" className="rounded-full px-3 py-1 text-[12px] capitalize">
+              {assumption.category}
+            </Badge>
+          </div>
+
+          {totalSignals > 0 && (
+            <div className="border-t border-border/50 pt-3">
+              <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  Challenging
+                  <span className="font-medium text-foreground">{negativeSignals}</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  Validating
+                  <span className="font-medium text-foreground">{positiveSignals}</span>
+                </span>
+              </div>
+              <div className="flex h-1.5 overflow-hidden rounded-full border border-border">
+                <div className="bg-destructive" style={{ width: `${negativePercent}%` }} />
+                <div className="bg-primary" style={{ width: `${positivePercent}%` }} />
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-md font-semibold flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-primary" />
-          Core Assumptions ({sortedAssumptions.length}/{assumptionsWithSignals.length})
-        </h3>
-        <div className="flex flex-wrap items-center gap-3 text-xs">
+      <div className="rounded-3xl border border-border/60 bg-card/70 p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-md font-semibold flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-primary" />
+            Core Assumptions ({sortedAssumptions.length}/{assumptionsWithSignals.length})
+          </h3>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-full px-4 text-[11px]"
+            onClick={() => setShowSpider((prev) => !prev)}
+          >
+            {showSpider ? 'Hide spider view' : 'Show spider view'}
+          </Button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">View:</span>
+            <div className="flex items-center gap-1 rounded-full border border-border/60 bg-background/80 p-1">
+              {[
+                { value: 'building_blocks', label: 'Strategic blocks' },
+                { value: 'dependency_clusters', label: 'Dependency clusters' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setGroupMode(option.value as typeof groupMode)}
+                  className={cn(
+                    "rounded-full px-3 py-1 text-[11px] font-medium transition",
+                    groupMode === option.value
+                      ? "bg-primary text-primary-foreground shadow"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">Filter:</span>
-            <div className="flex items-center gap-1 rounded-full border border-border/60 bg-card/70 p-1">
+            <div className="flex items-center gap-1 rounded-full border border-border/60 bg-background/80 p-1">
               {[
                 { value: 'all', label: 'All' },
                 { value: 'AT RISK', label: 'At risk' },
@@ -2049,7 +2857,7 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
           </DropdownMenu>
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">Sort:</span>
-            <div className="flex items-center gap-1 rounded-full border border-border/60 bg-card/70 p-1">
+            <div className="flex items-center gap-1 rounded-full border border-border/60 bg-background/80 p-1">
               <button
                 type="button"
                 onClick={() => setImpactSort('desc')}
@@ -2089,107 +2897,126 @@ function CoreAssumptionsSection({ onAssumptionClick }: { onAssumptionClick: (a: 
             </div>
           </div>
         </div>
+
+        {clusters.length > 0 ? (
+          <div className="mt-4 space-y-2">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-muted-foreground">Dependency filter:</span>
+              <button
+                type="button"
+                onClick={() => setClusterFilter('all')}
+                className={cn(
+                  'rounded-full border px-3 py-1 text-[11px] transition',
+                  clusterFilter === 'all'
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border/60 bg-background/80 text-muted-foreground hover:text-foreground',
+                )}
+              >
+                All clusters
+              </button>
+              {clusters.map((cluster) => (
+                <button
+                  key={cluster.cluster_name}
+                  type="button"
+                  onClick={() => setClusterFilter(cluster.cluster_name)}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-[11px] transition',
+                    clusterFilter === cluster.cluster_name
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border/60 bg-background/80 text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {cluster.cluster_name}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">
+              Use dependency clusters to sort assumptions by the dependency groups they belong to.
+            </p>
+          </div>
+        ) : null}
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <LinkIcon className="h-3 w-3" />
+            Open any assumption to move into the full detail view with scoring and linked signals.
+          </span>
+        </div>
       </div>
-      <span className="text-xs text-muted-foreground flex items-center gap-1">
-        <LinkIcon className="h-3 w-3" />
-        Click to see health analysis & signals
-      </span>
 
-      <AssumptionSpiderCharts
-        assumptions={spiderAssumptions}
-        title="Assumptions Comparison Spider"
-        subtitle="Toggle between building blocks and individual assumption score footprint. Higher score expands wider; click assumptions for detail."
-        onAssumptionClick={(assumption) => {
-          const fullAssumption = assumptionById.get(assumption.id);
-          if (fullAssumption) {
-            onAssumptionClick(fullAssumption);
-          }
-        }}
-      />
+      {showSpider ? (
+        <AssumptionSpiderCharts
+          assumptions={spiderAssumptions}
+          title="Assumption score comparison"
+          subtitle="The spider is available as a secondary visual. The primary view below stays organized by strategic building-block logic."
+          defaultMode="assumptions"
+          onAssumptionClick={(assumption) => {
+            const fullAssumption = assumptionById.get(assumption.id);
+            if (fullAssumption) {
+              onAssumptionClick(fullAssumption);
+            }
+          }}
+        />
+      ) : null}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {sortedAssumptions.length === 0 ? (
-          <div className="text-sm text-muted-foreground">No assumptions match this view and filter set.</div>
-        ) : sortedAssumptions.map(assumption => {
-          const health = assumption.health;
-          const { borderColor, statusColor } = getHealthColor(health);
-          const positiveSignals = health?.positive_signals ?? assumption.validatingSignals.length;
-          const negativeSignals = health?.negative_signals ?? assumption.challengingSignals.length;
-          const totalSignals = positiveSignals + negativeSignals;
-          const negativePercent = totalSignals > 0 ? (negativeSignals / totalSignals) * 100 : 50;
-          const positivePercent = 100 - negativePercent;
-          const computedImpact = assumption.validatingSignals.reduce((sum, signal) => sum + getSignalScore(signal), 0)
-            - assumption.challengingSignals.reduce((sum, signal) => sum + getSignalScore(signal), 0);
-          const impactScore = health?.net_impact_score ?? computedImpact;
-
-          return (
-            <Card
-              key={assumption.id}
-              className="cursor-pointer transition-all hover:scale-[1.01] bg-card rounded-xl"
-              style={{ borderWidth: '3px', borderColor }}
-              onClick={() => onAssumptionClick(assumption)}
-            >
-              <CardContent className="p-4 space-y-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-sm" style={{ color: statusColor }}>{assumption.id}</span>
-                      {health && (
-                        <Badge variant={getStatusBadgeVariant(health.verification_status)} className="text-xs">
-                          {health.verification_status}
-                        </Badge>
-                      )}
+      {sortedAssumptions.length === 0 ? (
+        <div className="text-sm text-muted-foreground">No assumptions match this view and filter set.</div>
+      ) : groupMode === 'dependency_clusters' ? (
+        clusterGroups.length > 0 ? (
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {clusterGroups.map((cluster) => (
+              <Card key={cluster.cluster_name} className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-sm">{cluster.cluster_name || 'Dependency cluster'}</CardTitle>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        {cluster.description || 'Cluster description not provided yet.'}
+                      </p>
                     </div>
+                    <Badge variant="outline" className="text-[11px]">
+                      {cluster.assumptions.length}
+                    </Badge>
                   </div>
-                  <div className="text-right">
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Net impact</span>
-                    <div className={cn(
-                      "text-xl font-semibold",
-                      impactScore < 0 ? "text-destructive" : "text-emerald-500"
-                    )}>
-                      {impactScore > 0 ? '+' : ''}{impactScore.toFixed(2)}
-                    </div>
-                  </div>
-                </div>
-
-                <p className="text-sm text-foreground leading-relaxed">{assumption.statement}</p>
-
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="text-muted-foreground">Type</span>
-                  <Badge variant="secondary" className="px-3 py-1 text-[12px] capitalize rounded-full">
-                    {assumption.category}
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {cluster.assumptions.length > 0 ? (
+                    cluster.assumptions.map(renderAssumptionCard)
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No assumptions match this dependency cluster and filter set.</p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card className="rounded-2xl border border-dashed border-border/70 bg-background/70 shadow-sm">
+            <CardContent className="p-4 text-sm text-muted-foreground">
+              Dependency cluster grouping is not available in the current output.
+            </CardContent>
+          </Card>
+        )
+      ) : (
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+          {groupedAssumptions.map((group) => (
+            <Card key={group.key} className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-sm">{group.label}</CardTitle>
+                  <Badge variant="outline" className="text-[11px]">
+                    {group.assumptions.length}
                   </Badge>
                 </div>
-
-                {totalSignals > 0 && (
-                  <div className="pt-3 border-t border-border/50">
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1">
-                      <span className="flex items-center gap-1">
-                        Challenging
-                        <span className="text-foreground font-medium">{negativeSignals}</span>
-                      </span>
-                      <span className="flex items-center gap-1">
-                        Validating
-                        <span className="text-foreground font-medium">{positiveSignals}</span>
-                      </span>
-                    </div>
-                    <div className="h-1.5 rounded-full overflow-hidden flex border border-border">
-                      <div
-                        className="bg-destructive"
-                        style={{ width: `${negativePercent}%` }}
-                      />
-                      <div
-                        className="bg-primary"
-                        style={{ width: `${positivePercent}%` }}
-                      />
-                    </div>
-                  </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {group.assumptions.length > 0 ? group.assumptions.map(renderAssumptionCard) : (
+                  <p className="text-sm text-muted-foreground">No assumptions currently mapped to this block.</p>
                 )}
               </CardContent>
             </Card>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -2227,9 +3054,6 @@ export function AssumptionsDefinitionSection() {
     block,
     assumptions: groupedByBlock.get(block) || [],
   }));
-  const otherBlocks = Array.from(groupedByBlock.entries()).filter(
-    ([block]) => !orderedColumns.includes(block as typeof orderedColumns[number]),
-  );
 
   return (
     <div className="space-y-4">
@@ -2433,29 +3257,25 @@ export function AssumptionsDefinitionSection() {
           </Card>
         ))}
       </div>
-
-      {otherBlocks.length > 0 && (
-        <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Other linked blocks</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            {otherBlocks.map(([block, assumptions]) => (
-              <Badge key={block} variant="outline" className="text-xs">
-                {formatBuildingBlock(block)}: {assumptions.length}
-              </Badge>
-            ))}
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
 
-export function AssumptionsAnalysis() {
+export function AssumptionsAnalysis({
+  focusAssumptionId,
+  onFocusAssumptionConsumed,
+}: {
+  focusAssumptionId?: string | null;
+  onFocusAssumptionConsumed?: () => void;
+}) {
   const { threatIds, opportunityIds, warningIds } = useForesight();
   const [selectedAssumption, setSelectedAssumption] = useState<AssumptionWithSignals | null>(null);
   const [selectedSignal, setSelectedSignal] = useState<Signal | null>(null);
+
+  useEffect(() => {
+    if (!focusAssumptionId) return;
+    onFocusAssumptionConsumed?.();
+  }, [focusAssumptionId, onFocusAssumptionConsumed]);
 
   return (
     <div className="space-y-6">
@@ -2475,7 +3295,10 @@ export function AssumptionsAnalysis() {
         warningIds={warningIds}
       />
 
-      <CoreAssumptionsSection onAssumptionClick={setSelectedAssumption} />
+      <CoreAssumptionsSection
+        onAssumptionClick={setSelectedAssumption}
+        focusAssumptionId={focusAssumptionId}
+      />
     </div>
   );
 }
@@ -2527,12 +3350,6 @@ export function StrategyComposition() {
         </TabsContent>
 
         <TabsContent value="objectives" className="space-y-6 mt-6">
-          <Card className="bg-card/70 border border-border/60 rounded-2xl shadow-sm">
-            <CardContent className="p-4 text-xs text-muted-foreground">
-              Start with strategic goals to understand intent and time horizon, then validate whether KPI coverage is
-              sufficient to monitor execution risk. Detailed rationale stays behind each card click.
-            </CardContent>
-          </Card>
           <StrategicObjectivesSection />
           <KPIsSection />
         </TabsContent>

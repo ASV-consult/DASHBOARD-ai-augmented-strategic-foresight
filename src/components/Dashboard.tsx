@@ -4,21 +4,26 @@ import { StrategyComposition } from '@/components/views/StrategyComposition';
 import { CoreAssumptionsView } from '@/components/views/CoreAssumptionsView';
 import { AssumptionsScoredHub } from '@/components/views/AssumptionsScoredHub';
 import { SignalStream } from '@/components/views/SignalStream';
+import { OutlierForecast } from '@/components/views/OutlierForecast';
 import { WorkstreamsView } from '@/components/views/WorkstreamsView';
 import { FinancialAnalysisView } from '@/components/views/FinancialAnalysisView';
 import { SharePriceAnalysisView } from '@/components/views/SharePriceAnalysisView';
+import { MacroDashboard } from '@/components/views/MacroDashboard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useForesight } from '@/contexts/ForesightContext';
+import { buildMacroPortfolioModel } from '@/lib/macro-utils';
 import { cn } from '@/lib/utils';
 import { useStreamUploader } from '@/hooks/use-stream-uploader';
 import {
   Activity,
   Building2,
+  BookOpenText,
   Briefcase,
   Calendar,
   ChevronLeft,
+  ChevronRight,
   CircleDollarSign,
   Compass,
   GitMerge,
@@ -80,6 +85,84 @@ const toDateLabel = (value?: string) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toISOString().slice(0, 10);
+};
+
+const viewMetaMap: Record<DashboardView, { title: string; stream: string; note: string }> = {
+  'streams-home': {
+    title: 'Executive Stream Home',
+    stream: 'Streams Home',
+    note: 'Choose the stream that answers the immediate leadership question, then move from executive context into evidence.',
+  },
+  convergence: {
+    title: 'Convergence Workspace',
+    stream: 'Executive Layer',
+    note: 'Intersection workspace across streams.',
+  },
+  'foresight-overview': {
+    title: 'Strategic Executive Overview',
+    stream: 'Strategic Stream',
+    note: 'Start point for strategic analysis.',
+  },
+  'foresight-strategy': {
+    title: 'Strategy Decomposition',
+    stream: 'Strategic Stream',
+    note: 'Core strategy structure and rationale.',
+  },
+  'foresight-core-assumptions': {
+    title: 'Core Assumptions',
+    stream: 'Strategic Stream',
+    note: 'Assumption inventory and diagnostics.',
+  },
+  'foresight-signals-stream': {
+    title: 'Signal Stream',
+    stream: 'Strategic Stream',
+    note: 'Signals linked to assumptions.',
+  },
+  'foresight-signals-outliers': {
+    title: 'Signal Outliers',
+    stream: 'Strategic Stream',
+    note: 'Threats, opportunities, and early warnings with the highest combined importance.',
+  },
+  'foresight-assumptions-scored': {
+    title: 'Assumptions Scored',
+    stream: 'Strategic Stream',
+    note: 'Scored assumption health view.',
+  },
+  'foresight-assumptions-synthesized': {
+    title: 'Assumptions Synthesized',
+    stream: 'Strategic Stream',
+    note: 'Synthesized scenario implications.',
+  },
+  'foresight-workstreams': {
+    title: 'Strategic Impact',
+    stream: 'Strategic Stream',
+    note: 'Recommended strategic workstreams.',
+  },
+  'financial-overview': {
+    title: 'Financial Executive Overview',
+    stream: 'Financial Stream',
+    note: 'Start point for financial interpretation.',
+  },
+  'financial-fundamentals': {
+    title: 'Financial Fundamentals',
+    stream: 'Financial Stream',
+    note: 'Fundamental performance and statement analysis.',
+  },
+  'financial-share-price': {
+    title: 'Share Price Analysis',
+    stream: 'Financial Stream',
+    note: 'Market behavior and event-forensics.',
+  },
+  'macro-overview': {
+    title: 'Macro Decision Dashboard',
+    stream: 'Macro Stream',
+    note: 'Executive comparison layer across overview, segment, and activity decisions.',
+  },
+  'macro-risk': {
+    title: 'Macro Executive Reading',
+    stream: 'Macro Stream',
+    note: 'Linear reading mode for executive walkthrough and fast narrative review.',
+  },
 };
 
 function SidebarItem({ label, icon: Icon, isActive, onClick, badge, collapsed, tone }: SidebarItemProps) {
@@ -214,7 +297,13 @@ function HomeStreamCard({
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{summary}</p>
             </div>
           </div>
-          <Badge variant="outline" className={cn('rounded-full px-3 py-1 text-[11px] font-semibold', statusClassName)}>
+          <Badge
+            variant="outline"
+            className={cn(
+              'max-w-[132px] rounded-full px-3 py-1 text-center text-[11px] font-semibold leading-4 whitespace-normal',
+              statusClassName,
+            )}
+          >
             {statusLabel}
           </Badge>
         </div>
@@ -223,7 +312,7 @@ function HomeStreamCard({
           {highlights.map((item) => (
             <div key={`${title}-${item.label}`} className={cn('rounded-2xl border p-3', selectedTone.highlight)}>
               <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{item.label}</p>
-              <p className="mt-1 text-sm font-medium text-foreground">{item.value}</p>
+              <p className="mt-1 text-sm font-medium text-foreground break-words">{item.value}</p>
             </div>
           ))}
         </div>
@@ -258,8 +347,10 @@ export function Dashboard() {
     hasForesightData,
     hasFinancialData,
     hasSharePriceData,
+    hasMacroData,
     financialData,
     sharePriceData,
+    macroData,
     companyName,
     resetStreams,
   } = useForesight();
@@ -267,11 +358,11 @@ export function Dashboard() {
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const [activeView, setActiveView] = useState<DashboardView>('streams-home');
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [viewHistory, setViewHistory] = useState<DashboardView[]>([]);
+  const [focusAssumptionId, setFocusAssumptionId] = useState<string | null>(null);
 
   const hasWorkstreams = workstreams.length > 0 || !!data?.strategic_impact_analysis;
-  const signalSubtab = activeView === 'foresight-signals-outliers' ? 'outliers' : 'stream';
   const assumptionsSubtab =
     activeView === 'foresight-assumptions-synthesized' ? 'synthesized' : 'scored';
 
@@ -297,8 +388,9 @@ export function Dashboard() {
       sharePriceSummary: summarize(sharePriceSummary, 24),
       topFlag: financialData?.executive?.top_flag?.message || '',
       marketRegime: sharePriceData?.price_profile?.current_regime || '',
+      macroThesis: macroData ? summarize(buildMacroPortfolioModel(macroData).heroThesis, 24) : '',
     };
-  }, [data, financialData, sharePriceData]);
+  }, [data, financialData, macroData, sharePriceData]);
 
   const companyContext = useMemo(() => {
     const strategyCompany = data?.strategy_context?.company || data?.company_strategy?.company;
@@ -315,6 +407,7 @@ export function Dashboard() {
       data?.strategy_context?.strategy_snapshot?.one_line_positioning ||
       data?.company_strategy?.strategy_snapshot?.one_line_positioning ||
       financialData?.executive?.executive_thesis ||
+      macroData?.overview_view?.title ||
       'Use Streams Home to orient quickly, then open each stream executive overview.';
     return {
       displayName,
@@ -322,16 +415,13 @@ export function Dashboard() {
       asOf,
       oneLine,
     };
-  }, [companyName, data, financialData, sharePriceData]);
+  }, [companyName, data, financialData, macroData, sharePriceData]);
 
-  const navigate = (view: DashboardView, collapseAfter = true) => {
+  const navigate = (view: DashboardView, _sidebarBehavior = true) => {
     if (view !== activeView) {
       setViewHistory((prev) => [...prev, activeView]);
     }
     setActiveView(view);
-    if (collapseAfter && typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches) {
-      setIsSidebarCollapsed(true);
-    }
   };
 
   const goBack = () => {
@@ -342,9 +432,6 @@ export function Dashboard() {
       setActiveView(previousView);
       return next;
     });
-    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches) {
-      setIsSidebarCollapsed(false);
-    }
   };
 
   const handleForesightNavigate = (tab: string) => {
@@ -369,109 +456,65 @@ export function Dashboard() {
     </Card>
   );
 
-  const currentViewMeta = useMemo(() => {
-    const map: Record<DashboardView, { title: string; stream: string; note: string }> = {
-      'streams-home': {
-        title: 'Executive Stream Home',
-        stream: 'Streams Home',
-        note: 'Choose the stream that answers the immediate leadership question, then move from executive context into evidence.',
-      },
-      convergence: {
-        title: 'Convergence Workspace',
-        stream: 'Executive Layer',
-        note: 'Intersection workspace across streams.',
-      },
-      'foresight-overview': {
-        title: 'Strategic Executive Overview',
-        stream: 'Strategic Stream',
-        note: 'Start point for strategic analysis.',
-      },
-      'foresight-strategy': {
-        title: 'Strategy Decomposition',
-        stream: 'Strategic Stream',
-        note: 'Core strategy structure and rationale.',
-      },
-      'foresight-core-assumptions': {
-        title: 'Core Assumptions',
-        stream: 'Strategic Stream',
-        note: 'Assumption inventory and diagnostics.',
-      },
-      'foresight-signals-stream': {
-        title: 'Signal Stream',
-        stream: 'Strategic Stream',
-        note: 'Signals linked to assumptions.',
-      },
-      'foresight-signals-outliers': {
-        title: 'Signal Outliers',
-        stream: 'Strategic Stream',
-        note: 'High-importance outlier detection.',
-      },
-      'foresight-assumptions-scored': {
-        title: 'Assumptions Scored',
-        stream: 'Strategic Stream',
-        note: 'Scored assumption health view.',
-      },
-      'foresight-assumptions-synthesized': {
-        title: 'Assumptions Synthesized',
-        stream: 'Strategic Stream',
-        note: 'Synthesized scenario implications.',
-      },
-      'foresight-workstreams': {
-        title: 'Strategic Impact',
-        stream: 'Strategic Stream',
-        note: 'Recommended strategic workstreams.',
-      },
-      'financial-overview': {
-        title: 'Financial Executive Overview',
-        stream: 'Financial Stream',
-        note: 'Start point for financial interpretation.',
-      },
-      'financial-fundamentals': {
-        title: 'Financial Fundamentals',
-        stream: 'Financial Stream',
-        note: 'Fundamental performance and statement analysis.',
-      },
-      'financial-share-price': {
-        title: 'Share Price Analysis',
-        stream: 'Financial Stream',
-        note: 'Market behavior and event-forensics.',
-      },
-      'macro-overview': {
-        title: 'Macro Executive Overview',
-        stream: 'Macro Stream',
-        note: 'Macro summary layer (work in progress).',
-      },
-      'macro-risk': {
-        title: 'Macro Risk Detail',
-        stream: 'Macro Stream',
-        note: 'Macro deep dive (work in progress).',
-      },
+  const currentViewMeta = viewMetaMap[activeView];
+
+  const strategicStepNavigation = useMemo(() => {
+    const steps: DashboardView[] = [
+      'foresight-overview',
+      'foresight-strategy',
+      'foresight-core-assumptions',
+      'foresight-signals-stream',
+      'foresight-signals-outliers',
+      'foresight-assumptions-scored',
+      'foresight-assumptions-synthesized',
+      'foresight-workstreams',
+    ];
+
+    const index = steps.indexOf(activeView);
+    if (index === -1) return null;
+
+    return {
+      previous: index > 0 ? steps[index - 1] : null,
+      next: index < steps.length - 1 ? steps[index + 1] : null,
     };
-    return map[activeView];
   }, [activeView]);
+
+  const previousStepMeta = strategicStepNavigation?.previous ? viewMetaMap[strategicStepNavigation.previous] : null;
+  const nextStepMeta = strategicStepNavigation?.next ? viewMetaMap[strategicStepNavigation.next] : null;
+  const canReturnToStrategicOverview =
+    activeView !== 'foresight-overview' && activeView.startsWith('foresight-');
 
   const renderStreamsHome = () => {
     const asOfDisplay = toDateLabel(companyContext.asOf);
     const strategicReady = hasForesightData;
     const financialReady = hasFinancialData || hasSharePriceData;
+    const macroReady = hasMacroData;
     const financialCoverage = Number(hasFinancialData) + Number(hasSharePriceData);
-    const activeStreamCount = Number(strategicReady) + Number(financialReady);
+    const activeStreamCount = Number(strategicReady) + Number(financialReady) + Number(macroReady);
+    const positiveSignals = allSignals.filter((signal) => signal.impact_direction === 'Positive').length;
+    const negativeSignals = allSignals.filter((signal) => signal.impact_direction === 'Negative').length;
     const startRecommendation = strategicReady
-      ? {
-          title: 'Start with the Strategic Stream',
-          body:
-            'It currently provides the clearest executive framing for the company case, pressure-tested assumptions, and resulting strategic impact pathways.',
-        }
+        ? {
+            title: 'Start with the Strategic Stream',
+            body:
+              'It currently provides the clearest executive framing for the company case. The financial executive layer is still work in progress, while the macro stream now operates as a separate decision tool when loaded.',
+          }
       : financialReady
         ? {
             title: 'Start with the Financial Stream',
             body:
-              'Use the financial layer first to establish the business and market context while the strategic stream is still missing.',
+              'Use the financial layer first to establish business and market context while the strategic stream is still missing. The financial view is still being refined, while the macro stream may already be available as a separate decision tool.',
           }
+        : macroReady
+          ? {
+              title: 'Start with the Macro Stream',
+              body:
+                'Use the macro decision dashboard to compare segments, surface cross-cutting pressures, and set the first drill-down path. The financial layer is still being refined, while the strategic stream is not currently loaded.',
+            }
         : {
             title: 'Load a stream to begin',
             body:
-              'Once a stream is uploaded, this page becomes the executive launch point for every downstream analysis and drill-down view.',
+              'Once a stream is uploaded, this page becomes the executive launch point for every downstream analysis and drill-down view. The financial layer is still being refined, while the macro layer now supports a guided decision flow when loaded.',
           };
 
     const financialSecondaryAction = hasSharePriceData
@@ -584,7 +627,7 @@ export function Dashboard() {
           <HomeStreamCard
             tone="strategic"
             title="Strategic Stream"
-            statusLabel={strategicReady ? 'Ready for executive review' : 'Awaiting strategic payload'}
+            statusLabel={strategicReady ? 'Executive-ready' : 'Awaiting upload'}
             statusClassName={
               strategicReady
                 ? 'border-sky-500/30 bg-sky-500/12 text-sky-700'
@@ -600,7 +643,13 @@ export function Dashboard() {
             highlights={[
               { label: 'Signals', value: `${allSignals.length}` },
               { label: 'Assumptions', value: `${coreAssumptions.length}` },
-              { label: 'Impact paths', value: `${workstreams.length}` },
+              {
+                label: 'Positive / Negative',
+                value:
+                  positiveSignals + negativeSignals > 0
+                    ? `${positiveSignals} / ${negativeSignals}`
+                    : 'Pending',
+              },
             ]}
             primaryActionLabel="Open Strategic Executive"
             onPrimaryAction={() => navigate('foresight-overview', false)}
@@ -615,10 +664,10 @@ export function Dashboard() {
             title="Financial Stream"
             statusLabel={
               financialCoverage === 2
-                ? 'Fully loaded'
+                ? 'Loaded'
                 : financialReady
                   ? 'Partially loaded'
-                  : 'Awaiting financial payloads'
+                  : 'Awaiting upload'
             }
             statusClassName={
               financialCoverage === 2
@@ -632,13 +681,13 @@ export function Dashboard() {
               financialReady
                 ? streamSummary.financialThesis ||
                   streamSummary.sharePriceSummary ||
-                  'Financial stream data is available and ready for executive interpretation.'
-                : 'Upload fundamentals and/or share-price payloads to unlock the financial executive layer, statement lab, and event forensics.'
+                  'Financial analysis and share-price analysis are being assembled here for executive use. This stream is still work in progress.'
+                : 'Upload financial analysis and share-price analysis payloads to unlock the financial executive layer, statement review, and market context.'
             }
             highlights={[
-              { label: 'Coverage', value: `${financialCoverage}/2` },
-              { label: 'Events', value: `${sharePriceData?.key_events?.length || 0}` },
-              { label: 'Regime', value: streamSummary.marketRegime || 'Pending' },
+              { label: 'Financial analysis', value: hasFinancialData ? 'Yes' : 'No' },
+              { label: 'Share-price analysis', value: hasSharePriceData ? 'Yes' : 'No' },
+              { label: 'Share-price regime', value: streamSummary.marketRegime || 'Pending' },
             ]}
             primaryActionLabel="Open Financial Executive"
             onPrimaryAction={() => navigate('financial-overview', false)}
@@ -649,19 +698,28 @@ export function Dashboard() {
           <HomeStreamCard
             tone="macro"
             title="Macro Stream"
-            statusLabel="Planned next layer"
-            statusClassName="border-amber-500/30 bg-amber-500/12 text-amber-700"
+            statusLabel={macroReady ? 'Loaded' : 'Awaiting upload'}
+            statusClassName={
+              macroReady
+                ? 'border-amber-500/30 bg-amber-500/12 text-amber-700'
+                : 'border-border/60 bg-background/75 text-muted-foreground'
+            }
             icon={ShieldAlert}
-            summary="Macro stays visible as the next layer for policy, geopolitical, commodity, and FX shifts that could change the company case from outside the business."
+            summary={
+              macroReady
+                ? streamSummary.macroThesis ||
+                  'Macro is loaded as a guided decision tool with overview, segment, activity, and reading modes.'
+                : 'Upload the macro dashboard JSON to unlock the executive control tower, segment decision pages, activity diagnostics, theme overlays, and reading mode.'
+            }
             highlights={[
-              { label: 'Domains', value: 'Policy, FX' },
-              { label: 'Status', value: 'Design phase' },
-              { label: 'Next stop', value: 'Convergence' },
+              { label: 'Mode', value: macroReady ? 'Decision tool' : 'Pending' },
+              { label: 'Entry', value: macroData?.default_route || 'overview' },
+              { label: 'Reading', value: macroData?.entry_modes?.reading_entry_view || 'reading_executive' },
             ]}
-            primaryActionLabel="Preview Macro Executive"
+            primaryActionLabel="Open Macro Dashboard"
             onPrimaryAction={() => navigate('macro-overview', false)}
-            secondaryActionLabel="Open Convergence Workspace"
-            onSecondaryAction={() => navigate('convergence', false)}
+            secondaryActionLabel={macroReady ? 'Open Executive Reading' : 'Open Convergence Workspace'}
+            onSecondaryAction={() => navigate(macroReady ? 'macro-risk' : 'convergence', false)}
           />
         </div>
       </div>
@@ -756,6 +814,10 @@ export function Dashboard() {
       return renderNoDataCard('Strategic foresight stream is not loaded yet. Upload a foresight JSON file.');
     }
 
+    if (activeView.startsWith('macro-') && !hasMacroData) {
+      return renderNoDataCard('Macro stream is not loaded yet. Upload a macro dashboard JSON file.');
+    }
+
     switch (activeView) {
       case 'streams-home':
         return renderStreamsHome();
@@ -786,21 +848,23 @@ export function Dashboard() {
           </Card>
         );
       case 'foresight-overview':
-        return <ExecutiveOverview onNavigate={handleForesightNavigate} />;
+        return (
+          <ExecutiveOverview
+            onNavigate={handleForesightNavigate}
+            onOpenAssumptionDetail={(assumptionId) => {
+              setFocusAssumptionId(assumptionId);
+              navigate('foresight-assumptions-scored', false);
+            }}
+          />
+        );
       case 'foresight-strategy':
         return <StrategyComposition />;
       case 'foresight-core-assumptions':
         return <CoreAssumptionsView />;
       case 'foresight-signals-stream':
+        return <SignalStream />;
       case 'foresight-signals-outliers':
-        return (
-          <SignalStream
-            activeTab={signalSubtab}
-            onTabChange={(tab) =>
-              navigate(tab === 'outliers' ? 'foresight-signals-outliers' : 'foresight-signals-stream', false)
-            }
-          />
-        );
+        return <OutlierForecast />;
       case 'foresight-assumptions-scored':
       case 'foresight-assumptions-synthesized':
         return (
@@ -812,6 +876,8 @@ export function Dashboard() {
                 false,
               )
             }
+            focusAssumptionId={focusAssumptionId}
+            onFocusAssumptionConsumed={() => setFocusAssumptionId(null)}
           />
         );
       case 'foresight-workstreams':
@@ -824,50 +890,17 @@ export function Dashboard() {
         return <SharePriceAnalysisView />;
       case 'macro-overview':
         return (
-          <Card className="rounded-3xl border border-border/60 bg-background/80 shadow-sm">
-            <CardHeader>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <ShieldAlert className="h-4 w-4 text-primary" />
-                  Macro Stream Executive Overview
-                </CardTitle>
-                <Badge variant="outline" className="rounded-full text-[11px]">
-                  Work in progress
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm text-muted-foreground">
-              <p>
-                Macro executive layer will summarize policy, geopolitical, commodity, and FX risk
-                implications for strategy and capital allocation.
-              </p>
-              <p>
-                Once macro payload schemas are available, this page will show top macro signals and
-                their cross-stream impact.
-              </p>
-            </CardContent>
-          </Card>
+          <MacroDashboard
+            initialMode="dashboard"
+            onRequestModeChange={(nextMode) => navigate(nextMode === 'reading' ? 'macro-risk' : 'macro-overview', false)}
+          />
         );
       case 'macro-risk':
         return (
-          <Card className="rounded-3xl border border-border/60 bg-background/80 shadow-sm">
-            <CardHeader>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <ShieldAlert className="h-4 w-4 text-primary" />
-                  Macro Risk Detail
-                </CardTitle>
-                <Badge variant="outline" className="rounded-full text-[11px]">
-                  Work in progress
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm text-muted-foreground">
-              <p>
-                This detail page is prepared for macro risk analysis results and drill-down visualizations.
-              </p>
-            </CardContent>
-          </Card>
+          <MacroDashboard
+            initialMode="reading"
+            onRequestModeChange={(nextMode) => navigate(nextMode === 'reading' ? 'macro-risk' : 'macro-overview', false)}
+          />
         );
       default:
         return null;
@@ -1117,24 +1150,26 @@ export function Dashboard() {
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Macro Stream
                       </p>
-                      <Badge variant="outline" className="text-[10px]">WIP</Badge>
+                      <Badge variant={hasMacroData ? 'default' : 'secondary'} className="text-[10px]">
+                        {hasMacroData ? 'Loaded' : 'Missing'}
+                      </Badge>
                     </div>
                   )}
                   <SidebarItem
-                    label="Executive Overview"
+                    label="Decision Dashboard"
                     icon={LayoutDashboard}
                     isActive={activeView === 'macro-overview'}
                     onClick={() => navigate('macro-overview')}
-                    badge="WIP"
+                    badge={hasMacroData ? 'Ready' : 'Pending'}
                     collapsed={isSidebarCollapsed}
                     tone="macro"
                   />
                   <SidebarItem
-                    label="Macro Risk Detail"
-                    icon={ShieldAlert}
+                    label="Executive Reading"
+                    icon={BookOpenText}
                     isActive={activeView === 'macro-risk'}
                     onClick={() => navigate('macro-risk')}
-                    badge="WIP"
+                    badge={hasMacroData ? 'Ready' : 'Pending'}
                     collapsed={isSidebarCollapsed}
                     tone="macro"
                   />
@@ -1157,35 +1192,39 @@ export function Dashboard() {
 
         <section className="min-w-0 flex-1 rounded-2xl border border-border/60 bg-background/80 p-4 shadow-sm md:p-5 lg:p-6">
           {activeView !== 'streams-home' ? (
-            <div className="mb-4 rounded-2xl border border-border/60 bg-gradient-to-r from-background via-muted/20 to-background px-4 py-3 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <div className="flex items-center gap-2">
+            <div className="mb-4 rounded-2xl border border-border/60 bg-background/92 p-4 shadow-sm">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline" className="rounded-full text-[10px]">
                       {currentViewMeta.stream}
                     </Badge>
-                    <h2 className="text-sm font-semibold text-foreground">{currentViewMeta.title}</h2>
+                    <Badge variant="outline" className="rounded-full text-[10px]">
+                      You are here
+                    </Badge>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{currentViewMeta.note}</p>
+                  <h2 className="mt-2 text-base font-semibold tracking-tight text-foreground md:text-lg">
+                    {currentViewMeta.title}
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{currentViewMeta.note}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-full px-3 text-[11px]"
-                    disabled={viewHistory.length === 0}
-                    onClick={goBack}
-                  >
-                    <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+
+                <div className="flex flex-wrap gap-2">
+                  {canReturnToStrategicOverview ? (
+                    <Button
+                      variant="secondary"
+                      className="rounded-full px-4"
+                      onClick={() => navigate('foresight-overview', false)}
+                    >
+                      <LayoutDashboard className="h-4 w-4" />
+                      Executive Overview
+                    </Button>
+                  ) : null}
+                  <Button variant="outline" className="rounded-full px-4" disabled={viewHistory.length === 0} onClick={goBack}>
+                    <ChevronLeft className="h-4 w-4" />
                     Back
                   </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="h-8 rounded-full px-3 text-[11px]"
-                    disabled={activeView === 'streams-home'}
-                    onClick={() => navigate('streams-home', false)}
-                  >
+                  <Button variant="secondary" className="rounded-full px-4" onClick={() => navigate('streams-home', false)}>
                     Streams Home
                   </Button>
                 </div>
@@ -1193,6 +1232,64 @@ export function Dashboard() {
             </div>
           ) : null}
           {renderCurrentView()}
+          {strategicStepNavigation ? (
+            <div className="mt-6 grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-center">
+              <div className="flex justify-start">
+                {previousStepMeta ? (
+                  <Button
+                    variant="outline"
+                    className="h-auto min-h-14 rounded-2xl px-4 py-3"
+                    onClick={() => navigate(strategicStepNavigation.previous!, false)}
+                  >
+                    <ChevronLeft className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="flex flex-col items-start text-left">
+                      <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                        Previous step
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">{previousStepMeta.title}</span>
+                    </span>
+                  </Button>
+                ) : (
+                  <div />
+                )}
+              </div>
+
+              <div className="flex justify-center">
+                {canReturnToStrategicOverview ? (
+                  <Button
+                    variant="ghost"
+                    className="rounded-full px-4 text-sm"
+                    onClick={() => navigate('foresight-overview', false)}
+                  >
+                    <LayoutDashboard className="h-4 w-4" />
+                    Strategic Executive Overview
+                  </Button>
+                ) : (
+                  <div />
+                )}
+              </div>
+
+              <div className="flex justify-end">
+                {nextStepMeta ? (
+                  <Button
+                    variant="outline"
+                    className="h-auto min-h-14 rounded-2xl px-4 py-3"
+                    onClick={() => navigate(strategicStepNavigation.next!, false)}
+                  >
+                    <span className="flex flex-col items-end text-right">
+                      <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                        Next step
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">{nextStepMeta.title}</span>
+                    </span>
+                    <ChevronRight className="ml-2 h-4 w-4 shrink-0" />
+                  </Button>
+                ) : (
+                  <div />
+                )}
+              </div>
+            </div>
+          ) : null}
         </section>
       </main>
     </div>

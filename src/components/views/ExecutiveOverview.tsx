@@ -8,10 +8,8 @@ import { SignalCard } from '@/components/SignalCard';
 import { AssumptionHealth, Signal } from '@/types/foresight';
 import { AssumptionSpiderCharts } from '@/components/views/AssumptionSpiderCharts';
 import { 
-  getSignalScore, 
   sortByScore, 
-  getTopSignals,
-  getAssumptionSensitivity
+  getTopSignals
 } from '@/lib/signal-utils';
 import {
   ArrowRight,
@@ -29,9 +27,11 @@ import {
   FileText
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getAssumptionDisplayLabel } from '@/lib/foresight-utils';
 
 interface ExecutiveOverviewProps {
   onNavigate: (tab: string) => void;
+  onOpenAssumptionDetail: (assumptionId: string) => void;
 }
 
 interface PipelineStageProps {
@@ -175,7 +175,17 @@ const pressureRank = (value?: string) => {
   return 0;
 };
 
-export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
+const compactForceName = (value: string) => {
+  const normalized = value.toLowerCase();
+  if (normalized.includes('rivalry')) return 'Industry rivalry';
+  if (normalized.includes('buyer') || normalized.includes('customer')) return 'Buyer power';
+  if (normalized.includes('supplier')) return 'Supplier power';
+  if (normalized.includes('entrant') || normalized.includes('entry')) return 'New entrants';
+  if (normalized.includes('substitute')) return 'Substitutes';
+  return value;
+};
+
+export function ExecutiveOverview({ onNavigate, onOpenAssumptionDetail }: ExecutiveOverviewProps) {
   const { 
     data, 
     allSignals, 
@@ -210,25 +220,6 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
   const topOpportunities = useMemo(() => getTopSignals(opportunities, 5), [opportunities]);
   const topWarnings = useMemo(() => getTopSignals(earlyWarnings, 5), [earlyWarnings]);
   
-  // Most sensitive assumptions (by signal count and average score)
-  const sensitiveAssumptions = useMemo(() => {
-    if (!coreAssumptions.length) return [];
-    
-    return coreAssumptions
-      .map(a => ({
-        assumption: a,
-        ...getAssumptionSensitivity(allSignals, a.id)
-      }))
-      .filter(a => a.total > 0)
-      .sort((a, b) => {
-        // Sort by total signals * average score
-        const scoreA = a.total * a.avgScore;
-        const scoreB = b.total * b.avgScore;
-        return scoreB - scoreA;
-      })
-      .slice(0, 5);
-  }, [coreAssumptions, allSignals]);
-
   // Synthesized insights
   const synthesizedInsights = useMemo(() => {
     const improving = allSignals.filter(s => s.impact_direction === 'Positive');
@@ -252,6 +243,25 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
     return map;
   }, [assumptionHealthEntries]);
 
+  const assumptionStatusCounts = useMemo(() => {
+    const statuses = Array.from(assumptionHealthMap.values());
+    if (statuses.length === 0) {
+      return {
+        validated: 0,
+        stable: coreAssumptions.length,
+        challenged: 0,
+        total: coreAssumptions.length,
+      };
+    }
+
+    return {
+      validated: statuses.filter((item) => item.verification_status === 'VALIDATED').length,
+      stable: statuses.filter((item) => item.verification_status === 'MIXED').length,
+      challenged: statuses.filter((item) => item.verification_status === 'AT RISK' || item.verification_status === 'UNKNOWN').length,
+      total: statuses.length,
+    };
+  }, [assumptionHealthMap, coreAssumptions.length]);
+
   const spiderAssumptions = useMemo(() => {
     return coreAssumptions.map((assumption) => {
       const relatedSignals = allSignals.filter(
@@ -260,6 +270,7 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
       return {
         id: assumption.id,
         statement: assumption.statement,
+        displayLabel: getAssumptionDisplayLabel(assumption.id, assumption.statement, 4),
         category: assumption.category,
         supports_building_blocks: assumption.supports_building_blocks,
         health: assumptionHealthMap.get(assumption.id),
@@ -298,38 +309,32 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
   const strategicAtGlance = useMemo(() => {
     const fiveForces = data?.strategy_context?.porter_five_forces || data?.strategy_context?.porter_5_forces;
     const forces = normalizeForceEntries(fiveForces).sort((a, b) => pressureRank(b.intensity) - pressureRank(a.intensity));
-    const topForce = forces[0];
-
-    const swot = data?.strategy_context?.swot_analysis;
-    const weakness = Array.isArray(swot?.weaknesses) ? swot?.weaknesses[0] : '';
-    const opportunity = Array.isArray(swot?.opportunities) ? swot?.opportunities[0] : '';
 
     const healthEntries = [
       ...(data?.strategy_context?.assumption_health || []),
       ...(data?.assumption_health || []),
     ];
-    const atRisk = healthEntries.filter((item: any) =>
-      String(item?.verification_status || '').toUpperCase().includes('RISK')
-    ).length;
-    const mixed = healthEntries.filter((item: any) =>
-      String(item?.verification_status || '').toUpperCase().includes('MIXED')
-    ).length;
+    const positiveSignals =
+      healthEntries.reduce((sum: number, item: any) => sum + Number(item?.positive_signals || 0), 0) ||
+      allSignals.filter((signal) => signal.impact_direction === 'Positive').length;
+    const negativeSignals =
+      healthEntries.reduce((sum: number, item: any) => sum + Number(item?.negative_signals || 0), 0) ||
+      allSignals.filter((signal) => signal.impact_direction === 'Negative').length;
 
     return {
-      topForce,
-      swotSignal: summarizeWords(`${typeof weakness === 'string' ? weakness : ''} ${typeof opportunity === 'string' ? opportunity : ''}`, 18),
+      forces: forces.slice(0, 5),
       assumptionPulse:
-        healthEntries.length > 0
-          ? `${atRisk} at risk, ${mixed} mixed assumptions`
-          : `${coreAssumptions.length} assumptions under monitoring`,
+        `${assumptionStatusCounts.validated} validated, ${assumptionStatusCounts.stable} stable, ${assumptionStatusCounts.challenged} challenged across ${assumptionStatusCounts.total} assumptions`,
     };
-  }, [data, coreAssumptions.length]);
+  }, [data, allSignals, assumptionStatusCounts]);
 
   const signalBalance = useMemo(() => {
     const positive = allSignals.filter((signal) => signal.impact_direction === 'Positive').length;
     const negative = allSignals.filter((signal) => signal.impact_direction === 'Negative').length;
     const totalDirectional = Math.max(positive + negative, 1);
     const warningShare = Math.max(earlyWarnings.length, 0);
+    const warningWithinNegativeShare =
+      negative > 0 ? Math.min(100, Math.round((earlyWarnings.length / negative) * 100)) : 0;
 
     return {
       positive,
@@ -337,29 +342,11 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
       warnings: earlyWarnings.length,
       positiveShare: Math.round((positive / totalDirectional) * 100),
       negativeShare: Math.round((negative / totalDirectional) * 100),
+      warningWithinNegativeShare,
       warningShare:
         allSignals.length > 0 ? Math.min(100, Math.round((warningShare / allSignals.length) * 100)) : 0,
     };
   }, [allSignals, earlyWarnings.length]);
-
-  const leadingWorkstream = useMemo(() => {
-    const workstream = workstreams[0];
-    if (!workstream) return null;
-
-    return {
-      title:
-        workstream.detailed_analysis?.customized_title ||
-        workstream.recommendation?.project_title ||
-        workstream.detailed_analysis?.workstream_name ||
-        workstream.id,
-      summary: summarizeWords(
-        workstream.detailed_analysis?.executive_summary?.issue ||
-          workstream.detailed_analysis?.rationale ||
-          workstream.recommendation?.product_name,
-        22,
-      ),
-    };
-  }, [workstreams]);
 
   if (!data) {
     return (
@@ -489,189 +476,168 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
       <div className="text-center text-sm text-muted-foreground px-6 -mt-2">
         Use the pipeline as your primary navigation to move from inputs to strategic impact. Supporting details sit below.
       </div>
-      <div className="mt-4 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.95fr)] xl:items-start">
-        {spiderAssumptions.length > 0 ? (
-          <AssumptionSpiderCharts
-            assumptions={spiderAssumptions}
-            title="Assumption Health Footprint"
-            subtitle="Use the spider to compare building-block pressure and assumption score footprint without leaving the executive view."
-            onAssumptionClick={() => onNavigate('assumptions')}
-          />
-        ) : (
-          <Card className="rounded-3xl border border-border/60 bg-card/70 shadow-sm">
-            <CardContent className="p-6 text-sm text-muted-foreground">
-              Assumption scoring is not available yet for this payload.
-            </CardContent>
-          </Card>
-        )}
-
-        <Card className="rounded-3xl border border-border/60 bg-card/78 shadow-[0_24px_55px_-32px_rgba(15,23,42,0.35)] backdrop-blur">
-          <CardHeader className="pb-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  One-view executive summary
-                </p>
-                <CardTitle className="mt-2 flex items-center gap-2 text-xl font-semibold">
-                  <FileText className="h-5 w-5 text-primary" />
-                  Strategic Impact Verdict (Bottom Line Up Front)
-                </CardTitle>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  The essential strategic readout sits here while the assumption-health visual stays
-                  on the left for rapid comparison in a single desktop view.
-                </p>
-              </div>
-              <Button
-                variant="default"
-                size="sm"
-                className="rounded-full bg-emerald-600 px-4 text-xs text-white hover:bg-emerald-700"
-                onClick={() => onNavigate('workstreams')}
-              >
-                Open Strategic Impact
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="rounded-[28px] border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.10] via-background/95 to-background p-5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+      <Card className="rounded-3xl border border-border/60 bg-card/78 shadow-[0_24px_55px_-32px_rgba(15,23,42,0.35)] backdrop-blur">
+        <CardHeader className="pb-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                One-view executive summary
+              </p>
+              <CardTitle className="mt-2 flex items-center gap-2 text-xl font-semibold">
+                <FileText className="h-5 w-5 text-primary" />
                 Strategic Impact Verdict (Bottom Line Up Front)
-              </p>
-              <p className="mt-3 text-base leading-7 text-foreground">
-                {strategicVerdict || 'No strategic verdict provided in the current payload.'}
-              </p>
+              </CardTitle>
             </div>
+            <Button
+              variant="default"
+              size="sm"
+              className="rounded-full bg-emerald-600 px-4 text-xs text-white hover:bg-emerald-700"
+              onClick={() => onNavigate('workstreams')}
+            >
+              Open Strategic Impact
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="rounded-[28px] border border-emerald-500/35 bg-background/90 p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Strategic Impact Verdict
+            </p>
+            <p className="mt-3 text-base leading-7 text-foreground">
+              {strategicVerdict || 'No strategic verdict provided in the current payload.'}
+            </p>
+          </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Competitive pressure
-                  </p>
-                </div>
-                <p className="mt-2 text-sm font-medium leading-6 text-foreground">
-                  {strategicAtGlance.topForce
-                    ? `${strategicAtGlance.topForce.name}: ${strategicAtGlance.topForce.intensity}`
-                    : 'No five-forces pressure level yet'}
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
+            <div className="rounded-2xl border border-amber-500/30 bg-background/90 p-4 xl:col-span-5">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Competitive forces
                 </p>
               </div>
-
-              <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
-                <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-primary" />
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Assumption pulse
-                  </p>
-                </div>
-                <p className="mt-2 text-sm font-medium leading-6 text-foreground">
-                  {strategicAtGlance.assumptionPulse}
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-emerald-600" />
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    SWOT storyline
-                  </p>
-                </div>
-                <p className="mt-2 text-sm font-medium leading-6 text-foreground">
-                  {strategicAtGlance.swotSignal || 'No SWOT highlights in this payload'}
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
-                <div className="flex items-center gap-2">
-                  <Briefcase className="h-4 w-4 text-primary" />
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Recommended motion
-                  </p>
-                </div>
-                <p className="mt-2 text-sm font-medium leading-6 text-foreground">
-                  {leadingWorkstream?.title || 'Strategic impact workstreams not generated yet'}
-                </p>
-                {leadingWorkstream?.summary ? (
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{leadingWorkstream.summary}</p>
-                ) : null}
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {strategicAtGlance.forces.length > 0 ? (
+                  strategicAtGlance.forces.map((force) => (
+                    <div
+                      key={`${force.name}-${force.intensity}`}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background px-3 py-2 text-xs"
+                    >
+                      <span className="font-medium text-foreground">{compactForceName(force.name)}</span>
+                      <Badge variant="outline" className="border-amber-500/30 text-[10px] text-amber-700">
+                        {force.intensity}
+                      </Badge>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No five-forces scoring available yet.</p>
+                )}
               </div>
             </div>
 
-            <div className="rounded-[26px] border border-border/50 bg-background/72 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Signal balance
-                  </p>
-                  <p className="mt-1 text-sm text-foreground">
-                    {signalBalance.positive} validating, {signalBalance.negative} challenging, {signalBalance.warnings} early warnings
-                  </p>
+            <div className="rounded-2xl border border-primary/30 bg-background/90 p-4 xl:col-span-4">
+              <div className="flex items-center gap-2">
+                <Target className="h-4 w-4 text-primary" />
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Assumption pulse
+                </p>
+              </div>
+              <p className="mt-3 text-sm font-medium leading-6 text-foreground">
+                {strategicAtGlance.assumptionPulse}
+              </p>
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="rounded-xl border border-emerald-500/30 bg-background px-3 py-2 text-center">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Validated</p>
+                  <p className="mt-1 text-base font-semibold text-emerald-600">{assumptionStatusCounts.validated}</p>
                 </div>
-                <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px]">
-                  {allSignals.length} total signals
-                </Badge>
+                <div className="rounded-xl border border-slate-400/40 bg-background px-3 py-2 text-center">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Stable</p>
+                  <p className="mt-1 text-base font-semibold text-slate-700">{assumptionStatusCounts.stable}</p>
+                </div>
+                <div className="rounded-xl border border-destructive/25 bg-background px-3 py-2 text-center">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Challenged</p>
+                  <p className="mt-1 text-base font-semibold text-destructive">{assumptionStatusCounts.challenged}</p>
+                </div>
               </div>
               <div className="mt-4 space-y-3">
                 <div>
                   <div className="mb-1 flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Validating signals</span>
-                    <span className="font-semibold text-emerald-600">{signalBalance.positiveShare}%</span>
+                    <span className="font-semibold text-emerald-600">{signalBalance.positive}</span>
                   </div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-emerald-500/10">
-                    <div
-                      className="h-full rounded-full bg-emerald-500"
-                      style={{ width: `${signalBalance.positiveShare}%` }}
-                    />
+                  <div className="h-2.5 overflow-hidden rounded-full bg-border/60">
+                    <div className="h-full rounded-full bg-emerald-500" style={{ width: `${signalBalance.positiveShare}%` }} />
                   </div>
                 </div>
                 <div>
                   <div className="mb-1 flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Challenging signals</span>
-                    <span className="font-semibold text-destructive">{signalBalance.negativeShare}%</span>
+                    <span className="font-semibold text-destructive">{signalBalance.negative}</span>
                   </div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-destructive/10">
+                  <div className="relative h-2.5 overflow-hidden rounded-full bg-border/60">
+                    <div className="h-full rounded-full bg-destructive" style={{ width: `${signalBalance.negativeShare}%` }} />
                     <div
-                      className="h-full rounded-full bg-destructive"
-                      style={{ width: `${signalBalance.negativeShare}%` }}
+                      className="absolute left-0 top-0 h-full rounded-full border-r border-background bg-amber-500"
+                      style={{ width: `${Math.min(signalBalance.negativeShare, Math.round((signalBalance.negativeShare * signalBalance.warningWithinNegativeShare) / 100))}%` }}
                     />
                   </div>
+                  <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                    Amber inside red marks early warnings within the challenging signal base.
+                  </p>
                 </div>
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Early warning concentration</span>
-                    <span className="font-semibold text-amber-600">{signalBalance.warningShare}%</span>
-                  </div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-amber-500/10">
-                    <div
-                      className="h-full rounded-full bg-amber-500"
-                      style={{ width: `${signalBalance.warningShare}%` }}
-                    />
-                  </div>
-                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full px-4"
+                  onClick={() => onNavigate('assumptions')}
+                >
+                  Open Assumptions Detail
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full px-4"
+                  onClick={() => onNavigate('outliers')}
+                >
+                  Open Signal Outliers
+                </Button>
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-full px-4"
-                onClick={() => onNavigate('assumptions')}
-              >
-                Open Assumptions Detail
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-full px-4"
-                onClick={() => onNavigate('outliers')}
-              >
-                Open Signal Outliers
-              </Button>
+            <div className="rounded-2xl border border-border/50 bg-background/90 p-4 xl:col-span-3">
+              <div className="flex items-center gap-2">
+                <Briefcase className="h-4 w-4 text-primary" />
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Recommended motion
+                </p>
+              </div>
+              <p className="mt-3 text-sm font-medium leading-6 text-foreground">Work in progress</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                This card will summarize the recommended executive motion once the strategic impact layer is finalized.
+              </p>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {spiderAssumptions.length > 0 ? (
+        <AssumptionSpiderCharts
+          assumptions={spiderAssumptions}
+          title="Assumption score view"
+          subtitle="Assumption scores are the default view here. Labels use short descriptive names so the executive view is readable without relying on internal IDs alone."
+          defaultMode="assumptions"
+          onAssumptionClick={(assumption) => onOpenAssumptionDetail(assumption.id)}
+        />
+      ) : (
+        <Card className="rounded-3xl border border-border/60 bg-card/70 shadow-sm">
+          <CardContent className="p-6 text-sm text-muted-foreground">
+            Assumption scoring is not available yet for this payload.
           </CardContent>
         </Card>
-      </div>
+      )}
       <div className="mt-5 flex flex-col items-center gap-2 text-center">
         <div className="text-lg font-semibold text-foreground">Supporting highlights</div>
         <Button
@@ -806,122 +772,79 @@ export function ExecutiveOverview({ onNavigate }: ExecutiveOverviewProps) {
       {showHighlights && (
       <>
       {/* Second Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Most Sensitive Assumptions */}
+      <div className="grid grid-cols-1 gap-6">
         <Card className="bg-card/60 border border-border/50 rounded-3xl shadow-[0_18px_45px_-30px_rgba(15,23,42,0.35)] backdrop-blur">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-xs font-semibold uppercase tracking-wide flex items-center gap-2 text-foreground">
-                <Target className="h-4 w-4 text-primary" />
-                Most Sensitive Assumptions
+                <Radio className="h-4 w-4 text-primary" />
+                Synthesized Forecast
               </CardTitle>
+              <Badge variant="outline" className="rounded-full text-[11px]">
+                Work in progress
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Goal: track assumptions over time and visualize which ones are improving or deteriorating.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-2xl border border-border/50 bg-background/70 p-4 text-sm text-muted-foreground">
+              The current model does not yet provide a true over-time assumption trend, so this section stays intentionally marked as work in progress rather than implying false precision.
+            </div>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-destructive/20 bg-background/70 p-4">
+                <h4 className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-destructive">
+                  <AlertTriangle className="h-3 w-3" />
+                  Deteriorating direction
+                </h4>
+                <div className="space-y-2">
+                  {synthesizedInsights.deteriorating.slice(0, 3).map((signal) => (
+                    <button
+                      key={signal.signal_id}
+                      type="button"
+                      className="w-full rounded-xl border border-destructive/15 bg-background/90 p-3 text-left transition hover:border-destructive/35"
+                      onClick={() => setSelectedSignal(signal)}
+                    >
+                      <p className="text-xs text-foreground line-clamp-2">{signal.signal_content}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        Signal snapshot only, not a longitudinal assumption trend yet.
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-emerald-500/20 bg-background/70 p-4">
+                <h4 className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-600">
+                  <TrendingUp className="h-3 w-3" />
+                  Improving direction
+                </h4>
+                <div className="space-y-2">
+                  {synthesizedInsights.improving.slice(0, 3).map((signal) => (
+                    <button
+                      key={signal.signal_id}
+                      type="button"
+                      className="w-full rounded-xl border border-emerald-500/15 bg-background/90 p-3 text-left transition hover:border-emerald-500/35"
+                      onClick={() => setSelectedSignal(signal)}
+                    >
+                      <p className="text-xs text-foreground line-clamp-2">{signal.signal_content}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        Signal snapshot only, not a longitudinal assumption trend yet.
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-start">
               <Button 
                 variant="ghost" 
                 size="sm" 
                 className="text-xs"
-                onClick={() => onNavigate('assumptions')}
+                onClick={() => onNavigate('synthesized')}
               >
-                View All
+                Open Synthesized View
               </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">Ranked by signal volume and average impact score</p>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {sensitiveAssumptions.map(({ assumption, total, threats, opportunities, avgScore }) => (
-                <div 
-                  key={assumption.id}
-                  className="flex items-start gap-3 p-3 rounded-2xl bg-background/60 border border-border/50 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_12px_30px_-20px_rgba(15,23,42,0.35)] cursor-pointer"
-                  onClick={() => onNavigate('assumptions')}
-                >
-                  <Badge variant="outline" className="font-mono font-bold shrink-0 rounded-full px-3">
-                    {assumption.id}
-                  </Badge>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground line-clamp-2">
-                      {assumption.statement}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] uppercase tracking-wide">
-                      <span className="text-muted-foreground">{total} signals</span>
-                      <span className="text-destructive">{threats} threats</span>
-                      <span className="text-emerald-500">{opportunities} opps</span>
-                      <span className="text-amber-500">Avg {avgScore.toFixed(1)}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Synthesized Forecast Summary */}
-        <Card className="bg-card/60 border border-border/50 rounded-3xl shadow-[0_18px_45px_-30px_rgba(15,23,42,0.35)] backdrop-blur">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wide flex items-center gap-2 text-foreground">
-              <Radio className="h-4 w-4 text-primary" />
-              Synthesized Forecast
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">What's improving vs deteriorating</p>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              {/* Deteriorating */}
-              <div>
-                <h4 className="text-[11px] font-semibold uppercase tracking-wide text-destructive mb-3 flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" />
-                  Deteriorating
-                </h4>
-                <div className="space-y-2">
-                  {synthesizedInsights.deteriorating.map(signal => (
-                    <div 
-                      key={signal.signal_id}
-                      className="p-3 rounded-2xl bg-background/70 border border-destructive/20 cursor-pointer hover:border-destructive/40 hover:bg-destructive/5 transition-colors"
-                      onClick={() => setSelectedSignal(signal)}
-                    >
-                      <p className="text-xs text-foreground line-clamp-2">
-                        {signal.signal_content}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="outline" className="text-[10px] font-mono">
-                          {signal.related_assumption_id || signal.assumption_id}
-                        </Badge>
-                        <span className="text-[10px] text-destructive font-semibold">
-                          {getSignalScore(signal).toFixed(1)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              {/* Improving */}
-              <div>
-                <h4 className="text-[11px] font-semibold uppercase tracking-wide text-emerald-500 mb-3 flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3" />
-                  Improving
-                </h4>
-                <div className="space-y-2">
-                  {synthesizedInsights.improving.map(signal => (
-                    <div 
-                      key={signal.signal_id}
-                      className="p-3 rounded-2xl bg-background/70 border border-emerald-500/20 cursor-pointer hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-colors"
-                      onClick={() => setSelectedSignal(signal)}
-                    >
-                      <p className="text-xs text-foreground line-clamp-2">
-                        {signal.signal_content}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="outline" className="text-[10px] font-mono">
-                          {signal.related_assumption_id || signal.assumption_id}
-                        </Badge>
-                        <span className="text-[10px] text-emerald-500 font-semibold">
-                          {getSignalScore(signal).toFixed(1)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
           </CardContent>
         </Card>

@@ -137,18 +137,18 @@ export function SignalDetailDialog({
               variant="outline"
               size="sm"
               asChild
-              className="w-full justify-start"
+              className="h-auto w-full justify-start whitespace-normal"
             >
               <a
                 href={linkUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 min-w-0"
+                className="flex w-full items-start gap-2 min-w-0 whitespace-normal py-1"
               >
                 <ExternalLink className="h-4 w-4 shrink-0" />
-                <span className="text-sm font-medium truncate">{linkLabel}</span>
+                <span className="min-w-0 flex-1 text-left text-sm font-medium break-words whitespace-normal">{linkLabel}</span>
                 {linkDomain && (
-                  <Badge variant="outline" className="ml-auto text-[10px]">
+                  <Badge variant="outline" className="ml-auto mt-0.5 text-[10px] whitespace-nowrap">
                     {linkDomain}
                   </Badge>
                 )}

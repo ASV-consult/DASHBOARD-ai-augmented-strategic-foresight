@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { cn } from '@/lib/utils';
 import { AssumptionHealth, Signal } from '@/types/foresight';
 import { getSignalScore } from '@/lib/signal-utils';
+import { getAssumptionDisplayLabel } from '@/lib/foresight-utils';
 
 export interface AssumptionSpiderItem {
   id: string;
@@ -24,6 +25,7 @@ export interface AssumptionSpiderItem {
   health?: AssumptionHealth;
   challengingSignals: Signal[];
   validatingSignals: Signal[];
+  displayLabel?: string;
 }
 
 type RadarLens = 'overview' | 'value_creation' | 'direction_and_positioning' | 'value_defence';
@@ -34,6 +36,7 @@ interface AssumptionSpiderChartsProps {
   title?: string;
   subtitle?: string;
   onAssumptionClick?: (assumption: AssumptionSpiderItem) => void;
+  defaultMode?: RadarMode;
 }
 
 const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
@@ -100,9 +103,10 @@ export function AssumptionSpiderCharts({
   title = 'Assumptions Comparison Spider',
   subtitle = 'Compare building blocks and individual assumption score footprint. Higher score expands wider on the spider.',
   onAssumptionClick,
+  defaultMode = 'assumptions',
 }: AssumptionSpiderChartsProps) {
   const [radarLens, setRadarLens] = useState<RadarLens>('overview');
-  const [radarMode, setRadarMode] = useState<RadarMode>('building_blocks');
+  const [radarMode, setRadarMode] = useState<RadarMode>(defaultMode);
   const [selectedAssumption, setSelectedAssumption] = useState<AssumptionSpiderItem | null>(null);
 
   const lensAssumptions = useMemo(() => {
@@ -270,6 +274,8 @@ export function AssumptionSpiderCharts({
   const assumptionScoreRadarData = useMemo(() => {
     return assumptionScoreRows.map((row) => ({
       metric: row.assumption.id,
+      label:
+        row.assumption.displayLabel || getAssumptionDisplayLabel(row.assumption.id, row.assumption.statement, 4),
       score: Math.round(row.score),
     }));
   }, [assumptionScoreRows]);
@@ -299,6 +305,9 @@ export function AssumptionSpiderCharts({
           {selectedAssumption && (
             <div className="space-y-4 text-sm">
               <p className="text-foreground">{selectedAssumption.statement}</p>
+              <p className="text-xs text-muted-foreground">
+                {selectedAssumption.displayLabel || getAssumptionDisplayLabel(selectedAssumption.id, selectedAssumption.statement, 4)}
+              </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="rounded-xl border border-border/60 bg-background/70 p-3">
                   <p className="text-xs text-muted-foreground">Score footprint</p>
@@ -346,122 +355,68 @@ export function AssumptionSpiderCharts({
       </Dialog>
 
       <CardContent className="p-4 sm:p-5">
-        <div className="grid gap-5 xl:grid-cols-[270px_minmax(0,1fr)] xl:items-start">
-          <div className="space-y-4 rounded-[26px] border border-border/50 bg-background/72 p-4">
-            <div>
+        <div className="space-y-4">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-3xl">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 Assumption visual
               </p>
               <CardTitle className="mt-2 text-lg">{title}</CardTitle>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{subtitle}</p>
             </div>
-
-            <div className="grid grid-cols-1 gap-2">
-              {lensOptions.map((option) => {
-                const isActive = radarLens === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setRadarLens(option.value)}
-                    className={cn(
-                      'rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition',
-                      isActive
-                        ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                        : 'border-border/60 bg-card/80 text-muted-foreground hover:border-primary/40 hover:text-foreground',
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="rounded-2xl border border-border/50 bg-card/78 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Spider mode
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={radarMode === 'building_blocks' ? 'default' : 'outline'}
-                  className="h-8 rounded-full px-3 text-[11px]"
-                  onClick={() => setRadarMode('building_blocks')}
-                >
-                  Building Blocks
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={radarMode === 'assumptions' ? 'default' : 'outline'}
-                  className="h-8 rounded-full px-3 text-[11px]"
-                  onClick={() => setRadarMode('assumptions')}
-                >
-                  Assumption Scores
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-border/50 bg-card/78 p-3">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Lens</p>
-                <p className="mt-2 text-sm font-semibold text-foreground">{activeLensLabel}</p>
-              </div>
-              <div className="rounded-2xl border border-border/50 bg-card/78 p-3">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">In view</p>
-                <p className="mt-2 text-sm font-semibold text-foreground">{currentAssumptionCount}</p>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-border/50 bg-card/78 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                {radarMode === 'building_blocks' ? 'Building block legend' : 'How to read this'}
-              </p>
-              {radarMode === 'building_blocks' ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {legendGroups.map((group) => {
-                    const color = colorByBlock[group.block] || colorByBlock.cross_cutting;
-                    return (
-                      <button
-                        key={group.key}
-                        type="button"
-                        className={cn(
-                          'inline-flex items-center gap-2 rounded-full border-2 bg-background/85 px-3 py-1 text-[11px] text-foreground',
-                          radarLens === group.block && 'bg-primary/10',
-                        )}
-                        style={{ borderColor: color }}
-                        onClick={() => {
-                          if (group.block === 'overview') {
-                            setRadarLens('overview');
-                            return;
-                          }
-                          if (
-                            group.block === 'value_creation' ||
-                            group.block === 'direction_and_positioning' ||
-                            group.block === 'value_defence'
-                          ) {
-                            setRadarLens(group.block);
-                          }
-                        }}
-                      >
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-                        <span>{group.label}</span>
-                        <span className="text-muted-foreground">({group.assumptionCount})</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                  <p>Switch the lens to isolate one building block.</p>
-                  <p>Click any assumption label or card to inspect its score and signal mix.</p>
-                </div>
-              )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={radarMode === 'building_blocks' ? 'default' : 'outline'}
+                className="h-8 rounded-full px-3 text-[11px]"
+                onClick={() => setRadarMode('building_blocks')}
+              >
+                Blocks
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={radarMode === 'assumptions' ? 'default' : 'outline'}
+                className="h-8 rounded-full px-3 text-[11px]"
+                onClick={() => setRadarMode('assumptions')}
+              >
+                Assumption scores
+              </Button>
+              <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px]">
+                In view {currentAssumptionCount}
+              </Badge>
             </div>
           </div>
 
-          <div className="min-w-0 space-y-4">
+          <div className="rounded-[26px] border border-border/50 bg-background/72 p-3 sm:p-4">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex flex-wrap gap-2">
+                {lensOptions.map((option) => {
+                  const isActive = radarLens === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setRadarLens(option.value)}
+                      className={cn(
+                        'rounded-full border px-3 py-1.5 text-[11px] font-medium transition',
+                        isActive
+                          ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                          : 'border-border/60 bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px]">
+                Lens {activeLensLabel}
+              </Badge>
+            </div>
+
+            <div className="mt-4 min-w-0 space-y-4">
             {radarMode === 'building_blocks' ? (
               <>
                 {displayGroups.length < 1 ? (
@@ -511,6 +466,11 @@ export function AssumptionSpiderCharts({
                           tick={(tickProps: any) => {
                             const assumptionId = String(tickProps?.payload?.value || '');
                             const scoreRow = assumptionScoreRowMap.get(assumptionId);
+                            const label = String(
+                              tickProps?.payload?.payload?.label ||
+                                scoreRow?.assumption.displayLabel ||
+                                assumptionId,
+                            );
                             return (
                               <text
                                 x={tickProps.x}
@@ -523,7 +483,25 @@ export function AssumptionSpiderCharts({
                                   }
                                 }}
                               >
-                                {assumptionId}
+                                {(() => {
+                                  const match = label.match(/^(.*)\(([^)]+)\)$/);
+                                  const titlePart = (match?.[1] || label).trim();
+                                  const idPart = match?.[2]?.trim();
+                                  const compactTitle =
+                                    titlePart.length > 28 ? `${titlePart.slice(0, 25).trim()}...` : titlePart;
+                                  return (
+                                    <>
+                                      <tspan x={tickProps.x} dy="-2">
+                                        {compactTitle}
+                                      </tspan>
+                                      {idPart ? (
+                                        <tspan x={tickProps.x} dy="12" className="fill-slate-500 text-[10px]">
+                                          ({idPart})
+                                        </tspan>
+                                      ) : null}
+                                    </>
+                                  );
+                                })()}
                               </text>
                             );
                           }}
@@ -542,28 +520,51 @@ export function AssumptionSpiderCharts({
                     </ResponsiveContainer>
                   </div>
                 )}
-
-                <div className="rounded-2xl border border-border/50 bg-muted/20 p-3">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Click any assumption to inspect statement, score and signal mix
-                  </p>
+                <div className="rounded-[26px] border border-primary/25 bg-background p-4 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                        Assumption drill-down
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-foreground">
+                        Click any assumption to inspect statement, score and signal mix
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px]">
+                      {assumptionScoreRows.length} mapped assumptions
+                    </Badge>
+                  </div>
                   <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
                     {assumptionScoreRows.map((row) => (
                       <button
                         key={row.assumption.id}
                         type="button"
-                        className="rounded-xl border border-border/60 bg-background/80 p-3 text-left transition hover:border-primary/40"
+                        className="rounded-2xl border border-border/60 bg-background p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-sm"
                         onClick={() => setSelectedAssumption(row.assumption)}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <Badge variant="outline" className="font-mono">{row.assumption.id}</Badge>
-                          <span className="text-xs font-semibold text-primary">{Math.round(row.score)}</span>
+                          <span className="rounded-full border border-primary/30 px-2 py-0.5 text-xs font-semibold text-primary">
+                            Score {Math.round(row.score)}
+                          </span>
                         </div>
-                        <p className="mt-2 line-clamp-2 text-xs text-foreground">{row.assumption.statement}</p>
-                        <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
-                          <span>Signals: {row.total}</span>
-                          <span className="text-emerald-600">+{row.positive}</span>
-                          <span className="text-destructive">-{row.negative}</span>
+                        <p className="mt-3 text-sm font-semibold leading-5 text-foreground">
+                          {row.assumption.displayLabel || getAssumptionDisplayLabel(row.assumption.id, row.assumption.statement, 4)}
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{row.assumption.statement}</p>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <div className="rounded-xl border border-emerald-500/30 px-3 py-2">
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Positive</p>
+                            <p className="mt-1 text-lg font-semibold text-emerald-600">{row.positive}</p>
+                          </div>
+                          <div className="rounded-xl border border-destructive/25 px-3 py-2">
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Negative</p>
+                            <p className="mt-1 text-lg font-semibold text-destructive">{row.negative}</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground">
+                          <span>Total signals {row.total}</span>
+                          <span className="font-medium text-foreground">Open detail</span>
                         </div>
                       </button>
                     ))}
@@ -571,6 +572,49 @@ export function AssumptionSpiderCharts({
                 </div>
               </>
             )}
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+              {radarMode === 'building_blocks' ? (
+                <div className="flex flex-wrap gap-2">
+                  {legendGroups.map((group) => {
+                    const color = colorByBlock[group.block] || colorByBlock.cross_cutting;
+                    return (
+                      <button
+                        key={group.key}
+                        type="button"
+                        className={cn(
+                          'inline-flex items-center gap-2 rounded-full border-2 bg-background px-3 py-1 text-[11px] text-foreground',
+                          radarLens === group.block && 'shadow-sm',
+                        )}
+                        style={{ borderColor: color }}
+                        onClick={() => {
+                          if (group.block === 'overview') {
+                            setRadarLens('overview');
+                            return;
+                          }
+                          if (
+                            group.block === 'value_creation' ||
+                            group.block === 'direction_and_positioning' ||
+                            group.block === 'value_defence'
+                          ) {
+                            setRadarLens(group.block);
+                          }
+                        }}
+                      >
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+                        <span>{group.label}</span>
+                        <span className="text-muted-foreground">({group.assumptionCount})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Switch the lens to isolate one building block, then click an assumption label or card to inspect its score and signal mix.
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </CardContent>

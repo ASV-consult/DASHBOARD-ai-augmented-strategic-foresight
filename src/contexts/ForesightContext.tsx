@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useMemo, ReactNode } from '
 import { ForesightData, Signal, Assumption, BuildingBlocks, Workstream } from '@/types/foresight';
 import { FinancialAnalysisData } from '@/types/financial';
 import { SharePriceAnalysisData } from '@/types/share-price';
+import { MacroDashboardData } from '@/types/macro';
 import { getSignalScore } from '@/lib/signal-utils';
 
 interface ForesightContextType {
@@ -11,10 +12,13 @@ interface ForesightContextType {
   setFinancialData: (data: FinancialAnalysisData | null) => void;
   sharePriceData: SharePriceAnalysisData | null;
   setSharePriceData: (data: SharePriceAnalysisData | null) => void;
+  macroData: MacroDashboardData | null;
+  setMacroData: (data: MacroDashboardData | null) => void;
   isLoaded: boolean;
   hasForesightData: boolean;
   hasFinancialData: boolean;
   hasSharePriceData: boolean;
+  hasMacroData: boolean;
   resetStreams: () => void;
   // Computed helpers
   allSignals: Signal[];
@@ -44,6 +48,7 @@ export function ForesightProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<ForesightData | null>(null);
   const [financialData, setFinancialData] = useState<FinancialAnalysisData | null>(null);
   const [sharePriceData, setSharePriceData] = useState<SharePriceAnalysisData | null>(null);
+  const [macroData, setMacroData] = useState<MacroDashboardData | null>(null);
   const [outlierScoreThreshold, setOutlierScoreThreshold] = useState(5);
 
   // Extract signals from the new schema
@@ -102,8 +107,9 @@ export function ForesightProvider({ children }: { children: ReactNode }) {
     if (financialData?.company_profile?.name) return financialData.company_profile.name;
     if (financialData?.run_meta?.company) return financialData.run_meta.company;
     if (sharePriceData?._meta?.company) return sharePriceData._meta.company;
+    if (macroData?.meta?.company_name) return macroData.meta.company_name;
     return '';
-  }, [data, financialData, sharePriceData]);
+  }, [data, financialData, macroData, sharePriceData]);
 
   // Categorize signals into outlier quadrants based on v2.1 spec
   const { threats, opportunities, earlyWarnings, noiseSignals, threatIds, opportunityIds, warningIds } = useMemo(() => {
@@ -172,6 +178,7 @@ export function ForesightProvider({ children }: { children: ReactNode }) {
     setData(null);
     setFinancialData(null);
     setSharePriceData(null);
+    setMacroData(null);
   };
 
   const value: ForesightContextType = {
@@ -181,10 +188,13 @@ export function ForesightProvider({ children }: { children: ReactNode }) {
     setFinancialData,
     sharePriceData,
     setSharePriceData,
-    isLoaded: data !== null || financialData !== null || sharePriceData !== null,
+    macroData,
+    setMacroData,
+    isLoaded: data !== null || financialData !== null || sharePriceData !== null || macroData !== null,
     hasForesightData: data !== null,
     hasFinancialData: financialData !== null,
     hasSharePriceData: sharePriceData !== null,
+    hasMacroData: macroData !== null,
     resetStreams,
     allSignals,
     coreAssumptions,

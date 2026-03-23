@@ -8,9 +8,16 @@ type AssumptionsSubtab = 'scored' | 'synthesized';
 interface AssumptionsScoredHubProps {
   activeTab: AssumptionsSubtab;
   onTabChange: (value: AssumptionsSubtab) => void;
+  focusAssumptionId?: string | null;
+  onFocusAssumptionConsumed?: () => void;
 }
 
-export function AssumptionsScoredHub({ activeTab, onTabChange }: AssumptionsScoredHubProps) {
+export function AssumptionsScoredHub({
+  activeTab,
+  onTabChange,
+  focusAssumptionId,
+  onFocusAssumptionConsumed,
+}: AssumptionsScoredHubProps) {
   return (
     <Tabs
       value={activeTab}
@@ -29,7 +36,10 @@ export function AssumptionsScoredHub({ activeTab, onTabChange }: AssumptionsScor
       </TabsList>
 
       <TabsContent value="scored">
-        <AssumptionsAnalysis />
+        <AssumptionsAnalysis
+          focusAssumptionId={focusAssumptionId}
+          onFocusAssumptionConsumed={onFocusAssumptionConsumed}
+        />
       </TabsContent>
       <TabsContent value="synthesized">
         <SynthesizedForecast />

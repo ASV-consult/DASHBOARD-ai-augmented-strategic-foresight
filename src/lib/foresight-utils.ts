@@ -46,3 +46,55 @@ export const getStatusBadgeVariant = (status: string): "default" | "secondary" |
     if (s === 'MIXED') return 'secondary';
     return 'outline';
 };
+
+const ASSUMPTION_STOP_WORDS = new Set([
+    'a',
+    'an',
+    'and',
+    'are',
+    'as',
+    'at',
+    'be',
+    'by',
+    'for',
+    'from',
+    'in',
+    'into',
+    'is',
+    'of',
+    'on',
+    'or',
+    'that',
+    'the',
+    'their',
+    'this',
+    'to',
+    'with',
+]);
+
+export const formatConfidenceShorthand = (level?: string) => {
+    const clean = String(level || '').trim();
+    if (!clean) return '';
+    return `Conf. ${clean}`;
+};
+
+export const getAssumptionDisplayLabel = (id: string, statement?: string, maxWords = 3) => {
+    const clean = String(statement || '')
+        .replace(/[`*_#]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (!clean) return id;
+
+    const tokens = clean
+        .split(' ')
+        .map((token) => token.replace(/[^a-zA-Z0-9-]/g, ''))
+        .filter((token) => token.length > 2 && !ASSUMPTION_STOP_WORDS.has(token.toLowerCase()));
+
+    const words = (tokens.length > 0 ? tokens : clean.split(' '))
+        .slice(0, maxWords)
+        .map((token) => token.charAt(0).toUpperCase() + token.slice(1));
+
+    const label = words.join(' ').trim();
+    return label ? `${label} (${id})` : id;
+};

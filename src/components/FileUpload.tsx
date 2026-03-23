@@ -63,7 +63,7 @@ export function FileUpload() {
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Upload className="h-4 w-4" />
-            <span>Supports foresight, financial fundamentals, and share-price schemas</span>
+            <span>Supports foresight, financial, share-price, and macro dashboard schemas</span>
           </div>
         </div>
 

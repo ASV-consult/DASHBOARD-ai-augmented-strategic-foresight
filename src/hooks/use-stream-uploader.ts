@@ -4,6 +4,8 @@ import { useToast } from '@/hooks/use-toast';
 import { ForesightData } from '@/types/foresight';
 import { FinancialAnalysisData } from '@/types/financial';
 import { SharePriceAnalysisData } from '@/types/share-price';
+import { MacroDashboardData } from '@/types/macro';
+import { isMacroPayload } from '@/lib/macro-utils';
 
 const isForesightPayload = (json: unknown): json is ForesightData => {
   const payload = json as Partial<ForesightData>;
@@ -38,7 +40,7 @@ const isSharePricePayload = (json: unknown): json is SharePriceAnalysisData => {
 };
 
 export function useStreamUploader() {
-  const { setData, setFinancialData, setSharePriceData } = useForesight();
+  const { setData, setFinancialData, setSharePriceData, setMacroData } = useForesight();
   const { toast } = useToast();
 
   const uploadFiles = useCallback(
@@ -65,6 +67,7 @@ export function useStreamUploader() {
         foresight: 0,
         financial: 0,
         sharePrice: 0,
+        macro: 0,
       };
       const failedFiles: string[] = [];
 
@@ -99,6 +102,13 @@ export function useStreamUploader() {
             lastCompanyLabel = json._meta?.company || lastCompanyLabel;
           }
 
+          if (isMacroPayload(json)) {
+            setMacroData(json as MacroDashboardData);
+            streamCounts.macro += 1;
+            recognized = true;
+            lastCompanyLabel = json.meta?.company_name || lastCompanyLabel;
+          }
+
           if (!recognized) {
             throw new Error('Unrecognized JSON schema');
           }
@@ -116,7 +126,7 @@ export function useStreamUploader() {
           description:
             `Loaded ${lastCompanyLabel}. ` +
             `Processed ${successfulFiles}/${files.length} files ` +
-            `(${streamCounts.foresight} foresight, ${streamCounts.financial} financial, ${streamCounts.sharePrice} share-price).`,
+            `(${streamCounts.foresight} foresight, ${streamCounts.financial} financial, ${streamCounts.sharePrice} share-price, ${streamCounts.macro} macro).`,
         });
       }
 
@@ -128,7 +138,7 @@ export function useStreamUploader() {
         });
       }
     },
-    [setData, setFinancialData, setSharePriceData, toast],
+    [setData, setFinancialData, setSharePriceData, setMacroData, toast],
   );
 
   return { uploadFiles };
