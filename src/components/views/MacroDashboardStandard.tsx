@@ -13,6 +13,7 @@ import {
   Microscope,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { Badge } from '@/components/ui/badge';
@@ -30,8 +31,9 @@ import {
   getSegmentEvidence,
   getSegmentSummary,
   isReadyNode,
+  prepareMacroMarkdown,
 } from '@/lib/macro-standard';
-import { cn } from '@/lib/utils';
+import { cn, getSafeExternalUrl } from '@/lib/utils';
 import {
   MacroActivityView,
   MacroEntryMode,
@@ -142,6 +144,50 @@ const MetricListCard = ({
   );
 };
 
+const memoMarkdownComponents: Components = {
+  h1: ({ children }) => (
+    <h1 className="mt-0 font-serif text-4xl font-semibold tracking-tight text-foreground">{children}</h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="mt-12 border-t border-border/60 pt-6 font-serif text-[1.9rem] font-semibold tracking-tight text-foreground first:mt-0 first:border-t-0 first:pt-0">
+      {children}
+    </h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="mt-8 text-lg font-semibold tracking-tight text-foreground">{children}</h3>
+  ),
+  p: ({ children }) => <p className="text-[1.02rem] leading-8 text-foreground/85">{children}</p>,
+  ul: ({ children }) => <ul className="my-6 space-y-3 pl-6 marker:text-primary">{children}</ul>,
+  ol: ({ children }) => (
+    <ol className="my-6 space-y-3 pl-6 marker:font-semibold marker:text-primary">{children}</ol>
+  ),
+  li: ({ children }) => <li className="pl-1 text-[1.02rem] leading-8 text-foreground/85">{children}</li>,
+  blockquote: ({ children }) => (
+    <blockquote className="my-8 border-l-2 border-primary/35 bg-primary/[0.04] px-5 py-4 font-serif text-[1.04rem] italic leading-8 text-foreground/80">
+      {children}
+    </blockquote>
+  ),
+  a: ({ href, children, ...props }) => {
+    const safeHref = getSafeExternalUrl(typeof href === 'string' ? href : undefined);
+    if (!safeHref) {
+      return <span className="font-medium text-foreground">{children}</span>;
+    }
+
+    return (
+      <a
+        {...props}
+        href={safeHref}
+        target="_blank"
+        rel="noreferrer"
+        className="font-semibold text-primary decoration-primary/40 underline-offset-4 hover:underline"
+      >
+        {children}
+      </a>
+    );
+  },
+  hr: () => <hr className="my-10 border-border/60" />,
+};
+
 const MarkdownMemo = ({
   title,
   markdown,
@@ -151,7 +197,7 @@ const MarkdownMemo = ({
   markdown?: string | null;
   fallback?: string | null;
 }) => {
-  const body = markdown?.trim() || cleanMacroText(fallback);
+  const body = prepareMacroMarkdown(markdown || fallback);
   if (!body) return null;
 
   return (
@@ -162,8 +208,14 @@ const MarkdownMemo = ({
           {title}
         </CardTitle>
       </CardHeader>
-      <CardContent className="prose prose-sm max-w-none prose-headings:tracking-tight prose-p:text-foreground/85 prose-li:text-foreground/85">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
+      <CardContent className="px-5 pb-7 pt-2 md:px-8">
+        <div className="mx-auto max-w-4xl">
+          <article className="prose prose-slate prose-lg max-w-none text-pretty prose-headings:text-foreground prose-p:font-serif prose-li:font-serif prose-strong:text-foreground prose-code:rounded-full prose-code:bg-primary/[0.06] prose-code:px-2 prose-code:py-1 prose-code:text-[0.78em] prose-code:font-medium prose-code:text-foreground prose-code:before:content-none prose-code:after:content-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={memoMarkdownComponents}>
+              {body}
+            </ReactMarkdown>
+          </article>
+        </div>
       </CardContent>
     </Card>
   );
@@ -230,43 +282,47 @@ const SourceList = ({
 
         {visibleSources.length ? (
           <div className="grid gap-3">
-            {visibleSources.map((source) => (
-              <div
-                key={source.source_key}
-                className="rounded-2xl border border-border/60 bg-background/80 p-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{source.title}</p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                      {compactJoin(
-                        [
-                          cleanMacroText(source.source_domain),
-                          cleanMacroText(source.source_tier),
-                          source.trust_score ? `Trust ${source.trust_score.toFixed(2)}` : '',
-                        ].filter(Boolean),
-                        'Source',
-                      )}
-                    </p>
+            {visibleSources.map((source) => {
+              const safeUrl = getSafeExternalUrl(source.url);
+
+              return (
+                <div
+                  key={source.source_key}
+                  className="rounded-2xl border border-border/60 bg-background/80 p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{source.title}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                        {compactJoin(
+                          [
+                            cleanMacroText(source.source_domain),
+                            cleanMacroText(source.source_tier),
+                            source.trust_score ? `Trust ${source.trust_score.toFixed(2)}` : '',
+                          ].filter(Boolean),
+                          'Source',
+                        )}
+                      </p>
+                    </div>
+                    {safeUrl ? (
+                      <a
+                        href={safeUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                      >
+                        Open
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    ) : null}
                   </div>
-                  {source.url ? (
-                    <a
-                      href={source.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                    >
-                      Open
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
+                  {source.note ? <p className="mt-3 text-sm leading-6 text-muted-foreground">{source.note}</p> : null}
+                  {source.excerpt_preview ? (
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">{source.excerpt_preview}</p>
                   ) : null}
                 </div>
-                {source.note ? <p className="mt-3 text-sm leading-6 text-muted-foreground">{source.note}</p> : null}
-                {source.excerpt_preview ? (
-                  <p className="mt-3 text-sm leading-6 text-muted-foreground">{source.excerpt_preview}</p>
-                ) : null}
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">No resolved source detail is available for this view yet.</p>

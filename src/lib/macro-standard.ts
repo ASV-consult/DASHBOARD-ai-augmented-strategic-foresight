@@ -114,6 +114,16 @@ const cleanMarkdown = (value?: string | null) =>
     .replace(/\r\n/g, '\n')
     .trim();
 
+const sourceCitationPattern = /\[([A-Za-z0-9]+(?:[_:-][A-Za-z0-9]+){2,})\]/g;
+
+export const prepareMacroMarkdown = (value?: string | null) =>
+  cleanMarkdown(value)
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
+    .replace(/([^\n])\n((?:[-*+]|\d+\.)\s)/g, '$1\n\n$2')
+    .replace(sourceCitationPattern, (_match, sourceKey: string) => `\`${sourceKey}\``)
+    .trim();
+
 const cleanTextArray = (value: unknown) => Array.from(new Set(asStringArray(value)));
 
 const compactSentence = (value?: string | null, fallback = '') => {
