@@ -1,3 +1,5 @@
+export * from './macro-standard';
+/*
 import {
   MacroActivityView,
   MacroBadgeMetric,
@@ -1261,3 +1263,4 @@ export const getActivityEvidenceModel = (
     derivedFromThemes: citationSet.derivedFromThemes,
   };
 };
+*/

@@ -1,3 +1,5 @@
+export { MacroDashboard } from './MacroDashboardStandard';
+/*
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
@@ -1662,3 +1664,4 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
     </div>
   );
 }
+*/

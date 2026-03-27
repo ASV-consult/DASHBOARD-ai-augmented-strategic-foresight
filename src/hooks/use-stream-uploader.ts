@@ -5,7 +5,7 @@ import { ForesightData } from '@/types/foresight';
 import { FinancialAnalysisData } from '@/types/financial';
 import { SharePriceAnalysisData } from '@/types/share-price';
 import { MacroDashboardData } from '@/types/macro';
-import { isMacroPayload } from '@/lib/macro-utils';
+import { isMacroPayload, normalizeMacroPayload } from '@/lib/macro-utils';
 
 const isForesightPayload = (json: unknown): json is ForesightData => {
   const payload = json as Partial<ForesightData>;
@@ -103,10 +103,11 @@ export function useStreamUploader() {
           }
 
           if (isMacroPayload(json)) {
-            setMacroData(json as MacroDashboardData);
+            const normalizedMacro = normalizeMacroPayload(json) as MacroDashboardData;
+            setMacroData(normalizedMacro);
             streamCounts.macro += 1;
             recognized = true;
-            lastCompanyLabel = json.meta?.company_name || lastCompanyLabel;
+            lastCompanyLabel = normalizedMacro.meta.company_name || lastCompanyLabel;
           }
 
           if (!recognized) {

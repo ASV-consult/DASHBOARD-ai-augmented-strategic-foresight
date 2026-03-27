@@ -161,7 +161,7 @@ const viewMetaMap: Record<DashboardView, { title: string; stream: string; note: 
   'macro-risk': {
     title: 'Macro Executive Reading',
     stream: 'Macro Stream',
-    note: 'Linear reading mode for executive walkthrough and fast narrative review.',
+    note: 'Memo-first reading mode inside the same macro drill-down experience.',
   },
 };
 
@@ -708,13 +708,13 @@ export function Dashboard() {
             summary={
               macroReady
                 ? streamSummary.macroThesis ||
-                  'Macro is loaded as a guided decision tool with overview, segment, activity, and reading modes.'
-                : 'Upload the macro dashboard JSON to unlock the executive control tower, segment decision pages, activity diagnostics, theme overlays, and reading mode.'
+                  'Macro is loaded as a guided decision tool with overview, segment, activity, and memo-first reading modes.'
+                : 'Upload the macro dashboard JSON to unlock the segment decision strip, segment drill-downs, activity diagnostics, and source roll-ups.'
             }
             highlights={[
               { label: 'Mode', value: macroReady ? 'Decision tool' : 'Pending' },
               { label: 'Entry', value: macroData?.default_route || 'overview' },
-              { label: 'Reading', value: macroData?.entry_modes?.reading_entry_view || 'reading_executive' },
+              { label: 'Reading', value: macroData?.reading_route || 'pending' },
             ]}
             primaryActionLabel="Open Macro Dashboard"
             onPrimaryAction={() => navigate('macro-overview', false)}
