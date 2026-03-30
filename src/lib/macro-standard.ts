@@ -23,8 +23,8 @@ import {
   MacroSupportingTopic,
 } from '@/types/macro';
 
-type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
-type JsonObject = Record<string, JsonValue | undefined>;
+type JsonValue = string | number | boolean | null | { [key: string]: JsonValue | undefined } | JsonValue[];
+type JsonObject = { [key: string]: JsonValue | undefined };
 
 type NewMacroPayload = {
   meta?: JsonObject;
