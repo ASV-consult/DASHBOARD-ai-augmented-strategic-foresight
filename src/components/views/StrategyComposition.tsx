@@ -318,13 +318,7 @@ const categorizePorterForces = (forces: PorterForce[]) => {
     return 'others';
   };
 
-  const buckets: Record<string, PorterForce | undefined> = {
-    rivalry: undefined,
-    buyers: undefined,
-    suppliers: undefined,
-    entrants: undefined,
-    substitutes: undefined,
-  };
+  const buckets: { rivalry?: PorterForce; buyers?: PorterForce; suppliers?: PorterForce; entrants?: PorterForce; substitutes?: PorterForce } = {};
   const others: PorterForce[] = [];
 
   remaining.forEach(force => {
