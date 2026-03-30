@@ -22,6 +22,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
 import { parseSignalSource } from '@/lib/signal-utils';
+import { getSafeExternalUrl } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -1214,9 +1215,9 @@ function MechanicsPage({
                                 {signalId}
                               </Badge>
                               <span className="text-muted-foreground truncate">{title || getSignalTitle(signal)}</span>
-                              {url && (
+                              {getSafeExternalUrl(url) && (
                                 <a
-                                  href={url}
+                                  href={getSafeExternalUrl(url)!}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="ml-auto inline-flex items-center gap-1 text-primary"
@@ -1670,9 +1671,9 @@ function DecisionAgendaPage({
                 {signalId}
               </Badge>
               <span className="text-muted-foreground truncate">{title || getSignalTitle(signal)}</span>
-              {url && (
+              {getSafeExternalUrl(url) && (
                 <a
-                  href={url}
+                  href={getSafeExternalUrl(url)!}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="ml-auto inline-flex items-center gap-1 text-primary"
@@ -2386,9 +2387,9 @@ function EvidencePaperPage({
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">{date || 'n/a'}</TableCell>
                         <TableCell className="text-xs text-primary truncate">
-                          {url ? (
+                          {getSafeExternalUrl(url) ? (
                             <a
-                              href={url}
+                              href={getSafeExternalUrl(url)!}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1"

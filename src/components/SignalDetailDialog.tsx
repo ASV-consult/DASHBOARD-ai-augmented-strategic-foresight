@@ -17,6 +17,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { parseSignalSource } from '@/lib/signal-utils';
+import { getSafeExternalUrl } from '@/lib/utils';
 
 interface SignalDetailDialogProps {
   signal: Signal | null;
@@ -36,7 +37,7 @@ export function SignalDetailDialog({
   if (!signal) return null;
 
   const parsedSource = parseSignalSource(signal.source || '');
-  const linkUrl = signal.source_url || parsedSource.url;
+  const linkUrl = getSafeExternalUrl(signal.source_url) || getSafeExternalUrl(parsedSource.url);
   const linkLabel = parsedSource.title || parsedSource.domain || 'Open article';
   const linkDomain = parsedSource.domain;
 

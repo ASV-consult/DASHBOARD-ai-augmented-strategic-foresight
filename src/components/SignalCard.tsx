@@ -10,7 +10,7 @@ import {
   Target,
   AlertCircle
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, getSafeExternalUrl } from '@/lib/utils';
 import { parseSignalSource, getSignalScore } from '@/lib/signal-utils';
 import { useForesight } from '@/contexts/ForesightContext';
 
@@ -24,7 +24,7 @@ interface SignalCardProps {
 export function SignalCard({ signal, onClick, compact = false, showCategory = true }: SignalCardProps) {
   const { threatIds, opportunityIds, warningIds } = useForesight();
   const parsedSource = parseSignalSource(signal.source || '');
-  const linkUrl = signal.source_url || parsedSource.url;
+  const linkUrl = getSafeExternalUrl(signal.source_url) || getSafeExternalUrl(parsedSource.url);
   let linkDomain = parsedSource.domain;
   if (!linkDomain && linkUrl) {
     try {
