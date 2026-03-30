@@ -622,7 +622,6 @@ export interface StrategicImpactConclusion {
   what_does_not_need_to_change?: string;
   what_must_change?: string;
   macro_verdict?: string;
-  bull_bear_synthesis?: string;
   final_verdict?: string;
   board_level_implication?: string;
   devils_advocate?: string;

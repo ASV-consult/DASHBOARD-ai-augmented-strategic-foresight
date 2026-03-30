@@ -43,7 +43,7 @@ interface PipelineStageProps {
   color?: string;
 }
 
-function PipelineStage({ icon, label, onClick, isActive, color }: PipelineStageProps) {
+function PipelineStage({ icon, label, onClick, isActive, color, count }: PipelineStageProps) {
   return (
     <button
       onClick={onClick}
