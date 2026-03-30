@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Signal, Assumption, StrategicObjective, FinancialTarget, KPI, ImpactPathway, AssumptionCluster, AssumptionHealth, PorterFiveForces, PorterForce, SwotAnalysis, SwotItem } from '@/types/foresight';
-import { cn } from '@/lib/utils';
+import { cn, getSafeExternalUrl } from '@/lib/utils';
 import {
   formatConfidenceShorthand,
   getAssumptionDisplayLabel,
@@ -905,10 +905,10 @@ function CompetitiveAnalysisSection() {
         ? { onClick: (event: React.MouseEvent) => event.stopPropagation() }
         : {};
       parts.push(
-        source?.url ? (
+        source?.url && getSafeExternalUrl(source.url) ? (
           <a
             key={`${sourceId}-${start}`}
-            href={source.url}
+            href={getSafeExternalUrl(source.url)!}
             target="_blank"
             rel="noreferrer"
             className="text-primary font-semibold hover:underline"

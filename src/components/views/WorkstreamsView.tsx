@@ -10,6 +10,7 @@ import { SignalDetailDialog } from '@/components/SignalDetailDialog';
 import { SignalCard } from '@/components/SignalCard';
 import { Workstream, Signal } from '@/types/foresight';
 import { getSignalScore, sortByScore, parseSignalSource } from '@/lib/signal-utils';
+import { getSafeExternalUrl } from '@/lib/utils';
 import {
   Briefcase,
   AlertTriangle,
@@ -291,7 +292,8 @@ export function WorkstreamsView() {
                       
                       <div className="space-y-2">
                         {selectedWorkstream.supporting_evidence.map((evidence, idx) => {
-                          const { title, url, domain } = parseSignalSource(evidence.source || evidence.url || '');
+                          const { title, url: rawUrl, domain } = parseSignalSource(evidence.source || evidence.url || '');
+                          const url = getSafeExternalUrl(rawUrl);
                           return (
                             <a
                               key={idx}
