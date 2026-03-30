@@ -263,8 +263,8 @@ const normalizePorterForces = (fiveForces?: PorterFiveForces) => {
     return Object.entries(input).map(([key, value]) => ({
       ...value,
       name: value?.name || value?.force || formatForceKey(key),
-      description: value?.description || value?.analysis || value?.summary || value?.details,
-      intensity: value?.intensity || value?.level || value?.rating || value?.pressure,
+      description: value?.description || value?.analysis || value?.summary || (value as any)?.details,
+      intensity: value?.intensity || (value as any)?.level || value?.rating || value?.pressure,
     }));
   };
 
