@@ -215,7 +215,7 @@ function AssumptionBadge({
   id: string;
   label?: string;
   active?: boolean;
-  onClick?: () => void;
+  onClick?: (event?: any) => void;
   className?: string;
 }) {
   return (

@@ -1380,7 +1380,7 @@ export const getRouteLookup = (data: MacroDashboardData): MacroRouteLookup => ({
 const getCardScore = (segment: MacroSegmentView | undefined, activities: MacroActivityView[], metricKey: keyof MacroScoreBundle) => {
   const summaryMetric = segment?.score_summary?.metrics?.find((metric) => metric.metric_key === metricKey);
   if (summaryMetric?.average_score !== undefined) return summaryMetric.average_score ?? null;
-  return mean(activities.map((activity) => activity.scorecard?.score_lookup[metricKey]));
+  return mean(activities.map((activity) => activity.scorecard?.score_lookup[metricKey]).filter((v): v is number => typeof v === 'number'));
 };
 
 const buildSegmentDecisionModel = (
