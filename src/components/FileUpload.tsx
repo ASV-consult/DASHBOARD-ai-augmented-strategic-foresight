@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { Upload, FileJson } from 'lucide-react';
 import { useForesight } from '@/contexts/ForesightContext';
 import { useToast } from '@/hooks/use-toast';
@@ -9,6 +9,7 @@ export function FileUpload() {
   const { setData } = useForesight();
   const { toast } = useToast();
   const { uploadFiles } = useStreamUploader();
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFiles = useCallback(
     async (incoming: FileList | File[]) => {
@@ -37,19 +38,38 @@ export function FileUpload() {
     [handleFiles],
   );
 
+  const openFilePicker = useCallback(() => {
+    inputRef.current?.click();
+  }, []);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openFilePicker();
+      }
+    },
+    [openFilePicker],
+  );
+
   return (
     <div className="flex min-h-screen items-center justify-center p-8">
       <div
         className="relative flex aspect-video w-full max-w-xl cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-card transition-colors hover:bg-accent/50"
+        onClick={openFilePicker}
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
+        onKeyDown={handleKeyDown}
+        role="button"
+        tabIndex={0}
       >
         <input
+          ref={inputRef}
           type="file"
           accept=".json"
           multiple
           onChange={handleChange}
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          className="sr-only"
         />
         <div className="pointer-events-none flex flex-col items-center gap-4">
           <div className="rounded-lg border border-primary/20 bg-primary/10 p-4">
@@ -69,6 +89,7 @@ export function FileUpload() {
 
         <div className="flex w-full justify-center border-t border-border pt-4">
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               import('@/data/sample-data.json').then((module) => {
