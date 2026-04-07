@@ -334,7 +334,7 @@ const categorizePorterForces = (forces: PorterForce[]) => {
     }
   });
 
-  return buckets as { rivalry?: PorterForce; buyers?: PorterForce; suppliers?: PorterForce; entrants?: PorterForce; substitutes?: PorterForce; others: PorterForce[] };
+  return { ...buckets, others } as { rivalry?: PorterForce; buyers?: PorterForce; suppliers?: PorterForce; entrants?: PorterForce; substitutes?: PorterForce; others: PorterForce[] };
 };
 
 // Strategy Snapshot Card
