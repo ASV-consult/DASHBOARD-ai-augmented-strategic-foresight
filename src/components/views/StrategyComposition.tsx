@@ -1169,6 +1169,11 @@ function CompetitiveAnalysisSection() {
               <Badge variant="destructive" className="text-[11px]">
                 High: {forceDistribution.high}
               </Badge>
+              {forceDistribution.mediumHigh > 0 && (
+                <Badge variant="destructive" className="text-[11px] opacity-80">
+                  Medium-High: {forceDistribution.mediumHigh}
+                </Badge>
+              )}
               <Badge variant="secondary" className="text-[11px]">
                 Medium: {forceDistribution.medium}
               </Badge>
