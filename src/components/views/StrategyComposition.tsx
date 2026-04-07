@@ -239,14 +239,16 @@ const normalizeForcePressure = (force: any) => force?.intensity || force?.rating
 const forceTone = (pressure?: string) => {
   if (!pressure) return 'secondary';
   const val = pressure.toLowerCase();
+  if (val.includes('medium-high') || val.includes('medium–high')) return 'destructive';
   if (val.includes('high') || val.includes('strong')) return 'destructive';
-  if (val.includes('medium')) return 'secondary';
+  if (val.includes('medium') || val.includes('moderate')) return 'secondary';
   if (val.includes('low')) return 'default';
   return 'secondary';
 };
 
 const forcePressureScore = (pressure?: string) => {
   const val = (pressure || '').toLowerCase();
+  if (val === 'medium-high' || val === 'medium–high' || val === 'medium high') return 75;
   if (val.includes('high') || val.includes('strong')) return 90;
   if (val.includes('medium') || val.includes('moderate')) return 60;
   if (val.includes('low') || val.includes('weak')) return 30;
@@ -937,10 +939,11 @@ function CompetitiveAnalysisSection() {
   );
 
   const forceDistribution = useMemo(() => {
-    const stats = { high: 0, medium: 0, low: 0, unknown: 0 };
+    const stats = { high: 0, mediumHigh: 0, medium: 0, low: 0, unknown: 0 };
     forces.forEach((force) => {
       const pressure = normalizeForcePressure(force).toLowerCase();
-      if (pressure.includes('high') || pressure.includes('strong')) stats.high += 1;
+      if (pressure.includes('medium-high') || pressure.includes('medium–high') || pressure === 'medium high') stats.mediumHigh += 1;
+      else if (pressure.includes('high') || pressure.includes('strong')) stats.high += 1;
       else if (pressure.includes('medium') || pressure.includes('moderate')) stats.medium += 1;
       else if (pressure.includes('low') || pressure.includes('weak')) stats.low += 1;
       else stats.unknown += 1;
@@ -1166,6 +1169,11 @@ function CompetitiveAnalysisSection() {
               <Badge variant="destructive" className="text-[11px]">
                 High: {forceDistribution.high}
               </Badge>
+              {forceDistribution.mediumHigh > 0 && (
+                <Badge variant="destructive" className="text-[11px] opacity-80">
+                  Medium-High: {forceDistribution.mediumHigh}
+                </Badge>
+              )}
               <Badge variant="secondary" className="text-[11px]">
                 Medium: {forceDistribution.medium}
               </Badge>
