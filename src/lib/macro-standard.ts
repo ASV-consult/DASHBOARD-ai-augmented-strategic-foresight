@@ -931,6 +931,8 @@ const normalizeNewPayload = (payload: NewMacroPayload): MacroDashboardData => {
     navigation_tree:
       navigationTree.length ? navigationTree : buildNavigationTree(normalizedOverview.view_key, segmentViews, activityViews),
     source_index: Object.keys(sourceIndex).length ? sourceIndex : undefined,
+    portfolio_analysis: normalizeWrittenAnalysis((payload as JsonObject).portfolio_analysis),
+    executive_analysis: normalizeWrittenAnalysis((payload as JsonObject).executive_analysis),
   };
 };
 
@@ -1434,7 +1436,10 @@ const buildSegmentDecisionModel = (
 
 export const buildMacroPortfolioModel = (data: MacroDashboardData): MacroPortfolioModel => {
   const lookup = getRouteLookup(data);
-  const segmentDecisions = data.overview_view.segment_cards.map((card) =>
+  const baselineCards = data.overview_view.segment_cards.filter(
+    (card) => !card.segment_key.startsWith('crow_nest'),
+  );
+  const segmentDecisions = baselineCards.map((card) =>
     buildSegmentDecisionModel(card, data.segment_views.find((segment) => segment.segment_key === card.segment_key), lookup.activityBySegmentKey[card.segment_key] || []),
   );
 

@@ -337,6 +337,8 @@ export interface MacroDashboardData {
   activity_views: MacroActivityView[];
   navigation_tree: MacroNavigationNode[];
   source_index?: Record<string, MacroSourceRecord>;
+  portfolio_analysis?: MacroWrittenAnalysis;
+  executive_analysis?: MacroWrittenAnalysis;
 }
 
 export interface MacroRouteLookup {

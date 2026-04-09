@@ -541,8 +541,48 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
   const toggleSourceGroup = (key: string) =>
     setExpandedSources((current) => ({ ...current, [key]: !current[key] }));
 
+  const USAGE_STEPS = [
+    {
+      label: 'Segment Decision Strip',
+      detail:
+        'Start here for the portfolio-level view. Each card shows scores for Market Trajectory, Right To Play and Position Sustainability — hover a score bar for the full scale definition.',
+    },
+    {
+      label: 'Portfolio Analysis',
+      detail:
+        'Read the cross-segment thesis below the decision strip. Use the tabs to switch between the macro industry read (Layer 2) and the company-specific executive synthesis (Layer 1).',
+    },
+    {
+      label: 'Segment Drill-Down',
+      detail:
+        'Click any segment card to open the drill-down. Switch between Industry Context (Layer 2 — market dynamics) and Company Position (Layer 1 — company-specific analysis and watchpoints).',
+    },
+    {
+      label: 'Activity Deep Dive',
+      detail:
+        'Within each segment, click an activity for granular scores, research mission results and source evidence. Activities are always Layer 1 — company-specific research.',
+    },
+    {
+      label: "Crow's Nest — Live Signals",
+      detail:
+        "Check the intelligence monitor (bottom of this page or via the nav) for threshold alerts, scenario drift and promotion candidates that may require new research missions.",
+    },
+  ];
+
+  const crowNestCard = macroData.overview_view.segment_cards.find(
+    (card) => card.segment_key === 'crow_nest_overview',
+  );
+  const baselineCards = macroData.overview_view.segment_cards.filter(
+    (card) => !card.segment_key.startsWith('crow_nest'),
+  );
+
+  const hasPortfolioAnalysis = Boolean(
+    macroData.portfolio_analysis?.markdown || macroData.executive_analysis?.markdown,
+  );
+
   const renderOverview = () => (
     <div className="space-y-5">
+      {/* Header + How to use */}
       <Card className="rounded-[30px] border border-border/60 bg-card/85 shadow-sm">
         <CardContent className="grid gap-5 p-5 md:p-6 xl:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-4">
@@ -590,14 +630,17 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
           </div>
 
           <div className="rounded-[28px] border border-amber-500/20 bg-amber-500/[0.06] p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">Suggested Flow</p>
-            <div className="mt-4 space-y-3">
-              {macroData.recommended_user_flow.map((step, index) => (
-                <div key={step} className="flex gap-3 rounded-2xl border border-amber-500/15 bg-background/80 p-3">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs font-semibold text-black">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">How to use this dashboard</p>
+            <div className="mt-4 space-y-2">
+              {USAGE_STEPS.map((step, index) => (
+                <div key={step.label} className="flex gap-3 rounded-2xl border border-amber-500/15 bg-background/80 p-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-black">
                     {index + 1}
                   </span>
-                  <p className="text-sm leading-6 text-foreground">{step}</p>
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">{step.label}</p>
+                    <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{step.detail}</p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -605,6 +648,7 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
         </CardContent>
       </Card>
 
+      {/* Segment Decision Strip — baseline segments only */}
       <Card className="rounded-[30px] border border-border/60 bg-card/85 shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-xl">Segment Decision Strip</CardTitle>
@@ -646,6 +690,40 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
         </CardContent>
       </Card>
 
+      {/* Portfolio Analysis — L2 macro read + L1 executive synthesis */}
+      {hasPortfolioAnalysis ? (
+        macroData.portfolio_analysis?.markdown && macroData.executive_analysis?.markdown ? (
+          <Tabs defaultValue="portfolio" className="w-full">
+            <Card className="rounded-[30px] border border-border/60 bg-card/85 shadow-sm">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between gap-4">
+                  <CardTitle className="text-xl">Portfolio Analysis</CardTitle>
+                  <TabsList>
+                    <TabsTrigger value="portfolio">Cross-Segment Read</TabsTrigger>
+                    <TabsTrigger value="executive">Executive View</TabsTrigger>
+                  </TabsList>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <TabsContent value="portfolio" className="mt-0">
+                  <MarkdownMemo title="Cross-Segment Portfolio Read" markdown={macroData.portfolio_analysis?.markdown} fallback={macroData.portfolio_analysis?.summary} />
+                </TabsContent>
+                <TabsContent value="executive" className="mt-0">
+                  <MarkdownMemo title="Executive Synthesis" markdown={macroData.executive_analysis?.markdown} fallback={macroData.executive_analysis?.summary} />
+                </TabsContent>
+              </CardContent>
+            </Card>
+          </Tabs>
+        ) : (
+          <MarkdownMemo
+            title="Portfolio Analysis"
+            markdown={macroData.portfolio_analysis?.markdown ?? macroData.executive_analysis?.markdown}
+            fallback={macroData.portfolio_analysis?.summary ?? macroData.executive_analysis?.summary}
+          />
+        )
+      ) : null}
+
+      {/* Navigation + Coverage */}
       <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
         <Card className="rounded-[30px] border border-border/60 bg-card/85 shadow-sm">
           <CardHeader className="pb-2">
@@ -671,7 +749,7 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {macroData.overview_view.segment_cards.map((card) => (
+            {baselineCards.map((card) => (
               <div
                 key={card.segment_key}
                 className="rounded-2xl border border-border/60 bg-background/80 p-4"
@@ -693,6 +771,49 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
           </CardContent>
         </Card>
       </div>
+
+      {/* Crow's Nest Intelligence Panel */}
+      {crowNestCard ? (
+        <Card className="rounded-[30px] border border-primary/20 bg-card/85 shadow-sm">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-4">
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <CircleDot className="h-5 w-5 text-primary" />
+                {"Crow's Nest — Live Intelligence"}
+              </CardTitle>
+              <Badge className={cn('rounded-full text-[11px]', formatBadgeClassName(crowNestCard.status_badge?.tone))}>
+                {crowNestCard.status_badge?.label || 'Monitor'}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-6 text-muted-foreground">{crowNestCard.short_description}</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              {macroData.overview_view.segment_cards
+                .filter((card) => card.segment_key.startsWith('crow_nest') && card.segment_key !== 'crow_nest_overview')
+                .map((card) => (
+                  <button
+                    key={card.segment_key}
+                    type="button"
+                    onClick={() => card.click_target && openNode(card.click_target)}
+                    className="rounded-2xl border border-border/60 bg-background/80 p-3 text-left hover:border-primary/30"
+                  >
+                    <p className="text-xs font-semibold text-foreground">{card.title}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{card.short_description || 'Signal advisory'}</p>
+                  </button>
+                ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => openNode('cn_overview')}
+              className="mt-4 flex items-center gap-2 text-xs font-medium text-primary hover:underline"
+            >
+              <ArrowRight className="h-3.5 w-3.5" />
+              Open full intelligence scan
+            </button>
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 
