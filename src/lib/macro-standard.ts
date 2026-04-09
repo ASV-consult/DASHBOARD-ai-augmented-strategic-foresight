@@ -1498,6 +1498,14 @@ const mergeSources = (sourceLists: MacroSourceRecord[][]) =>
     ),
   );
 
+const deriveMissionCount = (activities: MacroActivityView[]) => {
+  const missionCount = activities.reduce(
+    (sum, item) => sum + (item.evidence_panel?.mission_count || 0),
+    0,
+  );
+  return missionCount > 0 ? missionCount : undefined;
+};
+
 const resolvePanelSources = (data: MacroDashboardData, panel?: MacroEvidencePanel) => {
   const byKey = Object.values(data.source_index || {}).reduce<Record<string, MacroSourceRecord>>((acc, source) => {
     acc[source.source_key] = source;
@@ -1625,13 +1633,7 @@ export const getSegmentEvidence = (data: MacroDashboardData, segment: MacroSegme
         ),
       mission_count:
         segment.evidence_panel?.mission_count ??
-        (() => {
-          const missionCount = relatedActivities.reduce(
-            (sum, item) => sum + (item.evidence_panel?.mission_count || 0),
-            0,
-          );
-          return missionCount || undefined;
-        })(),
+        deriveMissionCount(relatedActivities),
       coverage_labels: segment.evidence_panel?.coverage_labels,
       source_tier_breakdown:
         segment.evidence_panel?.source_tier_breakdown || (sources.length ? deriveTierBreakdown(sources) : undefined),

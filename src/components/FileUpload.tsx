@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Upload, FileJson } from 'lucide-react';
 import { useForesight } from '@/contexts/ForesightContext';
 import { useToast } from '@/hooks/use-toast';
@@ -10,10 +10,16 @@ export function FileUpload() {
   const { toast } = useToast();
   const { uploadFiles } = useStreamUploader();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const handleFiles = useCallback(
     async (incoming: FileList | File[]) => {
-      await uploadFiles(incoming);
+      setIsUploading(true);
+      try {
+        await uploadFiles(incoming);
+      } finally {
+        setIsUploading(false);
+      }
     },
     [uploadFiles],
   );
@@ -21,26 +27,29 @@ export function FileUpload() {
   const handleDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
+      if (isUploading) return;
       if (e.dataTransfer.files?.length) {
         void handleFiles(e.dataTransfer.files);
       }
     },
-    [handleFiles],
+    [handleFiles, isUploading],
   );
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (isUploading) return;
       if (e.target.files?.length) {
         void handleFiles(e.target.files);
       }
       e.target.value = '';
     },
-    [handleFiles],
+    [handleFiles, isUploading],
   );
 
   const openFilePicker = useCallback(() => {
+    if (isUploading) return;
     inputRef.current?.click();
-  }, []);
+  }, [isUploading]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -56,7 +65,9 @@ export function FileUpload() {
     <div className="flex min-h-screen items-center justify-center p-8">
       <div
         className="relative flex aspect-video w-full max-w-xl cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-card transition-colors hover:bg-accent/50"
-        onClick={openFilePicker}
+        onClick={() => {
+          if (!isUploading) openFilePicker();
+        }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
         onKeyDown={handleKeyDown}
@@ -76,14 +87,19 @@ export function FileUpload() {
             <FileJson className="h-12 w-12 text-primary" />
           </div>
           <div className="text-center">
-            <h3 className="text-lg font-semibold text-foreground">Upload Stream Data</h3>
+            <h3 className="text-lg font-semibold text-foreground">
+              {isUploading ? 'Uploading Streams...' : 'Upload Stream Data'}
+            </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Drag and drop one or more stream JSON files, or click to browse.
+              Drag and drop multiple JSON files, or click to select all required files in one action.
             </p>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Upload className="h-4 w-4" />
             <span>Supports foresight, financial, share-price, and macro dashboard schemas</span>
+          </div>
+          <div className="text-center text-xs text-muted-foreground">
+            Select multiple files in the picker with Ctrl/Cmd or Shift.
           </div>
         </div>
 

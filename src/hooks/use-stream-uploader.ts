@@ -70,6 +70,10 @@ export function useStreamUploader() {
         macro: 0,
       };
       const failedFiles: string[] = [];
+      let nextForesightData: ForesightData | null = null;
+      let nextFinancialData: FinancialAnalysisData | null = null;
+      let nextSharePriceData: SharePriceAnalysisData | null = null;
+      let nextMacroData: MacroDashboardData | null = null;
 
       for (const file of files) {
         try {
@@ -78,7 +82,7 @@ export function useStreamUploader() {
           let recognized = false;
 
           if (isForesightPayload(json)) {
-            setData(json);
+            nextForesightData = json;
             streamCounts.foresight += 1;
             recognized = true;
             lastCompanyLabel =
@@ -89,14 +93,14 @@ export function useStreamUploader() {
           }
 
           if (isFinancialPayload(json)) {
-            setFinancialData(json);
+            nextFinancialData = json;
             streamCounts.financial += 1;
             recognized = true;
             lastCompanyLabel = json.company_profile?.name || json.run_meta?.company || lastCompanyLabel;
           }
 
           if (isSharePricePayload(json)) {
-            setSharePriceData(json);
+            nextSharePriceData = json;
             streamCounts.sharePrice += 1;
             recognized = true;
             lastCompanyLabel = json._meta?.company || lastCompanyLabel;
@@ -104,7 +108,7 @@ export function useStreamUploader() {
 
           if (isMacroPayload(json)) {
             const normalizedMacro = normalizeMacroPayload(json) as MacroDashboardData;
-            setMacroData(normalizedMacro);
+            nextMacroData = normalizedMacro;
             streamCounts.macro += 1;
             recognized = true;
             lastCompanyLabel = normalizedMacro.meta.company_name || lastCompanyLabel;
@@ -122,6 +126,11 @@ export function useStreamUploader() {
       }
 
       if (successfulFiles > 0) {
+        if (nextForesightData) setData(nextForesightData);
+        if (nextFinancialData) setFinancialData(nextFinancialData);
+        if (nextSharePriceData) setSharePriceData(nextSharePriceData);
+        if (nextMacroData) setMacroData(nextMacroData);
+
         toast({
           title: 'Data loaded successfully',
           description:
