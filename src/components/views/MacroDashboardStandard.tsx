@@ -118,14 +118,18 @@ const ScoreBar = ({ label, value }: { label: string; value?: number | null }) =>
     : null;
 
   const bar = (
-    <div className="rounded-2xl border border-border/60 bg-background/80 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+    <div className="h-full rounded-2xl border border-border/60 bg-background/80 p-3">
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
           {label}{meta ? <span className="ml-1 cursor-help opacity-40">?</span> : null}
         </p>
-        <p className="text-sm font-semibold text-foreground">
+        <p className="mt-1 text-sm font-semibold text-foreground">
           {value === null || value === undefined ? 'Pending' : `${normalized}/5`}
-          {scaleLabel ? <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">· {scaleLabel}</span> : null}
+          {scaleLabel ? (
+            <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground sm:ml-1.5 sm:mt-0 sm:inline">
+              · {scaleLabel}
+            </span>
+          ) : null}
         </p>
       </div>
       <div className="mt-3 grid grid-cols-5 gap-1.5">
@@ -680,7 +684,7 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
                 <MetricCard label="Key Risk" value={segment.keyRisk} />
                 <MetricCard label="Key Upside" value={segment.keyUpside} />
               </div>
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                 <ScoreBar label="Market" value={segment.marketTrajectory} />
                 <ScoreBar label="Right To Play" value={segment.rightToPlay} />
                 <ScoreBar label="Sustainability" value={segment.positionSustainability} />
@@ -940,7 +944,7 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
                     <p className="mt-3 text-sm leading-6 text-muted-foreground">
                       {activityCard.summary || 'Activity summary is pending.'}
                     </p>
-                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                       <ScoreBar label="Market" value={activityCard.scorecard?.score_lookup.market_trajectory} />
                       <ScoreBar label="Right To Play" value={activityCard.scorecard?.score_lookup.right_to_play} />
                       <ScoreBar label="Sustainability" value={activityCard.scorecard?.score_lookup.position_sustainability} />
@@ -1005,7 +1009,7 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
                 <h3 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">{activity.title}</h3>
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">{summary}</p>
               </div>
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <ScoreBar label="Market Trajectory" value={activity.scorecard?.score_lookup.market_trajectory} />
                 <ScoreBar label="Right To Play" value={activity.scorecard?.score_lookup.right_to_play} />
                 <ScoreBar label="Sustainability" value={activity.scorecard?.score_lookup.position_sustainability} />
