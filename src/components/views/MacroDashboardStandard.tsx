@@ -18,6 +18,7 @@ import remarkGfm from 'remark-gfm';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useForesight } from '@/contexts/ForesightContext';
@@ -700,7 +701,29 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
     const evidence = getSegmentEvidence(macroData, segment);
     const ready = isReadyNode(segment.availability);
     const summary = getSegmentSummary(segment);
-    const memo = (
+    const hasCompanyAnalysis = Boolean(segment.company_analysis?.markdown || segment.company_analysis?.summary);
+    const memo = hasCompanyAnalysis ? (
+      <Tabs defaultValue="industry" className="w-full">
+        <TabsList className="mb-2">
+          <TabsTrigger value="industry">Industry Context</TabsTrigger>
+          <TabsTrigger value="company">Company Position</TabsTrigger>
+        </TabsList>
+        <TabsContent value="industry">
+          <MarkdownMemo
+            title="Industry Context"
+            markdown={segment.written_analysis?.markdown}
+            fallback={segment.written_analysis?.summary || segment.decision_summary?.short_description}
+          />
+        </TabsContent>
+        <TabsContent value="company">
+          <MarkdownMemo
+            title={`${segment.title} — Company Position`}
+            markdown={segment.company_analysis?.markdown}
+            fallback={segment.company_analysis?.summary}
+          />
+        </TabsContent>
+      </Tabs>
+    ) : (
       <MarkdownMemo
         title={`${segment.title} Memo`}
         markdown={segment.written_analysis?.markdown}

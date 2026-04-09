@@ -604,6 +604,7 @@ const normalizeNewSegmentView = (
     })();
 
   const writtenAnalysis = normalizeWrittenAnalysis(segment.written_analysis);
+  const companyAnalysis = normalizeWrittenAnalysis(segment.company_analysis);
   const evidencePanel = normalizeEvidencePanel(segment.evidence_panel);
   const researchProgress = normalizeResearchProgress(segment.research_progress);
 
@@ -628,6 +629,7 @@ const normalizeNewSegmentView = (
     score_summary: scoreSummary,
     activity_cards: activityCards,
     written_analysis: writtenAnalysis,
+    company_analysis: companyAnalysis,
     visuals: {
       activity_score_matrix:
         (() => {

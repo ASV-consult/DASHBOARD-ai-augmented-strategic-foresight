@@ -227,6 +227,7 @@ export interface MacroSegmentView {
   score_summary?: MacroScoreSummary;
   activity_cards?: MacroActivityCard[];
   written_analysis?: MacroWrittenAnalysis;
+  company_analysis?: MacroWrittenAnalysis;
   visuals?: MacroSegmentVisuals;
   evidence_panel?: MacroEvidencePanel;
   artifact_refs?: Record<string, unknown>;
