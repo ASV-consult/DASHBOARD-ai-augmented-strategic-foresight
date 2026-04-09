@@ -18,6 +18,7 @@ import remarkGfm from 'remark-gfm';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useForesight } from '@/contexts/ForesightContext';
 import {
@@ -85,13 +86,46 @@ const formatMetricValue = (value?: number | string | null) => {
 const formatCount = (current?: number, total?: number) =>
   typeof current === 'number' && typeof total === 'number' ? `${current}/${total}` : 'Pending';
 
+const SCORE_META: Record<string, { definition: string; scale: string[] }> = {
+  'Market Trajectory': {
+    definition: 'How the target market is moving — is the addressable value pool growing or contracting?',
+    scale: ['Contracting', 'Declining', 'Transitioning', 'Improving', 'Accelerating'],
+  },
+  'Market': {
+    definition: 'How the target market is moving — is the addressable value pool growing or contracting?',
+    scale: ['Contracting', 'Declining', 'Transitioning', 'Improving', 'Accelerating'],
+  },
+  'Right To Play': {
+    definition: 'How well-positioned the company is to compete and win — based on capabilities, relationships, and differentiation.',
+    scale: ['Weak', 'Contested', 'Credible', 'Advantaged', 'Distinctive'],
+  },
+  'Sustainability': {
+    definition: 'How durable the competitive position is over time — resistance to erosion by rivals, substitutes, or structural change.',
+    scale: ['Eroding', 'Fragile', 'Holding', 'Durable', 'Compounding'],
+  },
+  'Position Sustainability': {
+    definition: 'How durable the competitive position is over time — resistance to erosion by rivals, substitutes, or structural change.',
+    scale: ['Eroding', 'Fragile', 'Holding', 'Durable', 'Compounding'],
+  },
+};
+
 const ScoreBar = ({ label, value }: { label: string; value?: number | null }) => {
   const normalized = Math.max(0, Math.min(5, value ?? 0));
-  return (
+  const meta = SCORE_META[label];
+  const scaleLabel = meta && typeof value === 'number' && value >= 1 && value <= 5
+    ? meta.scale[Math.round(value) - 1]
+    : null;
+
+  const bar = (
     <div className="rounded-2xl border border-border/60 bg-background/80 p-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-        <p className="text-sm font-semibold text-foreground">{value === null || value === undefined ? 'Pending' : `${normalized}/5`}</p>
+        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          {label}{meta ? <span className="ml-1 cursor-help opacity-40">?</span> : null}
+        </p>
+        <p className="text-sm font-semibold text-foreground">
+          {value === null || value === undefined ? 'Pending' : `${normalized}/5`}
+          {scaleLabel ? <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">· {scaleLabel}</span> : null}
+        </p>
       </div>
       <div className="mt-3 grid grid-cols-5 gap-1.5">
         {Array.from({ length: 5 }).map((_, index) => (
@@ -102,6 +136,28 @@ const ScoreBar = ({ label, value }: { label: string; value?: number | null }) =>
         ))}
       </div>
     </div>
+  );
+
+  if (!meta) return bar;
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>{bar}</TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs space-y-2 p-3">
+          <p className="text-xs font-semibold">{label}</p>
+          <p className="text-xs text-muted-foreground">{meta.definition}</p>
+          <div className="grid grid-cols-5 gap-1 pt-1">
+            {meta.scale.map((lbl, i) => (
+              <div key={lbl} className="text-center">
+                <div className={cn('mx-auto mb-0.5 h-1.5 w-full rounded-full', i < normalized ? 'bg-primary' : 'bg-border/60')} />
+                <p className={cn('text-[9px]', i < normalized ? 'font-medium text-foreground' : 'text-muted-foreground')}>{lbl}</p>
+              </div>
+            ))}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 };
 
