@@ -16,7 +16,6 @@ import {
 } from 'recharts';
 import {
   AlertTriangle,
-  BookOpen,
   CandlestickChart,
   ChevronDown,
   ChevronRight,
@@ -31,13 +30,13 @@ import type { SignificantEvent, TrendPeriod } from '@/types/share-price';
 // ─── Formatters ──────────────────────────────────────────────────────────────
 
 const pct = (v?: number | null, d = 1): string => {
-  if (v === undefined || v === null || Number.isNaN(v)) return 'N/A';
+  if (v == null || Number.isNaN(v)) return 'N/A';
   const n = Math.abs(v) <= 1 ? v * 100 : v;
   return `${n.toFixed(d)}%`;
 };
 
 const deltaPct = (v?: number | null, d = 1): string => {
-  if (v === undefined || v === null || Number.isNaN(v)) return 'N/A';
+  if (v == null || Number.isNaN(v)) return 'N/A';
   const n = Math.abs(v) <= 1 ? v * 100 : v;
   return `${n > 0 ? '+' : ''}${n.toFixed(d)}%`;
 };
@@ -47,21 +46,13 @@ const fmtDate = (s?: string): string => {
   return s.slice(0, 10);
 };
 
-const fmtNum = (v?: number | null, d = 2): string => {
-  if (v === undefined || v === null || Number.isNaN(v)) return 'N/A';
-  return v.toFixed(d);
-};
-
 // ─── Color helpers ────────────────────────────────────────────────────────────
 
 const colorPct = (v?: number | null): string =>
-  v !== undefined && v !== null && v > 0 ? 'text-emerald-500' : 'text-red-500';
+  v != null && v > 0 ? 'text-emerald-500' : 'text-red-500';
 
 const regimeLabel = (r: string): string =>
   r.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-
-const regimeFill = (r: string): string =>
-  r.includes('bull') ? '#22c55e' : r.includes('bear') ? '#ef4444' : '#94a3b8';
 
 const regimeBadgeCls = (r: string): string =>
   r.includes('bull')
@@ -81,9 +72,9 @@ const themeTypeBadgeCls = (t?: string): string =>
       : 'bg-slate-500/15 text-slate-500 border-slate-500/30';
 
 const confidenceCls = (v?: number): string =>
-  v !== undefined && v >= 0.6
+  v != null && v >= 0.6
     ? 'bg-emerald-500/15 text-emerald-600'
-    : v !== undefined && v >= 0.35
+    : v != null && v >= 0.35
       ? 'bg-amber-500/15 text-amber-600'
       : 'bg-red-500/15 text-red-500';
 
@@ -94,12 +85,16 @@ const PriceTooltip = (props: any) => {
   return (
     <div className="rounded-xl border border-border/60 bg-card/95 p-3 shadow-lg text-xs backdrop-blur">
       <p className="font-semibold text-foreground mb-1">{label}</p>
-      {payload.map((p: { name: string; value: number; color: string }) => (
-        <div key={p.name} className="flex justify-between gap-4">
-          <span style={{ color: p.color }}>{p.name}</span>
-          <span className="font-mono text-foreground">{typeof p.value === 'number' ? p.value.toFixed(2) : p.value}</span>
-        </div>
-      ))}
+      {(payload as Array<{ name: string; value: number; color: string }>).map(
+        (p: { name: string; value: number; color: string }) => (
+          <div key={p.name} className="flex justify-between gap-4">
+            <span style={{ color: p.color }}>{p.name}</span>
+            <span className="font-mono text-foreground">
+              {typeof p.value === 'number' ? p.value.toFixed(2) : p.value}
+            </span>
+          </div>
+        ),
+      )}
     </div>
   );
 };
@@ -116,7 +111,6 @@ export function SharePriceAnalysisView() {
   const [detailTab, setDetailTab] = useState<'period' | 'event'>('period');
   const [expandedCounterHypo, setExpandedCounterHypo] = useState(false);
   const [expandedEvidence, setExpandedEvidence] = useState(false);
-  const [expandedQueries, setExpandedQueries] = useState(false);
 
   // ── Derived data ────────────────────────────────────────────────────────────
   const rm = sharePriceData?.run_meta;
@@ -130,16 +124,19 @@ export function SharePriceAnalysisView() {
   const eg = sharePriceData?.executive_guide;
   const periods = ta?.trend_periods ?? [];
 
+  // Downsample price series for chart performance
   const priceSeries = useMemo(() => {
-    if (!pp?.price_series?.length) return [];
-    return pp.price_series;
+    const raw = pp?.price_series;
+    if (!raw || raw.length === 0) return [];
+    // Keep every 2nd point to reduce DOM nodes
+    return raw.filter((_, i) => i % 2 === 0 || i === raw.length - 1);
   }, [pp?.price_series]);
 
-
   const driverChartData = useMemo(() => {
-    if (!dm?.driver_themes?.length) return [];
-    return dm.driver_themes.map((t) => ({
-      shortName: t.theme.length > 38 ? t.theme.slice(0, 36) + '…' : t.theme,
+    const themes = dm?.driver_themes;
+    if (!themes || themes.length === 0) return [];
+    return themes.map((t) => ({
+      shortName: t.theme.length > 38 ? t.theme.slice(0, 36) + '\u2026' : t.theme,
       fullName: t.theme,
       importance_score: t.importance_score ?? 0,
       theme_type: t.theme_type,
@@ -147,17 +144,18 @@ export function SharePriceAnalysisView() {
   }, [dm?.driver_themes]);
 
   const monitoringSignals = useMemo(() => {
-    if (!dm?.driver_themes) return [];
-    return dm.driver_themes
+    const themes = dm?.driver_themes;
+    if (!themes || themes.length === 0) return [];
+    return themes
       .slice(0, 5)
       .flatMap((t) => t.monitoring_signals ?? [])
       .filter(Boolean)
       .slice(0, 8);
   }, [dm?.driver_themes]);
 
-  // Map event dates to period indices for quick lookup
+  // Map event dates to period indices
   const eventPeriodMap = useMemo(() => {
-    const map = new Map<number, number>(); // eventIdx → periodIdx
+    const map = new Map<number, number>();
     se.forEach((ev, ei) => {
       const d = ev.date;
       periods.forEach((p, pi) => {
@@ -167,9 +165,9 @@ export function SharePriceAnalysisView() {
     return map;
   }, [se, periods]);
 
-  // Events that fall within the selected period
+  // Events in selected period
   const periodEvents = useMemo(() => {
-    if (selectedPeriodIdx === null) return [];
+    if (selectedPeriodIdx == null) return [];
     const p = periods[selectedPeriodIdx];
     if (!p) return [];
     return se
@@ -184,18 +182,18 @@ export function SharePriceAnalysisView() {
     setDetailTab('period');
     setExpandedCounterHypo(false);
     setExpandedEvidence(false);
-    setExpandedQueries(false);
+    // reset collapsibles
     setTimeout(() => detailPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
 
   const handleEventClick = (eventIdx: number) => {
     setSelectedEventIdx(eventIdx);
     const pi = eventPeriodMap.get(eventIdx);
-    if (pi !== undefined) setSelectedPeriodIdx(pi);
+    if (pi != null) setSelectedPeriodIdx(pi);
     setDetailTab('event');
     setExpandedCounterHypo(false);
     setExpandedEvidence(false);
-    setExpandedQueries(false);
+    // reset collapsibles
     setTimeout(() => detailPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
 
@@ -211,18 +209,17 @@ export function SharePriceAnalysisView() {
         <CandlestickChart className="mb-4 h-12 w-12 text-muted-foreground" />
         <h3 className="text-lg font-semibold text-foreground">No Share Price Stream Loaded</h3>
         <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-          Upload your <code className="text-xs bg-muted px-1 rounded">SP_*.json</code> analysis file to unlock this view.
+          Upload a <code className="text-xs bg-muted px-1 rounded">SP_*.json</code> analysis file.
         </p>
       </div>
     );
   }
 
   const selectedPeriod: TrendPeriod | null =
-    selectedPeriodIdx !== null ? (periods[selectedPeriodIdx] ?? null) : null;
+    selectedPeriodIdx != null ? (periods[selectedPeriodIdx] ?? null) : null;
   const selectedEvent: SignificantEvent | null =
-    selectedEventIdx !== null ? (se[selectedEventIdx] ?? null) : null;
+    selectedEventIdx != null ? (se[selectedEventIdx] ?? null) : null;
 
-  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
 
@@ -246,11 +243,11 @@ export function SharePriceAnalysisView() {
               <Badge variant="outline" className="font-mono">{rm?.ticker}</Badge>
               <Badge variant="outline">{rm?.benchmark_label}</Badge>
               {ap && (
-                <Badge variant="outline">{fmtDate(ap.start_date)} → {fmtDate(ap.end_date)}</Badge>
+                <Badge variant="outline">{fmtDate(ap.start_date)} &rarr; {fmtDate(ap.end_date)}</Badge>
               )}
               {rm?.react_enabled && (
                 <Badge className="bg-violet-500/15 text-violet-600 border-violet-500/30">
-                  AI Attribution · {rm.react_model}
+                  AI Attribution
                 </Badge>
               )}
               <Badge variant="outline" className="text-muted-foreground">
@@ -259,71 +256,53 @@ export function SharePriceAnalysisView() {
             </div>
             {cp && (
               <p className="text-sm text-muted-foreground">
-                {cp.sector}{cp.industry ? ` · ${cp.industry}` : ''}{cp.country ? ` · ${cp.country}` : ''}
-                {cp.market_cap ? ` · €${(cp.market_cap / 1e9).toFixed(1)}B market cap` : ''}
+                {cp.sector}{cp.industry ? ` \u00b7 ${cp.industry}` : ''}{cp.country ? ` \u00b7 ${cp.country}` : ''}
+                {cp.market_cap ? ` \u00b7 \u20ac${(cp.market_cap / 1e9).toFixed(1)}B market cap` : ''}
               </p>
             )}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            {[
-              { label: 'Latest close', value: rm?.ticker ? `${pp?.target?.latest_close?.toFixed(2) ?? 'N/A'} ${cp?.currency ?? ''}` : 'N/A' },
-              { label: 'Current regime', value: ta?.current_regime ? regimeLabel(ta.current_regime) : 'N/A', cls: ta?.current_regime ? regimeBadgeCls(ta.current_regime) : '' },
-              { label: 'Total return', value: pct(pp?.target?.total_return), cls: colorPct(pp?.target?.total_return) },
-              { label: 'Max drawdown', value: pct(pp?.target?.max_drawdown), cls: 'text-red-500' },
-            ].map(({ label, value, cls }) => (
-              <div key={label} className="rounded-2xl border border-border/60 bg-background/70 p-3">
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className={`mt-1 text-lg font-semibold ${cls ?? 'text-foreground'}`}>{value}</p>
-              </div>
-            ))}
+            <KpiCard label="Latest close" value={pp?.target?.latest_close != null ? `${pp.target.latest_close.toFixed(2)} ${cp?.currency ?? ''}` : 'N/A'} />
+            <KpiCard label="Current regime" value={ta?.current_regime ? regimeLabel(ta.current_regime) : 'N/A'} className={ta?.current_regime ? regimeBadgeCls(ta.current_regime) : ''} />
+            <KpiCard label="Total return" value={pct(pp?.target?.total_return)} className={colorPct(pp?.target?.total_return)} />
+            <KpiCard label="Max drawdown" value={pct(pp?.target?.max_drawdown)} className="text-red-500" />
           </div>
         </CardContent>
       </Card>
 
       {/* ── 2. KPI strip ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        {[
-          { label: 'Total return', value: deltaPct(pp?.target?.total_return), pos: (pp?.target?.total_return ?? 0) > 0 },
-          { label: 'vs Benchmark', value: deltaPct(pp?.relative?.outperformance), pos: (pp?.relative?.outperformance ?? 0) > 0 },
-          { label: '12m momentum', value: deltaPct(ta?.momentum?.['12m']), pos: (ta?.momentum?.['12m'] ?? 0) > 0 },
-          { label: 'Ann. volatility', value: pct(pp?.target?.annualized_volatility), pos: null },
-          { label: 'Max drawdown', value: pct(pp?.target?.max_drawdown), pos: false },
-          { label: 'Ann. return', value: deltaPct(pp?.target?.annualized_return), pos: (pp?.target?.annualized_return ?? 0) > 0 },
-        ].map(({ label, value, pos }) => (
-          <div key={label} className="rounded-2xl border border-border/60 bg-card/70 p-4 shadow-sm">
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className={`mt-1 text-xl font-semibold ${pos === null ? 'text-foreground' : pos ? 'text-emerald-500' : 'text-red-500'}`}>
-              {value}
-            </p>
-          </div>
-        ))}
+        <KpiStrip label="Total return" value={deltaPct(pp?.target?.total_return)} positive={(pp?.target?.total_return ?? 0) > 0} />
+        <KpiStrip label="vs Benchmark" value={deltaPct(pp?.relative?.outperformance)} positive={(pp?.relative?.outperformance ?? 0) > 0} />
+        <KpiStrip label="12m momentum" value={deltaPct(ta?.momentum?.['12m'])} positive={(ta?.momentum?.['12m'] ?? 0) > 0} />
+        <KpiStrip label="Ann. volatility" value={pct(pp?.target?.annualized_volatility)} />
+        <KpiStrip label="Max drawdown" value={pct(pp?.target?.max_drawdown)} positive={false} />
+        <KpiStrip label="Ann. return" value={deltaPct(pp?.target?.annualized_return)} positive={(pp?.target?.annualized_return ?? 0) > 0} />
       </div>
 
-      {/* ── 3. Executive guide (conditional) ──────────────────────────────── */}
-      {eg?.stock_story && (
+      {/* ── 3. Executive guide ─────────────────────────────────────────────── */}
+      {eg?.stock_story ? (
         <Card className="rounded-2xl border border-sky-500/30 bg-sky-500/5 shadow-sm">
           <CardContent className="p-6 space-y-4">
             <div className="flex items-center gap-2">
               <Badge className="bg-sky-500/15 text-sky-600 border-sky-500/30">Guide</Badge>
-              <span className="text-xs text-muted-foreground">AI-generated orientation — read before exploring the chart</span>
+              <span className="text-xs text-muted-foreground">AI-generated orientation</span>
             </div>
             <p className="text-sm text-foreground leading-relaxed">{eg.stock_story}</p>
             {eg.key_drivers && eg.key_drivers.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Key drivers</p>
-                <div className="space-y-2">
-                  {eg.key_drivers.map((d, i) => (
-                    <div key={i} className="flex gap-3 items-start">
-                      <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-sky-500/20 text-xs font-bold text-sky-600">
-                        {i + 1}
-                      </span>
-                      <div>
-                        <span className="text-sm font-semibold text-foreground">{d.name}</span>
-                        <span className="text-sm text-muted-foreground"> — {d.plain_summary}</span>
-                      </div>
+                {eg.key_drivers.map((d, i) => (
+                  <div key={i} className="flex gap-3 items-start">
+                    <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-sky-500/20 text-xs font-bold text-sky-600">
+                      {i + 1}
+                    </span>
+                    <div>
+                      <span className="text-sm font-semibold text-foreground">{d.name}</span>
+                      <span className="text-sm text-muted-foreground"> &mdash; {d.plain_summary}</span>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
             )}
             {eg.current_watch && (
@@ -337,18 +316,15 @@ export function SharePriceAnalysisView() {
             )}
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
-      {/* ── 4. Interactive price chart ─────────────────────────────────────── */}
+      {/* ── 4. Price chart ─────────────────────────────────────────────────── */}
       <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <CandlestickChart className="h-4 w-4 text-sky-600" />
-              Price Chart — {rm?.ticker}
-              <span className="text-xs font-normal text-muted-foreground ml-1">
-                · Click a coloured band or event line to open attribution
-              </span>
+              Price Chart
             </CardTitle>
             <div className="flex gap-2">
               {(['ma50', 'ma200'] as const).map((ma) => (
@@ -368,94 +344,38 @@ export function SharePriceAnalysisView() {
               ))}
             </div>
           </div>
-          {/* Regime legend */}
-          <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-1">
-            {[['bull_trend', 'Bull'], ['bear_trend', 'Bear'], ['consolidation', 'Consolidation']].map(([r, label]) => (
-              <span key={r} className="flex items-center gap-1">
-                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: regimeFill(r), opacity: 0.55 }} />
-                {label}
-              </span>
-            ))}
-            <span className="flex items-center gap-1">
-              <span className="inline-block h-0.5 w-4 border-t-2 border-dashed border-amber-400" />
-              Event
-            </span>
-          </div>
         </CardHeader>
-        <CardContent className="h-[420px] pl-0">
+        <CardContent className="h-[400px]">
           {priceSeries.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={priceSeries}
-                margin={{ top: 8, right: 32, left: 8, bottom: 8 }}
-              >
+              <ComposedChart data={priceSeries} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.25} />
                 <XAxis
                   dataKey="date"
                   interval={Math.floor(priceSeries.length / 7)}
                   tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                  tickFormatter={(v: string) => v?.slice(0, 7)}
+                  tickFormatter={(v: string) => (v ? v.slice(0, 7) : '')}
                 />
                 <YAxis
                   yAxisId="price"
-                  orientation="left"
                   tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                  tickFormatter={(v: number) => v.toFixed(0)}
+                  tickFormatter={(v: number) => String(Math.round(v))}
                   width={42}
                 />
-                <Tooltip content={<PriceTooltip />} />
-
-                {/* Price line */}
-                <Line
-                  yAxisId="price"
-                  dataKey="close"
-                  name="Price"
-                  stroke="#3b82f6"
-                  dot={false}
-                  strokeWidth={2}
-                  isAnimationActive={false}
-                />
-                {showMA.ma50 && (
-                  <Line
-                    yAxisId="price"
-                    dataKey="ma50"
-                    name="MA50"
-                    stroke="#10b981"
-                    dot={false}
-                    strokeWidth={1}
-                    strokeDasharray="5 3"
-                    isAnimationActive={false}
-                    connectNulls
-                  />
-                )}
-                {showMA.ma200 && (
-                  <Line
-                    yAxisId="price"
-                    dataKey="ma200"
-                    name="MA200"
-                    stroke="#f59e0b"
-                    dot={false}
-                    strokeWidth={1}
-                    strokeDasharray="5 3"
-                    isAnimationActive={false}
-                    connectNulls
-                  />
-                )}
+                <Tooltip content={PriceTooltip} />
+                <Line yAxisId="price" dataKey="close" name="Price" stroke="#3b82f6" dot={false} strokeWidth={2} isAnimationActive={false} />
+                {showMA.ma50 && <Line yAxisId="price" dataKey="ma50" name="MA50" stroke="#10b981" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
+                {showMA.ma200 && <Line yAxisId="price" dataKey="ma200" name="MA200" stroke="#f59e0b" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
               </ComposedChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              No price series data available.
-            </div>
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No price data.</div>
           )}
         </CardContent>
       </Card>
 
-      {/* ── 5. Detail panel (period + event attribution) ───────────────────── */}
-      <div
-        ref={detailPanelRef}
-        className={`transition-all duration-300 overflow-hidden ${selectedPeriodIdx !== null ? 'max-h-[9999px] opacity-100' : 'max-h-0 opacity-0'}`}
-      >
+      {/* ── 5. Detail panel ────────────────────────────────────────────────── */}
+      <div ref={detailPanelRef}>
         {selectedPeriod && (
           <Card className="rounded-2xl border border-sky-500/30 bg-sky-500/5 shadow-md">
             <CardHeader className="pb-2">
@@ -465,26 +385,17 @@ export function SharePriceAnalysisView() {
                     {regimeLabel(selectedPeriod.regime)}
                   </Badge>
                   <span className="text-sm font-semibold text-foreground">
-                    {fmtDate(selectedPeriod.start_date)} → {fmtDate(selectedPeriod.end_date)}
+                    {fmtDate(selectedPeriod.start_date)} &rarr; {fmtDate(selectedPeriod.end_date)}
                   </span>
                   <span className={`text-sm font-semibold ${colorPct(selectedPeriod.period_return)}`}>
                     {deltaPct(selectedPeriod.period_return)}
                   </span>
-                  {selectedPeriod.period_abnormal_return !== undefined && (
-                    <span className="text-xs text-muted-foreground">
-                      {deltaPct(selectedPeriod.period_abnormal_return)} abnormal
-                    </span>
-                  )}
                   <span className="text-xs text-muted-foreground">{selectedPeriod.trading_days}d</span>
-                  {selectedPeriod.is_latest_period && (
-                    <Badge variant="outline" className="text-xs">Current period</Badge>
-                  )}
                 </div>
                 <button onClick={closeDetail} className="rounded-full p-1 hover:bg-muted transition-colors">
                   <X className="h-4 w-4 text-muted-foreground" />
                 </button>
               </div>
-              {/* Tabs */}
               {selectedEvent && (
                 <div className="flex gap-1 mt-2">
                   {(['period', 'event'] as const).map((tab) => (
@@ -492,9 +403,7 @@ export function SharePriceAnalysisView() {
                       key={tab}
                       onClick={() => setDetailTab(tab)}
                       className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
-                        detailTab === tab
-                          ? 'bg-sky-500/20 text-sky-700 dark:text-sky-400'
-                          : 'text-muted-foreground hover:text-foreground'
+                        detailTab === tab ? 'bg-sky-500/20 text-sky-700 dark:text-sky-400' : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
                       {tab === 'period' ? 'Period overview' : 'Event attribution'}
@@ -503,241 +412,103 @@ export function SharePriceAnalysisView() {
                 </div>
               )}
             </CardHeader>
-
             <CardContent className="space-y-4 pt-0">
-              {/* Period tab */}
               {detailTab === 'period' && (
                 <div className="space-y-4">
                   {selectedPeriod.period_summary && (
                     <p className="text-sm text-muted-foreground leading-relaxed">{selectedPeriod.period_summary}</p>
                   )}
-                  {/* Stats row */}
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 text-sm">
-                    {[
-                      { label: 'Return', value: deltaPct(selectedPeriod.period_return) },
-                      { label: 'vs Benchmark', value: selectedPeriod.benchmark_return !== undefined ? deltaPct((selectedPeriod.period_return ?? 0) - selectedPeriod.benchmark_return) : 'N/A' },
-                      { label: 'Ann. Vol', value: pct(selectedPeriod.annualized_volatility) },
-                      { label: 'Events', value: String(periodEvents.length) },
-                    ].map(({ label, value }) => (
-                      <div key={label} className="rounded-xl border border-border/50 bg-background/60 p-3">
-                        <p className="text-xs text-muted-foreground">{label}</p>
-                        <p className="font-semibold text-foreground">{value}</p>
-                      </div>
-                    ))}
-                  </div>
-                  {/* Events in this period */}
                   {periodEvents.length > 0 && (
                     <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Significant events in this period — click to see attribution
-                      </p>
-                      <div className="space-y-1.5">
-                        {periodEvents.map(({ ev, i }) => (
-                          <button
-                            key={i}
-                            onClick={() => handleEventClick(i)}
-                            className={`w-full text-left rounded-xl border px-3 py-2 text-xs transition-colors hover:border-sky-500/40 hover:bg-sky-500/5 ${
-                              selectedEventIdx === i
-                                ? 'border-sky-500/50 bg-sky-500/10'
-                                : 'border-border/50 bg-background/60'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-mono text-muted-foreground">{fmtDate(ev.date)}</span>
-                                {ev.anchor_title && (
-                                  <span className="text-foreground font-medium">{ev.anchor_title}</span>
-                                )}
-                                <span className={`font-semibold ${colorPct(ev.return_1d)}`}>
-                                  {deltaPct(ev.return_1d)}
-                                </span>
-                              </div>
-                              {ev.attribution?.confidence !== undefined && (
-                                <Badge className={`${confidenceCls(ev.attribution.confidence)} text-[10px]`}>
-                                  {pct(ev.attribution.confidence, 0)} conf.
-                                </Badge>
-                              )}
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Events in period</p>
+                      {periodEvents.map(({ ev, i }) => (
+                        <button
+                          key={i}
+                          onClick={() => handleEventClick(i)}
+                          className={`w-full text-left rounded-xl border px-3 py-2 text-xs transition-colors hover:bg-sky-500/5 ${
+                            selectedEventIdx === i ? 'border-sky-500/50 bg-sky-500/10' : 'border-border/50 bg-background/60'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-muted-foreground">{fmtDate(ev.date)}</span>
+                              {ev.anchor_title && <span className="text-foreground font-medium">{ev.anchor_title}</span>}
+                              <span className={`font-semibold ${colorPct(ev.return_1d)}`}>{deltaPct(ev.return_1d)}</span>
                             </div>
-                            {ev.attribution?.most_probable_reason && (
-                              <p className="mt-1 text-muted-foreground line-clamp-1">
-                                {ev.attribution.most_probable_reason}
-                              </p>
+                            {ev.attribution?.confidence != null && (
+                              <Badge className={`${confidenceCls(ev.attribution.confidence)} text-[10px]`}>
+                                {pct(ev.attribution.confidence, 0)}
+                              </Badge>
                             )}
-                          </button>
-                        ))}
-                      </div>
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
               )}
-
-              {/* Event attribution tab */}
               {detailTab === 'event' && selectedEvent && (
                 <div className="space-y-4">
-                  {/* Reason + interpretation */}
-                  <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-semibold text-foreground leading-relaxed flex-1">
-                        {selectedEvent.attribution?.most_probable_reason ?? 'No attribution available.'}
-                      </p>
-                      {selectedEvent.attribution?.confidence !== undefined && (
-                        <Badge className={`${confidenceCls(selectedEvent.attribution.confidence)} flex-shrink-0`}>
-                          {pct(selectedEvent.attribution.confidence, 0)} confidence
-                        </Badge>
-                      )}
-                    </div>
-                    {selectedEvent.attribution?.investor_interpretation && (
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        {selectedEvent.attribution.investor_interpretation}
-                      </p>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-semibold text-foreground leading-relaxed flex-1">
+                      {selectedEvent.attribution?.most_probable_reason ?? 'No attribution.'}
+                    </p>
+                    {selectedEvent.attribution?.confidence != null && (
+                      <Badge className={`${confidenceCls(selectedEvent.attribution.confidence)} flex-shrink-0`}>
+                        {pct(selectedEvent.attribution.confidence, 0)} confidence
+                      </Badge>
                     )}
                   </div>
-
-                  {/* Event metadata */}
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 text-sm">
-                    {[
-                      { label: 'Date', value: fmtDate(selectedEvent.date) },
-                      { label: '1D return', value: deltaPct(selectedEvent.return_1d) },
-                      { label: 'Abnormal', value: deltaPct(selectedEvent.abnormal_return_1d) },
-                      { label: 'Z-score', value: fmtNum(selectedEvent.z_score_60d) },
-                    ].map(({ label, value }) => (
-                      <div key={label} className="rounded-xl border border-border/50 bg-background/60 p-3">
-                        <p className="text-xs text-muted-foreground">{label}</p>
-                        <p className="font-semibold text-foreground">{value}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Driver breakdown */}
-                  {selectedEvent.attribution?.driver_breakdown?.length ? (
+                  {selectedEvent.attribution?.investor_interpretation && (
+                    <p className="text-sm text-muted-foreground">{selectedEvent.attribution.investor_interpretation}</p>
+                  )}
+                  {/* Driver breakdown bars */}
+                  {selectedEvent.attribution?.driver_breakdown && selectedEvent.attribution.driver_breakdown.length > 0 && (
                     <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Driver breakdown</p>
-                      <div className="space-y-2">
-                        {selectedEvent.attribution.driver_breakdown.map((d, i) => (
-                          <div key={i} className="space-y-1">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-foreground font-medium flex-1 mr-2">{d.driver}</span>
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline" className={`text-[10px] ${
-                                  d.direction === 'positive' ? 'text-emerald-600 border-emerald-500/30' :
-                                  d.direction === 'negative' ? 'text-red-500 border-red-500/30' :
-                                  'text-muted-foreground'
-                                }`}>
-                                  {d.direction}
-                                </Badge>
-                                <span className="font-mono text-muted-foreground w-8 text-right">{pct(d.weight, 0)}</span>
-                              </div>
-                            </div>
-                            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                              <div
-                                className="h-full rounded-full transition-all"
-                                style={{
-                                  width: `${Math.min(100, (d.weight ?? 0) * 100)}%`,
-                                  background: d.direction === 'positive' ? '#22c55e' : d.direction === 'negative' ? '#ef4444' : '#94a3b8',
-                                }}
-                              />
-                            </div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Drivers</p>
+                      {selectedEvent.attribution.driver_breakdown.map((d, i) => (
+                        <div key={i} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-foreground font-medium flex-1 mr-2">{d.driver}</span>
+                            <span className="font-mono text-muted-foreground">{pct(d.weight, 0)}</span>
                           </div>
-                        ))}
-                      </div>
+                          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${Math.min(100, (d.weight ?? 0) * 100)}%`,
+                                background: d.direction === 'positive' ? '#22c55e' : d.direction === 'negative' ? '#ef4444' : '#94a3b8',
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ) : null}
-
+                  )}
                   {/* What to monitor */}
-                  {selectedEvent.attribution?.what_to_monitor_next?.length ? (
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What to monitor next</p>
-                      <ul className="space-y-1">
-                        {selectedEvent.attribution.what_to_monitor_next.map((item, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-                            <ChevronRight className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 text-sky-500" />
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
+                  {selectedEvent.attribution?.what_to_monitor_next && selectedEvent.attribution.what_to_monitor_next.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Watch next</p>
+                      {selectedEvent.attribution.what_to_monitor_next.map((item, i) => (
+                        <p key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                          <ChevronRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-sky-500" />{item}
+                        </p>
+                      ))}
                     </div>
-                  ) : null}
-
-                  {/* Counter-hypotheses collapsible */}
-                  {selectedEvent.attribution?.counter_hypotheses?.length ? (
-                    <div className="rounded-xl border border-border/50 bg-background/60 overflow-hidden">
-                      <button
-                        onClick={() => setExpandedCounterHypo(!expandedCounterHypo)}
-                        className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        <span>Counter-hypotheses ({selectedEvent.attribution.counter_hypotheses.length})</span>
-                        {expandedCounterHypo ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                      </button>
-                      {expandedCounterHypo && (
-                        <div className="px-3 pb-3 space-y-1.5 border-t border-border/40">
-                          {selectedEvent.attribution.counter_hypotheses.map((h, i) => (
-                            <p key={i} className="text-xs text-muted-foreground pt-1.5">{h}</p>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-
-                  {/* Evidence collapsible */}
-                  {selectedEvent.attribution?.evidence?.length ? (
-                    <div className="rounded-xl border border-border/50 bg-background/60 overflow-hidden">
-                      <button
-                        onClick={() => setExpandedEvidence(!expandedEvidence)}
-                        className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <BookOpen className="h-3.5 w-3.5" />
-                          Evidence ({selectedEvent.attribution.evidence.length} sources
-                          {selectedEvent.attribution.search_results_count
-                            ? ` from ${selectedEvent.attribution.search_results_count} results`
-                            : ''})
-                        </span>
-                        {expandedEvidence ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                      </button>
-                      {expandedEvidence && (
-                        <div className="px-3 pb-3 space-y-2 border-t border-border/40 pt-2">
-                          {selectedEvent.attribution.evidence.map((ev, i) => (
-                            <div key={i} className="rounded-lg border border-border/40 bg-background/80 p-2.5">
-                              <a
-                                href={ev.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs font-medium text-sky-600 hover:underline line-clamp-1"
-                              >
-                                {ev.title}
-                              </a>
-                              {ev.snippet && (
-                                <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{ev.snippet}</p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-
-                  {/* Research queries collapsible */}
-                  {selectedEvent.attribution?.queries?.length ? (
-                    <div className="rounded-xl border border-border/50 bg-background/60 overflow-hidden">
-                      <button
-                        onClick={() => setExpandedQueries(!expandedQueries)}
-                        className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        <span>Research queries ({selectedEvent.attribution.queries.length})</span>
-                        {expandedQueries ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                      </button>
-                      {expandedQueries && (
-                        <div className="px-3 pb-3 space-y-1.5 border-t border-border/40 pt-2">
-                          {selectedEvent.attribution.queries.map((q, i) => (
-                            <div key={i} className="text-xs">
-                              <span className="text-muted-foreground mr-1">R{q.round ?? i + 1}:</span>
-                              <span className="text-foreground">{q.query}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
+                  )}
+                  {/* Collapsible sections */}
+                  <CollapsibleSection
+                    title={`Counter-hypotheses (${selectedEvent.attribution?.counter_hypotheses?.length ?? 0})`}
+                    expanded={expandedCounterHypo}
+                    toggle={() => setExpandedCounterHypo(!expandedCounterHypo)}
+                    items={selectedEvent.attribution?.counter_hypotheses}
+                  />
+                  <CollapsibleSection
+                    title={`Evidence (${selectedEvent.attribution?.evidence?.length ?? 0})`}
+                    expanded={expandedEvidence}
+                    toggle={() => setExpandedEvidence(!expandedEvidence)}
+                    items={selectedEvent.attribution?.evidence?.map((e) => e.title + (e.snippet ? ` — ${e.snippet}` : ''))}
+                  />
                 </div>
               )}
             </CardContent>
@@ -746,15 +517,13 @@ export function SharePriceAnalysisView() {
       </div>
 
       {/* ── 6. Driver map ──────────────────────────────────────────────────── */}
-      {dm?.driver_themes && dm.driver_themes.length > 0 && (
+      {driverChartData.length > 0 && (
         <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <TrendingUp className="h-4 w-4 text-sky-600" />
               Driver Map
-              <span className="text-xs font-normal text-muted-foreground ml-1">
-                · {dm.events_analyzed} events analyzed
-              </span>
+              <span className="text-xs font-normal text-muted-foreground ml-1">{dm?.events_analyzed} events analyzed</span>
             </CardTitle>
             <div className="flex gap-3 text-xs mt-1">
               {[['structural', 'Structural'], ['cyclical', 'Cyclical'], ['episodic', 'Episodic']].map(([t, label]) => (
@@ -770,25 +539,8 @@ export function SharePriceAnalysisView() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart layout="vertical" data={driverChartData} margin={{ left: 10, right: 32, top: 4, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.25} horizontal={false} />
-                  <XAxis
-                    type="number"
-                    domain={[0, 0.35]}
-                    tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`}
-                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="shortName"
-                    width={230}
-                    tick={{ fontSize: 11, fill: 'hsl(var(--foreground))' }}
-                  />
-                  <Tooltip
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    formatter={(v: any, _name: any, props: any) => [
-                      `${(Number(v) * 100).toFixed(1)}%`,
-                      props?.payload?.fullName ?? 'Importance',
-                    ]}
-                  />
+                  <XAxis type="number" domain={[0, 0.35]} tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`} tick={{ fontSize: 10 }} />
+                  <YAxis type="category" dataKey="shortName" width={230} tick={{ fontSize: 11, fill: 'hsl(var(--foreground))' }} />
                   <Bar dataKey="importance_score" radius={[0, 4, 4, 0]}>
                     {driverChartData.map((entry, i) => (
                       <Cell key={i} fill={themeTypeFill(entry.theme_type)} />
@@ -798,89 +550,41 @@ export function SharePriceAnalysisView() {
               </ResponsiveContainer>
             </div>
 
-            {/* Theme detail cards */}
+            {/* Theme cards */}
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              {dm.driver_themes.map((t, i) => (
+              {(dm?.driver_themes ?? []).map((t, i) => (
                 <div key={i} className="rounded-xl border border-border/50 bg-background/60 p-3 space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm font-semibold text-foreground leading-snug">{t.theme}</p>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <Badge className={`${themeTypeBadgeCls(t.theme_type)} text-[10px]`}>
-                        {t.theme_type}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] font-mono">
-                        {pct(t.importance_score, 0)}
-                      </Badge>
-                    </div>
+                    <Badge className={`${themeTypeBadgeCls(t.theme_type)} text-[10px]`}>{t.theme_type}</Badge>
                   </div>
-                  {t.description && <p className="text-xs text-muted-foreground leading-relaxed">{t.description}</p>}
+                  {t.description && <p className="text-xs text-muted-foreground">{t.description}</p>}
                   {t.forward_looking && (
-                    <p className="text-xs text-sky-600 dark:text-sky-400 leading-relaxed">
+                    <p className="text-xs text-sky-600 dark:text-sky-400">
                       <span className="font-semibold">Forward: </span>{t.forward_looking}
                     </p>
                   )}
-                  {t.monitoring_signals?.length ? (
-                    <div className="flex flex-wrap gap-1">
-                      {t.monitoring_signals.slice(0, 3).map((s, si) => (
-                        <span key={si} className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{s}</span>
-                      ))}
-                    </div>
-                  ) : null}
                 </div>
               ))}
             </div>
 
-            {/* Dominant narrative */}
-            {dm.dominant_narrative && (
+            {dm?.dominant_narrative && (
               <div className="rounded-xl border border-border/50 bg-muted/30 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Dominant narrative</p>
                 <p className="text-sm text-muted-foreground leading-relaxed">{dm.dominant_narrative}</p>
               </div>
             )}
 
-            {/* Regime driver map */}
-            {dm.regime_driver_map && Object.keys(dm.regime_driver_map).length > 0 && (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {Object.entries(dm.regime_driver_map).map(([regime, drivers]) => (
-                  <div key={regime} className="rounded-xl border border-border/50 bg-background/60 p-3">
-                    <Badge className={`${regimeBadgeCls(regime)} mb-2 text-[10px]`}>{regimeLabel(regime)}</Badge>
-                    <ul className="space-y-1">
-                      {(drivers as string[]).slice(0, 4).map((d, i) => (
-                        <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                          <ChevronRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-muted-foreground" />
-                          {d}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Theme interactions */}
-            {dm.theme_interactions?.length ? (
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Theme interactions</p>
-                {dm.theme_interactions.map((t, i) => (
-                  <p key={i} className="text-xs text-muted-foreground">{t}</p>
-                ))}
-              </div>
-            ) : null}
-
-            {/* Monitoring priorities */}
             {monitoringSignals.length > 0 && (
               <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                   <Eye className="h-3.5 w-3.5" /> Monitoring priorities
                 </p>
-                <ul className="space-y-1">
-                  {monitoringSignals.map((s, i) => (
-                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                      <ChevronRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-amber-500" />
-                      {s}
-                    </li>
-                  ))}
-                </ul>
+                {monitoringSignals.map((s, i) => (
+                  <p key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                    <ChevronRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-amber-500" />{s}
+                  </p>
+                ))}
               </div>
             )}
           </CardContent>
@@ -888,68 +592,13 @@ export function SharePriceAnalysisView() {
       )}
 
       {/* ── 7. Trend periods table ─────────────────────────────────────────── */}
-      <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <TrendingDown className="h-4 w-4 text-sky-600" />
-            All Trend Periods
-            <span className="text-xs font-normal text-muted-foreground ml-1">· click any row to open attribution</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border/50 text-muted-foreground">
-                  {['#', 'Start', 'End', 'Regime', 'Return', 'vs BM', 'Abnormal', 'Days', 'Events'].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {periods.map((p, i) => (
-                  <tr
-                    key={i}
-                    onClick={() => handlePeriodClick(i)}
-                    className={`border-b border-border/30 cursor-pointer transition-colors hover:bg-muted/40 ${
-                      selectedPeriodIdx === i ? 'bg-sky-500/10 ring-1 ring-inset ring-sky-500/30' : ''
-                    } ${p.is_latest_period ? 'font-semibold' : ''}`}
-                  >
-                    <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
-                    <td className="px-3 py-2 font-mono">{fmtDate(p.start_date)}</td>
-                    <td className="px-3 py-2 font-mono">{fmtDate(p.end_date)}</td>
-                    <td className="px-3 py-2">
-                      <Badge className={`${regimeBadgeCls(p.regime)} text-[10px]`}>
-                        {regimeLabel(p.regime)}
-                      </Badge>
-                      {p.is_latest_period && <span className="ml-1 text-muted-foreground">(current)</span>}
-                    </td>
-                    <td className={`px-3 py-2 font-semibold ${colorPct(p.period_return)}`}>
-                      {deltaPct(p.period_return)}
-                    </td>
-                    <td className={`px-3 py-2 ${colorPct(p.benchmark_return)}`}>
-                      {p.benchmark_return !== undefined ? deltaPct(p.benchmark_return) : '—'}
-                    </td>
-                    <td className={`px-3 py-2 ${colorPct(p.period_abnormal_return)}`}>
-                      {p.period_abnormal_return !== undefined ? deltaPct(p.period_abnormal_return) : '—'}
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">{p.trading_days}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{p.event_count ?? 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── 8. Peer comparison ────────────────────────────────────────────── */}
-      {pc?.peers && pc.peers.length > 0 && (
+      {periods.length > 0 && (
         <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <AlertTriangle className="h-4 w-4 text-sky-600" />
-              Peer Comparison
+              <TrendingDown className="h-4 w-4 text-sky-600" />
+              All Trend Periods
+              <span className="text-xs font-normal text-muted-foreground ml-1">click a row to open detail</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -957,42 +606,68 @@ export function SharePriceAnalysisView() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border/50 text-muted-foreground">
-                    {['Ticker', 'Name', 'Total Return', 'Ann. Return', 'Ann. Vol', 'Max DD', 'Correlation'].map((h) => (
+                    {['#', 'Start', 'End', 'Regime', 'Return', 'vs BM', 'Days', 'Events'].map((h) => (
                       <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Target row first */}
-                  <tr className="border-b border-border/30 bg-sky-500/8 font-semibold">
-                    <td className="px-3 py-2 font-mono text-sky-600">{rm?.ticker}</td>
-                    <td className="px-3 py-2">{cp?.name ?? rm?.company}</td>
-                    <td className={`px-3 py-2 ${colorPct(pp?.target?.total_return)}`}>{deltaPct(pp?.target?.total_return)}</td>
-                    <td className={`px-3 py-2 ${colorPct(pp?.target?.annualized_return)}`}>{deltaPct(pp?.target?.annualized_return)}</td>
-                    <td className="px-3 py-2 text-foreground">{pct(pp?.target?.annualized_volatility)}</td>
-                    <td className="px-3 py-2 text-red-500">{pct(pp?.target?.max_drawdown)}</td>
-                    <td className="px-3 py-2 text-muted-foreground">—</td>
+                  {periods.map((p, i) => (
+                    <tr
+                      key={i}
+                      onClick={() => handlePeriodClick(i)}
+                      className={`border-b border-border/30 cursor-pointer transition-colors hover:bg-muted/40 ${
+                        selectedPeriodIdx === i ? 'bg-sky-500/10 ring-1 ring-inset ring-sky-500/30' : ''
+                      } ${p.is_latest_period ? 'font-semibold' : ''}`}
+                    >
+                      <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
+                      <td className="px-3 py-2 font-mono">{fmtDate(p.start_date)}</td>
+                      <td className="px-3 py-2 font-mono">{fmtDate(p.end_date)}</td>
+                      <td className="px-3 py-2">
+                        <Badge className={`${regimeBadgeCls(p.regime)} text-[10px]`}>{regimeLabel(p.regime)}</Badge>
+                        {p.is_latest_period && <span className="ml-1 text-muted-foreground">(current)</span>}
+                      </td>
+                      <td className={`px-3 py-2 font-semibold ${colorPct(p.period_return)}`}>{deltaPct(p.period_return)}</td>
+                      <td className={`px-3 py-2 ${colorPct(p.period_abnormal_return)}`}>{p.period_abnormal_return != null ? deltaPct(p.period_abnormal_return) : '\u2014'}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{p.trading_days}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{p.event_count ?? 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── 8. Peer comparison ────────────────────────────────────────────── */}
+      {pc?.peers && pc.peers.length > 0 && (
+        <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle className="h-4 w-4 text-sky-600" /> Peer Comparison
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border/50 text-muted-foreground">
+                    {['Ticker', 'Name', 'Total Return', 'Ann. Vol', 'Max DD', 'Correlation'].map((h) => (
+                      <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
+                    ))}
                   </tr>
+                </thead>
+                <tbody>
                   {pc.peers.map((peer) => (
                     <tr key={peer.ticker} className="border-b border-border/30 hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-2 font-mono text-muted-foreground">{peer.ticker}</td>
                       <td className="px-3 py-2">{peer.name ?? peer.ticker}</td>
                       <td className={`px-3 py-2 ${colorPct(peer.total_return)}`}>{deltaPct(peer.total_return)}</td>
-                      <td className={`px-3 py-2 ${colorPct(peer.annualized_return)}`}>{deltaPct(peer.annualized_return)}</td>
                       <td className="px-3 py-2 text-muted-foreground">{pct(peer.annualized_volatility)}</td>
                       <td className="px-3 py-2 text-red-500">{pct(peer.max_drawdown)}</td>
-                      <td className="px-3 py-2">
-                        {peer.correlation_to_target !== undefined && peer.correlation_to_target !== null ? (
-                          <div className="flex items-center gap-2">
-                            <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
-                              <div
-                                className="h-full rounded-full bg-sky-500"
-                                style={{ width: `${((peer.correlation_to_target + 1) / 2) * 100}%` }}
-                              />
-                            </div>
-                            <span className="text-muted-foreground font-mono">{peer.correlation_to_target.toFixed(2)}</span>
-                          </div>
-                        ) : '—'}
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {peer.correlation_to_target != null ? peer.correlation_to_target.toFixed(2) : '\u2014'}
                       </td>
                     </tr>
                   ))}
@@ -1005,24 +680,56 @@ export function SharePriceAnalysisView() {
 
       {/* ── 9. Earnings reaction ───────────────────────────────────────────── */}
       {pc?.earnings_reaction && (
-        <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base">Earnings Reaction Pattern</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {[
-              { label: 'Events analyzed', value: String(pc.earnings_reaction.events_considered ?? 'N/A') },
-              { label: 'Avg Day-0 return', value: deltaPct(pc.earnings_reaction.avg_return_day0) },
-              { label: 'Avg abnormal Day-0', value: deltaPct(pc.earnings_reaction.avg_abnormal_day0) },
-              { label: 'Window −3/+3 return', value: deltaPct(pc.earnings_reaction.avg_return_m3_p3) },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-2xl border border-border/60 bg-background/70 p-4">
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="mt-1 text-xl font-semibold text-foreground">{value}</p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <KpiCard label="Earnings events" value={String(pc.earnings_reaction.events_considered ?? 'N/A')} />
+          <KpiCard label="Avg Day-0 return" value={deltaPct(pc.earnings_reaction.avg_return_day0)} />
+          <KpiCard label="Avg abnormal Day-0" value={deltaPct(pc.earnings_reaction.avg_abnormal_day0)} />
+          <KpiCard label="Window -3/+3" value={deltaPct(pc.earnings_reaction.avg_return_m3_p3)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Small reusable pieces ────────────────────────────────────────────────────
+
+function KpiCard({ label, value, className = '' }: { label: string; value: string; className?: string }) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-background/70 p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={`mt-1 text-lg font-semibold ${className || 'text-foreground'}`}>{value}</p>
+    </div>
+  );
+}
+
+function KpiStrip({ label, value, positive }: { label: string; value: string; positive?: boolean | null }) {
+  const cls = positive == null ? 'text-foreground' : positive ? 'text-emerald-500' : 'text-red-500';
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card/70 p-4 shadow-sm">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={`mt-1 text-xl font-semibold ${cls}`}>{value}</p>
+    </div>
+  );
+}
+
+function CollapsibleSection({
+  title, expanded, toggle, items,
+}: {
+  title: string; expanded: boolean; toggle: () => void; items?: string[];
+}) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-border/50 bg-background/60 overflow-hidden">
+      <button onClick={toggle} className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
+        <span>{title}</span>
+        {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+      </button>
+      {expanded && (
+        <div className="px-3 pb-3 space-y-1.5 border-t border-border/40 pt-2">
+          {items.map((item, i) => (
+            <p key={i} className="text-xs text-muted-foreground">{item}</p>
+          ))}
+        </div>
       )}
     </div>
   );
