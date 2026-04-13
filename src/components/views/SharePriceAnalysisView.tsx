@@ -8,10 +8,7 @@ import {
   CartesianGrid,
   Cell,
   ComposedChart,
-  Legend,
   Line,
-  ReferenceArea,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -138,10 +135,6 @@ export function SharePriceAnalysisView() {
     return pp.price_series;
   }, [pp?.price_series]);
 
-  // Set of dates in the series for snapping ReferenceArea bounds
-  const seriesDates = useMemo(() => {
-    return new Set(priceSeries.map((p) => p.date));
-  }, [priceSeries]);
 
   const driverChartData = useMemo(() => {
     if (!dm?.driver_themes?.length) return [];
@@ -395,16 +388,6 @@ export function SharePriceAnalysisView() {
               <ComposedChart
                 data={priceSeries}
                 margin={{ top: 8, right: 32, left: 8, bottom: 8 }}
-                onClick={(state: { activeLabel?: string } | null) => {
-                  if (!state?.activeLabel) return;
-                  const clickedDate = state.activeLabel;
-                  // Check if click is on an event
-                  const evIdx = se.findIndex((e) => e.date === clickedDate);
-                  if (evIdx >= 0) { handleEventClick(evIdx); return; }
-                  // Otherwise find containing period
-                  const pIdx = periods.findIndex((p) => clickedDate >= p.start_date && clickedDate <= p.end_date);
-                  if (pIdx >= 0) handlePeriodClick(pIdx);
-                }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.25} />
                 <XAxis
@@ -420,53 +403,7 @@ export function SharePriceAnalysisView() {
                   tickFormatter={(v: number) => v.toFixed(0)}
                   width={42}
                 />
-                <YAxis
-                  yAxisId="norm"
-                  orientation="right"
-                  domain={[40, 220]}
-                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                  tickFormatter={(v: number) => `${v}`}
-                  width={36}
-                />
                 <Tooltip content={<PriceTooltip />} />
-
-                {/* Trend period background bands — snap to dates that exist in the series */}
-                {periods.map((p, i) => {
-                  const x1 = seriesDates.has(p.start_date)
-                    ? p.start_date
-                    : priceSeries.find((pt) => pt.date >= p.start_date)?.date;
-                  const x2 = seriesDates.has(p.end_date)
-                    ? p.end_date
-                    : [...priceSeries].reverse().find((pt) => pt.date <= p.end_date)?.date;
-                  if (!x1 || !x2) return null;
-                  return (
-                    <ReferenceArea
-                      key={`band-${i}`}
-                      yAxisId="price"
-                      x1={x1}
-                      x2={x2}
-                      fill={regimeFill(p.regime)}
-                      fillOpacity={selectedPeriodIdx === i ? 0.30 : 0.12}
-                      strokeOpacity={0}
-                    />
-                  );
-                })}
-
-                {/* Event marker lines — only render for dates in the series */}
-                {se.map((ev, i) => {
-                  if (!seriesDates.has(ev.date)) return null;
-                  return (
-                    <ReferenceLine
-                      key={`ev-${i}`}
-                      yAxisId="price"
-                      x={ev.date}
-                      stroke="#f59e0b"
-                      strokeDasharray="3 5"
-                      strokeWidth={selectedEventIdx === i ? 2.5 : 1.5}
-                      opacity={selectedEventIdx === i ? 1 : 0.45}
-                    />
-                  );
-                })}
 
                 {/* Price line */}
                 <Line
@@ -504,17 +441,6 @@ export function SharePriceAnalysisView() {
                     connectNulls
                   />
                 )}
-                {/* Normalized relative line */}
-                <Line
-                  yAxisId="norm"
-                  dataKey="normalized"
-                  name="Normalized"
-                  stroke="#6366f1"
-                  dot={false}
-                  strokeWidth={1}
-                  opacity={0.5}
-                  isAnimationActive={false}
-                />
               </ComposedChart>
             </ResponsiveContainer>
           ) : (

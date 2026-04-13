@@ -380,14 +380,17 @@ export function Dashboard() {
       financialData?.executive?.critic_verdict ||
       '';
 
-    const sharePriceSummary = sharePriceData?.executive_summary || '';
+    const sharePriceSummary =
+      sharePriceData?.executive_guide?.stock_story ||
+      sharePriceData?.driver_map?.dominant_narrative ||
+      '';
 
     return {
       strategicVerdict: summarize(strategicVerdict, 24),
       financialThesis: summarize(financialThesis, 24),
       sharePriceSummary: summarize(sharePriceSummary, 24),
       topFlag: financialData?.executive?.top_flag?.message || '',
-      marketRegime: sharePriceData?.price_profile?.current_regime || '',
+      marketRegime: sharePriceData?.trend_analysis?.current_regime || '',
       macroThesis: macroData ? summarize(buildMacroPortfolioModel(macroData).heroThesis, 24) : '',
     };
   }, [data, financialData, macroData, sharePriceData]);
