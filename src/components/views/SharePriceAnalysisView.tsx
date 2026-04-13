@@ -90,14 +90,14 @@ const confidenceCls = (v?: number): string =>
       ? 'bg-amber-500/15 text-amber-600'
       : 'bg-red-500/15 text-red-500';
 
-// ─── Custom tooltip for price chart ──────────────────────────────────────────
-
-const PriceTooltip = ({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string }) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const PriceTooltip = (props: any) => {
+  const { active, payload, label } = props ?? {};
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-xl border border-border/60 bg-card/95 p-3 shadow-lg text-xs">
+    <div className="rounded-xl border border-border/60 bg-card/95 p-3 shadow-lg text-xs backdrop-blur">
       <p className="font-semibold text-foreground mb-1">{label}</p>
-      {payload.map((p) => (
+      {payload.map((p: { name: string; value: number; color: string }) => (
         <div key={p.name} className="flex justify-between gap-4">
           <span style={{ color: p.color }}>{p.name}</span>
           <span className="font-mono text-foreground">{typeof p.value === 'number' ? p.value.toFixed(2) : p.value}</span>
@@ -135,9 +135,13 @@ export function SharePriceAnalysisView() {
 
   const priceSeries = useMemo(() => {
     if (!pp?.price_series?.length) return [];
-    // Downsample to every 3rd point for chart performance while keeping shape
-    return pp.price_series.filter((_, i) => i % 3 === 0 || i === pp.price_series!.length - 1);
+    return pp.price_series;
   }, [pp?.price_series]);
+
+  // Set of dates in the series for snapping ReferenceArea bounds
+  const seriesDates = useMemo(() => {
+    return new Set(priceSeries.map((p) => p.date));
+  }, [priceSeries]);
 
   const driverChartData = useMemo(() => {
     if (!dm?.driver_themes?.length) return [];
@@ -388,7 +392,20 @@ export function SharePriceAnalysisView() {
         <CardContent className="h-[420px] pl-0">
           {priceSeries.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={priceSeries} margin={{ top: 8, right: 32, left: 8, bottom: 8 }}>
+              <ComposedChart
+                data={priceSeries}
+                margin={{ top: 8, right: 32, left: 8, bottom: 8 }}
+                onClick={(state: { activeLabel?: string } | null) => {
+                  if (!state?.activeLabel) return;
+                  const clickedDate = state.activeLabel;
+                  // Check if click is on an event
+                  const evIdx = se.findIndex((e) => e.date === clickedDate);
+                  if (evIdx >= 0) { handleEventClick(evIdx); return; }
+                  // Otherwise find containing period
+                  const pIdx = periods.findIndex((p) => clickedDate >= p.start_date && clickedDate <= p.end_date);
+                  if (pIdx >= 0) handlePeriodClick(pIdx);
+                }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.25} />
                 <XAxis
                   dataKey="date"
@@ -413,37 +430,43 @@ export function SharePriceAnalysisView() {
                 />
                 <Tooltip content={<PriceTooltip />} />
 
-                {/* Trend period background bands */}
-                {periods.map((p, i) => (
-                  <ReferenceArea
-                    key={`band-${i}`}
-                    yAxisId="price"
-                    x1={p.start_date}
-                    x2={p.end_date}
-                    fill={regimeFill(p.regime)}
-                    fillOpacity={selectedPeriodIdx === i ? 0.28 : 0.11}
-                    strokeOpacity={selectedPeriodIdx === i ? 1 : 0}
-                    stroke={regimeFill(p.regime)}
-                    strokeWidth={selectedPeriodIdx === i ? 2 : 0}
-                    onClick={() => handlePeriodClick(i)}
-                    style={{ cursor: 'pointer' }}
-                  />
-                ))}
+                {/* Trend period background bands — snap to dates that exist in the series */}
+                {periods.map((p, i) => {
+                  const x1 = seriesDates.has(p.start_date)
+                    ? p.start_date
+                    : priceSeries.find((pt) => pt.date >= p.start_date)?.date;
+                  const x2 = seriesDates.has(p.end_date)
+                    ? p.end_date
+                    : [...priceSeries].reverse().find((pt) => pt.date <= p.end_date)?.date;
+                  if (!x1 || !x2) return null;
+                  return (
+                    <ReferenceArea
+                      key={`band-${i}`}
+                      yAxisId="price"
+                      x1={x1}
+                      x2={x2}
+                      fill={regimeFill(p.regime)}
+                      fillOpacity={selectedPeriodIdx === i ? 0.30 : 0.12}
+                      strokeOpacity={0}
+                    />
+                  );
+                })}
 
-                {/* Event marker lines */}
-                {se.map((ev, i) => (
-                  <ReferenceLine
-                    key={`ev-${i}`}
-                    yAxisId="price"
-                    x={ev.date}
-                    stroke={selectedEventIdx === i ? '#f59e0b' : '#f59e0b'}
-                    strokeDasharray="3 5"
-                    strokeWidth={selectedEventIdx === i ? 2.5 : 1.5}
-                    opacity={selectedEventIdx === i ? 1 : 0.55}
-                    onClick={() => handleEventClick(i)}
-                    style={{ cursor: 'pointer' }}
-                  />
-                ))}
+                {/* Event marker lines — only render for dates in the series */}
+                {se.map((ev, i) => {
+                  if (!seriesDates.has(ev.date)) return null;
+                  return (
+                    <ReferenceLine
+                      key={`ev-${i}`}
+                      yAxisId="price"
+                      x={ev.date}
+                      stroke="#f59e0b"
+                      strokeDasharray="3 5"
+                      strokeWidth={selectedEventIdx === i ? 2.5 : 1.5}
+                      opacity={selectedEventIdx === i ? 1 : 0.45}
+                    />
+                  );
+                })}
 
                 {/* Price line */}
                 <Line
@@ -834,9 +857,10 @@ export function SharePriceAnalysisView() {
                     tick={{ fontSize: 11, fill: 'hsl(var(--foreground))' }}
                   />
                   <Tooltip
-                    formatter={(v: number, _name: string, props: { payload?: { fullName?: string } }) => [
-                      `${(v * 100).toFixed(1)}%`,
-                      props.payload?.fullName ?? 'Importance',
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    formatter={(v: any, _name: any, props: any) => [
+                      `${(Number(v) * 100).toFixed(1)}%`,
+                      props?.payload?.fullName ?? 'Importance',
                     ]}
                   />
                   <Bar dataKey="importance_score" radius={[0, 4, 4, 0]}>
