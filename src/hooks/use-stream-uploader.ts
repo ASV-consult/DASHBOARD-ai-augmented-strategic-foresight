@@ -31,11 +31,10 @@ const isFinancialPayload = (json: unknown): json is FinancialAnalysisData => {
 
 const isSharePricePayload = (json: unknown): json is SharePriceAnalysisData => {
   const payload = json as Partial<SharePriceAnalysisData>;
-  return Boolean(
-    payload?.price_profile &&
-      Array.isArray(payload?.key_events) &&
-      payload?.trend_narrative &&
-      payload?._meta,
+  return (
+    payload?.schema_version === 'share_price_v1' &&
+    Boolean(payload?.run_meta?.ticker) &&
+    Boolean(payload?.price_performance)
   );
 };
 
@@ -103,7 +102,7 @@ export function useStreamUploader() {
             nextSharePriceData = json;
             streamCounts.sharePrice += 1;
             recognized = true;
-            lastCompanyLabel = json._meta?.company || lastCompanyLabel;
+            lastCompanyLabel = json.run_meta?.company || json.company_profile?.name || lastCompanyLabel;
           }
 
           if (isMacroPayload(json)) {

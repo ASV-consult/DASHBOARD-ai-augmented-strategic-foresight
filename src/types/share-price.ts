@@ -1,66 +1,190 @@
-export interface SharePriceEvent {
+// share-price.ts — types for schema_version: "share_price_v1"
+
+export interface SharePriceRunMeta {
+  run_id: string;
+  company: string;
+  ticker: string;
+  benchmark_ticker: string;
+  benchmark_label: string;
+  generated_at: string;
+  react_enabled: boolean;
+  react_model?: string;
+  anchors_analyzed: number;
+}
+
+export interface SharePriceCompanyProfile {
+  name: string;
+  sector?: string;
+  industry?: string;
+  country?: string;
+  currency?: string;
+  market_cap?: number;
+  website?: string;
+}
+
+export interface PriceStats {
+  total_return?: number;
+  annualized_return?: number;
+  annualized_volatility?: number;
+  max_drawdown?: number;
+  cagr?: number;
+  latest_close?: number;
+}
+
+export interface PriceSeriesPoint {
   date: string;
-  event_type: string;
-  return_1d?: number | null;
-  abnormal_return_1d?: number | null;
-  explanation?: string;
-  confidence?: number;
-  market_lesson?: string;
+  close: number;
+  ma20?: number | null;
+  ma50?: number | null;
+  ma200?: number | null;
+  volume?: number;
+  normalized?: number;
+  benchmark_normalized?: number;
 }
 
-export interface SharePriceProfile {
-  total_return?: number | null;
-  cagr?: number | null;
-  annualized_volatility?: number | null;
-  max_drawdown?: number | null;
+export interface PricePerformance {
+  target?: PriceStats;
+  benchmark?: PriceStats & { latest_close?: number };
+  relative?: {
+    outperformance?: number;
+    outperformance_annualized?: number;
+    beta?: number | null;
+    correlation_to_benchmark?: number | null;
+  };
+  price_series?: PriceSeriesPoint[];
+  peer_normalized_series?: Record<string, Array<{ date: string; normalized: number }>>;
+}
+
+export interface TrendPeriod {
+  start_date: string;
+  end_date: string;
+  trading_days: number;
+  is_latest_period?: boolean;
+  regime: string;
+  dominant_regime?: string;
+  regime_purity?: number;
+  period_return?: number;
+  period_abnormal_return?: number;
+  benchmark_return?: number;
+  velocity?: number;
+  max_drawdown_in_period?: number;
+  annualized_volatility?: number;
+  event_count?: number;
+  period_summary?: string;
+  earnings_in_period?: number;
+}
+
+export interface TrendAnalysis {
   current_regime?: string;
-  current_price?: number | null;
-  '52w_high'?: number | null;
-  '52w_low'?: number | null;
+  momentum?: Record<string, number>;
+  volatility_regime?: {
+    regime?: string;
+    latest_20d_annualized_vol?: number;
+    volatility_percentile?: number;
+  };
+  vs_ma200?: number;
+  trend_periods?: TrendPeriod[];
 }
 
-export interface SharePriceTrendNarrative {
-  long_term?: string;
-  medium_term?: string;
-  recent?: string;
+export interface DriverTheme {
+  theme: string;
+  category?: string;
+  importance_rank?: number;
+  importance_score?: number;
+  theme_type?: string; // "structural" | "cyclical" | "episodic"
+  description?: string;
+  historical_impact?: string;
+  forward_looking?: string;
+  monitoring_signals?: string[];
+  evidence_events?: Array<{ date?: string; label?: string; impact?: string }>;
+  linked_trend_regimes?: string[];
+  linked_trend_periods?: string[];
+  affected_segments?: string[];
 }
 
-export interface SharePriceEarningsPattern {
-  summary?: string;
-  avg_day0_reaction?: number | null;
-  avg_abnormal_day0?: number | null;
-  market_tendency?: string;
+export interface DriverMap {
+  driver_themes?: DriverTheme[];
+  dominant_narrative?: string;
+  theme_interactions?: string[];
+  regime_driver_map?: Record<string, string[]>;
+  events_analyzed?: number;
 }
 
-export interface SharePricePeerContext {
-  summary?: string;
-  relative_performance_12m?: number | null;
-  key_divergences?: string[];
+export interface EventAttribution {
+  most_probable_reason?: string;
+  investor_interpretation?: string;
+  confidence?: number;
+  driver_breakdown?: Array<{
+    driver: string;
+    weight: number;
+    direction: string;
+    evidence_urls?: string[];
+  }>;
+  what_to_monitor_next?: string[];
+  counter_hypotheses?: string[];
+  queries?: Array<{ query: string; rationale?: string; round?: number }>;
+  evidence?: Array<{ title: string; url: string; snippet?: string }>;
+  relevant_results_count?: number;
+  search_results_count?: number;
 }
 
-export interface SharePriceMeta {
-  run_id?: string;
-  company?: string;
-  ticker?: string;
-  model?: string;
-  iterations_used?: number;
-  tool_calls?: number;
-  generated_at?: string;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
+export interface SignificantEvent {
+  date: string;
+  close?: number;
+  return_1d?: number;
+  abnormal_return_1d?: number;
+  z_score_60d?: number;
+  volume_ratio_20d?: number;
+  event_regime?: string;
+  event_tags?: string[];
+  event_score?: number;
+  anchor_type?: string;
+  anchor_title?: string;
+  window_start?: string;
+  window_end?: string;
+  trading_days?: number;
+  period_return?: number;
+  period_abnormal_return?: number;
+  attribution?: EventAttribution;
+}
+
+export interface PeerStat {
+  ticker: string;
+  name?: string;
+  total_return?: number;
+  annualized_return?: number;
+  annualized_volatility?: number;
+  max_drawdown?: number;
+  correlation_to_target?: number;
+}
+
+export interface PeerComparison {
+  peers?: PeerStat[];
+  earnings_reaction?: {
+    events_considered?: number;
+    avg_return_day0?: number;
+    avg_abnormal_day0?: number;
+    avg_return_m1_p1?: number;
+    avg_return_m3_p3?: number;
   };
 }
 
+export interface ExecutiveGuide {
+  stock_story?: string;
+  key_drivers?: Array<{ name: string; plain_summary: string }>;
+  current_watch?: string;
+}
+
+// Root export — name kept as SharePriceAnalysisData so ForesightContext needs no change
 export interface SharePriceAnalysisData {
-  executive_summary?: string;
-  price_profile?: SharePriceProfile;
-  key_events?: SharePriceEvent[];
-  trend_narrative?: SharePriceTrendNarrative;
-  earnings_pattern?: SharePriceEarningsPattern;
-  peer_context?: SharePricePeerContext;
-  risk_factors?: string[];
-  monitoring_priorities?: string[];
-  _meta?: SharePriceMeta;
+  schema_version: string; // "share_price_v1"
+  run_meta: SharePriceRunMeta;
+  company_profile?: SharePriceCompanyProfile;
+  analysis_period?: { start_date: string; end_date: string; trading_days: number };
+  price_performance?: PricePerformance;
+  trend_analysis?: TrendAnalysis;
+  driver_map?: DriverMap;
+  peer_comparison?: PeerComparison;
+  significant_events?: SignificantEvent[];
+  executive_guide?: ExecutiveGuide;
 }
