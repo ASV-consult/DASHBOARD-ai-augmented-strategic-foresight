@@ -1,7 +1,28 @@
-import { useMemo, useRef, useState } from 'react';
+import React, { Component, useMemo, useRef, useState } from 'react';
 import { useForesight } from '@/contexts/ForesightContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+
+// ─── Error boundary to catch render crashes ──────────────────────────────────
+class SharePriceErrorBoundary extends Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/5 p-6 m-4">
+          <h3 className="text-lg font-semibold text-red-600 mb-2">Share Price View Error</h3>
+          <p className="text-sm text-red-500 font-mono whitespace-pre-wrap">{this.state.error.message}</p>
+          <p className="text-xs text-muted-foreground mt-2 font-mono whitespace-pre-wrap">{this.state.error.stack?.slice(0, 500)}</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import {
   Bar,
   BarChart,
@@ -102,6 +123,14 @@ const PriceTooltip = (props: any) => {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function SharePriceAnalysisView() {
+  return (
+    <SharePriceErrorBoundary>
+      <SharePriceAnalysisViewInner />
+    </SharePriceErrorBoundary>
+  );
+}
+
+function SharePriceAnalysisViewInner() {
   const { sharePriceData } = useForesight();
   const detailPanelRef = useRef<HTMLDivElement>(null);
 
@@ -362,7 +391,7 @@ export function SharePriceAnalysisView() {
                   tickFormatter={(v: number) => String(Math.round(v))}
                   width={42}
                 />
-                <Tooltip content={PriceTooltip} />
+                <Tooltip content={<PriceTooltip />} />
                 <Line yAxisId="price" dataKey="close" name="Price" stroke="#3b82f6" dot={false} strokeWidth={2} isAnimationActive={false} />
                 {showMA.ma50 && <Line yAxisId="price" dataKey="ma50" name="MA50" stroke="#10b981" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
                 {showMA.ma200 && <Line yAxisId="price" dataKey="ma200" name="MA200" stroke="#f59e0b" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
