@@ -181,28 +181,34 @@ function SharePriceAnalysisViewInner() {
     });
   }, [periods, priceSeries, dateSet]);
 
-  // Which periods have attributed events?
-  const periodHasAttribution = useMemo(() => {
-    return periods.map((p) =>
-      se.some(
-        (ev) =>
-          ev.date >= p.start_date &&
-          ev.date <= p.end_date &&
-          !!ev.attribution?.most_probable_reason,
-      ),
-    );
+  // Per-period attribution level: 'sourced' | 'reasoning' | 'none'
+  const periodAttrLevel = useMemo(() => {
+    return periods.map((p) => {
+      const eventsInPeriod = se.filter(
+        (ev) => ev.date >= p.start_date && ev.date <= p.end_date,
+      );
+      if (eventsInPeriod.some((ev) => (ev.attribution?.evidence?.length ?? 0) > 0)) return 'sourced' as const;
+      if (eventsInPeriod.some((ev) => !!ev.attribution?.most_probable_reason)) return 'reasoning' as const;
+      return 'none' as const;
+    });
   }, [periods, se]);
 
-  // Attributed event dots to render on the chart (date + close price)
-  const attributedEventDots = useMemo(() => {
+  // Event dots: distinguish "sourced" (has evidence) vs "unsourced reasoning" vs none
+  const eventDots = useMemo(() => {
     return se
-      .map((ev, i) => ({
-        idx: i,
-        date: ev.date,
-        close: ev.close ?? priceSeries.find((pt) => pt.date === ev.date)?.close,
-        hasAttribution: !!ev.attribution?.most_probable_reason,
-        title: ev.anchor_title ?? ev.attribution?.most_probable_reason?.slice(0, 60),
-      }))
+      .map((ev, i) => {
+        const att = ev.attribution;
+        const evidenceCount = att?.evidence?.length ?? 0;
+        const hasReasoning = !!att?.most_probable_reason;
+        return {
+          idx: i,
+          date: ev.date,
+          close: ev.close ?? priceSeries.find((pt) => pt.date === ev.date)?.close,
+          // "sourced" = has web evidence, "reasoning" = model reasoning only, "none" = no attribution
+          level: evidenceCount > 0 ? 'sourced' as const : hasReasoning ? 'reasoning' as const : 'none' as const,
+          evidenceCount,
+        };
+      })
       .filter((d) => d.close != null && dateSet.has(d.date));
   }, [se, priceSeries, dateSet]);
 
@@ -435,11 +441,15 @@ function SharePriceAnalysisViewInner() {
             )}
             <span className="flex items-center gap-1">
               <span className="inline-block h-2 w-2 rounded-full bg-sky-500" />
-              AI-attributed event
+              Sourced event
             </span>
             <span className="flex items-center gap-1">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />
-              Other event
+              <span className="inline-block h-2 w-2 rounded-full border border-amber-500 bg-transparent" />
+              Reasoning only
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-0.5 w-4 border-t-2 border-dashed" style={{ borderColor: '#8b5cf6' }} />
+              {rm?.benchmark_label ?? 'Benchmark'}
             </span>
           </div>
         </CardHeader>
@@ -473,6 +483,14 @@ function SharePriceAnalysisViewInner() {
                   tickFormatter={(v: number) => String(Math.round(v))}
                   width={42}
                 />
+                <YAxis
+                  yAxisId="norm"
+                  orientation="right"
+                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                  tickFormatter={(v: number) => String(Math.round(v))}
+                  width={36}
+                  domain={['auto', 'auto']}
+                />
                 <Tooltip content={<PriceTooltip />} />
 
                 {/* Regime period backgrounds — ReferenceAreas share the chart coordinate space */}
@@ -499,26 +517,34 @@ function SharePriceAnalysisViewInner() {
                   );
                 })}
 
-                {/* Attributed event dots — sky dots for events with AI sources */}
-                {attributedEventDots.map((d) => (
-                  <ReferenceDot
-                    key={`evt-${d.idx}`}
-                    yAxisId="price"
-                    x={d.date}
-                    y={d.close!}
-                    r={d.hasAttribution ? 4 : 2.5}
-                    fill={d.hasAttribution ? '#0ea5e9' : '#94a3b8'}
-                    stroke={d.hasAttribution ? '#0ea5e9' : '#94a3b8'}
-                    strokeWidth={1}
-                    fillOpacity={d.hasAttribution ? 0.8 : 0.4}
-                    ifOverflow="hidden"
-                  />
-                ))}
+                {/* Event dots: sky=sourced, amber-outline=reasoning only, grey=none */}
+                {eventDots.map((d) => {
+                  const fill = d.level === 'sourced' ? '#0ea5e9' : d.level === 'reasoning' ? 'transparent' : '#94a3b8';
+                  const stroke = d.level === 'sourced' ? '#0ea5e9' : d.level === 'reasoning' ? '#f59e0b' : '#94a3b8';
+                  const r = d.level === 'sourced' ? 4.5 : d.level === 'reasoning' ? 3.5 : 2;
+                  return (
+                    <ReferenceDot
+                      key={`evt-${d.idx}`}
+                      yAxisId="price"
+                      x={d.date}
+                      y={d.close!}
+                      r={r}
+                      fill={fill}
+                      stroke={stroke}
+                      strokeWidth={d.level === 'reasoning' ? 1.5 : 1}
+                      fillOpacity={d.level === 'sourced' ? 0.85 : 0.5}
+                      ifOverflow="hidden"
+                    />
+                  );
+                })}
 
                 {/* Price line */}
                 <Line yAxisId="price" dataKey="close" name="Price" stroke="#3b82f6" dot={false} strokeWidth={2} isAnimationActive={false} />
                 {showMA.ma50 && <Line yAxisId="price" dataKey="ma50" name="MA50" stroke="#10b981" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
                 {showMA.ma200 && <Line yAxisId="price" dataKey="ma200" name="MA200" stroke="#f59e0b" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
+
+                {/* Benchmark normalized line (right axis) */}
+                <Line yAxisId="norm" dataKey="benchmark_normalized" name={rm?.benchmark_label ?? 'Benchmark'} stroke="#8b5cf6" dot={false} strokeWidth={1.5} strokeDasharray="6 3" isAnimationActive={false} opacity={0.55} />
               </ComposedChart>
             </ResponsiveContainer>
           ) : (
@@ -766,7 +792,7 @@ function SharePriceAnalysisViewInner() {
                 </thead>
                 <tbody>
                   {periods.map((p, i) => {
-                    const hasAttr = periodHasAttribution[i];
+                    const level = periodAttrLevel[i];
                     return (
                       <tr
                         key={i}
@@ -787,8 +813,13 @@ function SharePriceAnalysisViewInner() {
                         <td className="px-3 py-2 text-muted-foreground">{p.trading_days}</td>
                         <td className="px-3 py-2 text-muted-foreground">{p.event_count ?? 0}</td>
                         <td className="px-3 py-2">
-                          {hasAttr && (
-                            <span className="inline-flex h-4 items-center rounded-full bg-sky-500/15 px-1.5 text-[9px] font-medium text-sky-600" title="AI attribution available">
+                          {level === 'sourced' && (
+                            <span className="inline-flex h-4 items-center rounded-full bg-sky-500/15 px-1.5 text-[9px] font-medium text-sky-600" title="AI attribution with web sources">
+                              AI
+                            </span>
+                          )}
+                          {level === 'reasoning' && (
+                            <span className="inline-flex h-4 items-center rounded-full border border-amber-500/40 px-1.5 text-[9px] font-medium text-amber-600" title="AI reasoning (no web sources)">
                               AI
                             </span>
                           )}
