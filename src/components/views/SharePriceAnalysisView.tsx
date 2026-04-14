@@ -153,13 +153,18 @@ function SharePriceAnalysisViewInner() {
   const eg = sharePriceData?.executive_guide;
   const periods = ta?.trend_periods ?? [];
 
-  // Downsample price series for chart performance
+  // Price series — keep every 2nd point for performance
   const priceSeries = useMemo(() => {
     const raw = pp?.price_series;
     if (!raw || raw.length === 0) return [];
-    // Keep every 2nd point to reduce DOM nodes
     return raw.filter((_, i) => i % 2 === 0 || i === raw.length - 1);
   }, [pp?.price_series]);
+
+  // Total trading days across all periods (for regime strip widths)
+  const totalDays = useMemo(
+    () => periods.reduce((sum, p) => sum + (p.trading_days || 1), 0),
+    [periods],
+  );
 
   const driverChartData = useMemo(() => {
     const themes = dm?.driver_themes;
@@ -347,13 +352,18 @@ function SharePriceAnalysisViewInner() {
         </Card>
       ) : null}
 
-      {/* ── 4. Price chart ─────────────────────────────────────────────────── */}
+      {/* ── 4. Price chart + regime strip ────────────────────────────────── */}
       <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <CandlestickChart className="h-4 w-4 text-sky-600" />
               Price Chart
+              {periods.length > 0 && (
+                <span className="text-xs font-normal text-muted-foreground ml-1">
+                  click a regime band to explore
+                </span>
+              )}
             </CardTitle>
             <div className="flex gap-2">
               {(['ma50', 'ma200'] as const).map((ma) => (
@@ -373,33 +383,93 @@ function SharePriceAnalysisViewInner() {
               ))}
             </div>
           </div>
+          {/* Regime legend */}
+          <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-1">
+            {[['bull', 'Bull', '#22c55e'], ['bear', 'Bear', '#ef4444'], ['consolidation', 'Consolidation', '#94a3b8']].map(
+              ([key, label, color]) => (
+                <span key={key} className="flex items-center gap-1">
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: color, opacity: 0.6 }} />
+                  {label}
+                </span>
+              ),
+            )}
+          </div>
         </CardHeader>
-        <CardContent className="h-[400px]">
-          {priceSeries.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={priceSeries} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.25} />
-                <XAxis
-                  dataKey="date"
-                  interval={Math.floor(priceSeries.length / 7)}
-                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                  tickFormatter={(v: string) => (v ? v.slice(0, 7) : '')}
-                />
-                <YAxis
-                  yAxisId="price"
-                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                  tickFormatter={(v: number) => String(Math.round(v))}
-                  width={42}
-                />
-                <Tooltip content={<PriceTooltip />} />
-                <Line yAxisId="price" dataKey="close" name="Price" stroke="#3b82f6" dot={false} strokeWidth={2} isAnimationActive={false} />
-                {showMA.ma50 && <Line yAxisId="price" dataKey="ma50" name="MA50" stroke="#10b981" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
-                {showMA.ma200 && <Line yAxisId="price" dataKey="ma200" name="MA200" stroke="#f59e0b" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
-              </ComposedChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No price data.</div>
+        <CardContent>
+          {/* ── Clickable regime strip ─────────────────────────────────── */}
+          {periods.length > 0 && totalDays > 0 && (
+            <div className="flex w-full h-7 rounded-lg overflow-hidden border border-border/40 mb-3 cursor-pointer">
+              {periods.map((p, i) => {
+                const widthPct = ((p.trading_days || 1) / totalDays) * 100;
+                const isActive = selectedPeriodIdx === i;
+                const bg = p.regime.includes('bull')
+                  ? 'rgba(34,197,94,' + (isActive ? '0.55' : '0.25') + ')'
+                  : p.regime.includes('bear')
+                    ? 'rgba(239,68,68,' + (isActive ? '0.55' : '0.25') + ')'
+                    : 'rgba(148,163,184,' + (isActive ? '0.45' : '0.18') + ')';
+                return (
+                  <div
+                    key={i}
+                    onClick={() => handlePeriodClick(i)}
+                    title={`${regimeLabel(p.regime)}: ${fmtDate(p.start_date)} \u2192 ${fmtDate(p.end_date)} (${deltaPct(p.period_return)})`}
+                    className={`relative transition-all hover:opacity-90 ${isActive ? 'ring-2 ring-inset ring-sky-500 z-10' : ''}`}
+                    style={{ width: `${widthPct}%`, background: bg, minWidth: 4 }}
+                  >
+                    {/* Show return label on wider segments */}
+                    {widthPct > 5 && (
+                      <span className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-foreground/70 select-none">
+                        {deltaPct(p.period_return, 0)}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
+
+          {/* ── Price line chart ───────────────────────────────────────── */}
+          <div className="h-[380px]">
+            {priceSeries.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart
+                  data={priceSeries}
+                  margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
+                  onClick={(state: { activeLabel?: string } | null) => {
+                    if (!state?.activeLabel) return;
+                    const d = state.activeLabel;
+                    // Find event first
+                    const ei = se.findIndex((e) => e.date === d);
+                    if (ei >= 0) { handleEventClick(ei); return; }
+                    // Otherwise find period
+                    const pi = periods.findIndex((p) => d >= p.start_date && d <= p.end_date);
+                    if (pi >= 0) handlePeriodClick(pi);
+                  }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.25} />
+                  <XAxis
+                    dataKey="date"
+                    interval={Math.floor(priceSeries.length / 7)}
+                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                    tickFormatter={(v: string) => (v ? v.slice(0, 7) : '')}
+                  />
+                  <YAxis
+                    yAxisId="price"
+                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                    tickFormatter={(v: number) => String(Math.round(v))}
+                    width={42}
+                  />
+                  <Tooltip content={<PriceTooltip />} />
+
+                  {/* Price line */}
+                  <Line yAxisId="price" dataKey="close" name="Price" stroke="#3b82f6" dot={false} strokeWidth={2} isAnimationActive={false} />
+                  {showMA.ma50 && <Line yAxisId="price" dataKey="ma50" name="MA50" stroke="#10b981" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
+                  {showMA.ma200 && <Line yAxisId="price" dataKey="ma200" name="MA200" stroke="#f59e0b" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
+                </ComposedChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No price data.</div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
