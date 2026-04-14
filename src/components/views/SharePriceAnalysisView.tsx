@@ -160,11 +160,34 @@ function SharePriceAnalysisViewInner() {
     return raw.filter((_, i) => i % 2 === 0 || i === raw.length - 1);
   }, [pp?.price_series]);
 
-  // Total trading days across all periods (for regime strip widths)
-  const totalDays = useMemo(
-    () => periods.reduce((sum, p) => sum + (p.trading_days || 1), 0),
-    [periods],
+  // Count data points per period — this matches the chart's X-axis spacing
+  // (chart renders equally-spaced data points, not calendar-proportional)
+  const periodPointCounts = useMemo(() => {
+    if (!periods.length || !priceSeries.length) return [];
+    return periods.map((p) => {
+      const count = priceSeries.filter(
+        (pt) => pt.date >= p.start_date && pt.date <= p.end_date,
+      ).length;
+      return Math.max(count, 1);
+    });
+  }, [periods, priceSeries]);
+
+  const totalPoints = useMemo(
+    () => periodPointCounts.reduce((sum, c) => sum + c, 0),
+    [periodPointCounts],
   );
+
+  // Which periods have attributed events (with sources/reasoning)?
+  const periodHasAttribution = useMemo(() => {
+    return periods.map((p) =>
+      se.some(
+        (ev) =>
+          ev.date >= p.start_date &&
+          ev.date <= p.end_date &&
+          ev.attribution?.most_probable_reason,
+      ),
+    );
+  }, [periods, se]);
 
   const driverChartData = useMemo(() => {
     const themes = dm?.driver_themes;
@@ -396,12 +419,13 @@ function SharePriceAnalysisViewInner() {
           </div>
         </CardHeader>
         <CardContent>
-          {/* ── Clickable regime strip ─────────────────────────────────── */}
-          {periods.length > 0 && totalDays > 0 && (
-            <div className="flex w-full h-7 rounded-lg overflow-hidden border border-border/40 mb-3 cursor-pointer">
+          {/* ── Clickable regime strip (widths = data-point count, matches chart X) */}
+          {periods.length > 0 && totalPoints > 0 && (
+            <div className="flex w-full h-8 rounded-lg overflow-hidden border border-border/40 mb-3 cursor-pointer">
               {periods.map((p, i) => {
-                const widthPct = ((p.trading_days || 1) / totalDays) * 100;
+                const widthPct = (periodPointCounts[i] / totalPoints) * 100;
                 const isActive = selectedPeriodIdx === i;
+                const hasAttr = periodHasAttribution[i];
                 const bg = p.regime.includes('bull')
                   ? 'rgba(34,197,94,' + (isActive ? '0.55' : '0.25') + ')'
                   : p.regime.includes('bear')
@@ -411,15 +435,22 @@ function SharePriceAnalysisViewInner() {
                   <div
                     key={i}
                     onClick={() => handlePeriodClick(i)}
-                    title={`${regimeLabel(p.regime)}: ${fmtDate(p.start_date)} \u2192 ${fmtDate(p.end_date)} (${deltaPct(p.period_return)})`}
-                    className={`relative transition-all hover:opacity-90 ${isActive ? 'ring-2 ring-inset ring-sky-500 z-10' : ''}`}
+                    title={`${regimeLabel(p.regime)}: ${fmtDate(p.start_date)} \u2192 ${fmtDate(p.end_date)} (${deltaPct(p.period_return)})${hasAttr ? ' \u2022 has AI attribution' : ''}`}
+                    className={`relative transition-all hover:opacity-80 ${isActive ? 'ring-2 ring-inset ring-sky-500 z-10' : ''}`}
                     style={{ width: `${widthPct}%`, background: bg, minWidth: 4 }}
                   >
-                    {/* Show return label on wider segments */}
+                    {/* Return label on wider segments */}
                     {widthPct > 5 && (
-                      <span className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-foreground/70 select-none">
+                      <span className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-foreground/70 select-none leading-none">
                         {deltaPct(p.period_return, 0)}
                       </span>
+                    )}
+                    {/* Attribution indicator dot — subtle bottom-right */}
+                    {hasAttr && (
+                      <span
+                        className="absolute bottom-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-sky-500"
+                        title="AI-attributed events available"
+                      />
                     )}
                   </div>
                 );
@@ -705,33 +736,43 @@ function SharePriceAnalysisViewInner() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border/50 text-muted-foreground">
-                    {['#', 'Start', 'End', 'Regime', 'Return', 'vs BM', 'Days', 'Events'].map((h) => (
-                      <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
+                    {['#', 'Start', 'End', 'Regime', 'Return', 'vs BM', 'Days', 'Ev.', ''].map((h, hi) => (
+                      <th key={hi} className="px-3 py-2 text-left font-medium">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {periods.map((p, i) => (
-                    <tr
-                      key={i}
-                      onClick={() => handlePeriodClick(i)}
-                      className={`border-b border-border/30 cursor-pointer transition-colors hover:bg-muted/40 ${
-                        selectedPeriodIdx === i ? 'bg-sky-500/10 ring-1 ring-inset ring-sky-500/30' : ''
-                      } ${p.is_latest_period ? 'font-semibold' : ''}`}
-                    >
-                      <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
-                      <td className="px-3 py-2 font-mono">{fmtDate(p.start_date)}</td>
-                      <td className="px-3 py-2 font-mono">{fmtDate(p.end_date)}</td>
-                      <td className="px-3 py-2">
-                        <Badge className={`${regimeBadgeCls(p.regime)} text-[10px]`}>{regimeLabel(p.regime)}</Badge>
-                        {p.is_latest_period && <span className="ml-1 text-muted-foreground">(current)</span>}
-                      </td>
-                      <td className={`px-3 py-2 font-semibold ${colorPct(p.period_return)}`}>{deltaPct(p.period_return)}</td>
-                      <td className={`px-3 py-2 ${colorPct(p.period_abnormal_return)}`}>{p.period_abnormal_return != null ? deltaPct(p.period_abnormal_return) : '\u2014'}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{p.trading_days}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{p.event_count ?? 0}</td>
-                    </tr>
-                  ))}
+                  {periods.map((p, i) => {
+                    const hasAttr = periodHasAttribution[i];
+                    return (
+                      <tr
+                        key={i}
+                        onClick={() => handlePeriodClick(i)}
+                        className={`border-b border-border/30 cursor-pointer transition-colors hover:bg-muted/40 ${
+                          selectedPeriodIdx === i ? 'bg-sky-500/10 ring-1 ring-inset ring-sky-500/30' : ''
+                        } ${p.is_latest_period ? 'font-semibold' : ''}`}
+                      >
+                        <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
+                        <td className="px-3 py-2 font-mono">{fmtDate(p.start_date)}</td>
+                        <td className="px-3 py-2 font-mono">{fmtDate(p.end_date)}</td>
+                        <td className="px-3 py-2">
+                          <Badge className={`${regimeBadgeCls(p.regime)} text-[10px]`}>{regimeLabel(p.regime)}</Badge>
+                          {p.is_latest_period && <span className="ml-1 text-muted-foreground">(current)</span>}
+                        </td>
+                        <td className={`px-3 py-2 font-semibold ${colorPct(p.period_return)}`}>{deltaPct(p.period_return)}</td>
+                        <td className={`px-3 py-2 ${colorPct(p.period_abnormal_return)}`}>{p.period_abnormal_return != null ? deltaPct(p.period_abnormal_return) : '\u2014'}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{p.trading_days}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{p.event_count ?? 0}</td>
+                        <td className="px-3 py-2">
+                          {hasAttr && (
+                            <span className="inline-flex h-4 items-center rounded-full bg-sky-500/15 px-1.5 text-[9px] font-medium text-sky-600" title="AI attribution available">
+                              AI
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
