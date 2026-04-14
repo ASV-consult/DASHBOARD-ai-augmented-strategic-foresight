@@ -30,6 +30,8 @@ import {
   Cell,
   ComposedChart,
   Line,
+  ReferenceArea,
+  ReferenceDot,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -153,41 +155,56 @@ function SharePriceAnalysisViewInner() {
   const eg = sharePriceData?.executive_guide;
   const periods = ta?.trend_periods ?? [];
 
-  // Price series — keep every 2nd point for performance
+  // Full price series (no downsampling — Recharts handles 1,789 points fine with dot=false)
   const priceSeries = useMemo(() => {
     const raw = pp?.price_series;
     if (!raw || raw.length === 0) return [];
-    return raw.filter((_, i) => i % 2 === 0 || i === raw.length - 1);
+    return raw;
   }, [pp?.price_series]);
 
-  // Count data points per period — this matches the chart's X-axis spacing
-  // (chart renders equally-spaced data points, not calendar-proportional)
-  const periodPointCounts = useMemo(() => {
+  // Date set for quick lookup
+  const dateSet = useMemo(() => new Set(priceSeries.map((p) => p.date)), [priceSeries]);
+
+  // Snap period start/end to nearest date that actually exists in the series
+  const snappedPeriods = useMemo(() => {
     if (!periods.length || !priceSeries.length) return [];
     return periods.map((p) => {
-      const count = priceSeries.filter(
-        (pt) => pt.date >= p.start_date && pt.date <= p.end_date,
-      ).length;
-      return Math.max(count, 1);
+      // Find first series date >= period start
+      const x1 = dateSet.has(p.start_date)
+        ? p.start_date
+        : priceSeries.find((pt) => pt.date >= p.start_date)?.date ?? null;
+      // Find last series date <= period end
+      const x2 = dateSet.has(p.end_date)
+        ? p.end_date
+        : [...priceSeries].reverse().find((pt) => pt.date <= p.end_date)?.date ?? null;
+      return { x1, x2 };
     });
-  }, [periods, priceSeries]);
+  }, [periods, priceSeries, dateSet]);
 
-  const totalPoints = useMemo(
-    () => periodPointCounts.reduce((sum, c) => sum + c, 0),
-    [periodPointCounts],
-  );
-
-  // Which periods have attributed events (with sources/reasoning)?
+  // Which periods have attributed events?
   const periodHasAttribution = useMemo(() => {
     return periods.map((p) =>
       se.some(
         (ev) =>
           ev.date >= p.start_date &&
           ev.date <= p.end_date &&
-          ev.attribution?.most_probable_reason,
+          !!ev.attribution?.most_probable_reason,
       ),
     );
   }, [periods, se]);
+
+  // Attributed event dots to render on the chart (date + close price)
+  const attributedEventDots = useMemo(() => {
+    return se
+      .map((ev, i) => ({
+        idx: i,
+        date: ev.date,
+        close: ev.close ?? priceSeries.find((pt) => pt.date === ev.date)?.close,
+        hasAttribution: !!ev.attribution?.most_probable_reason,
+        title: ev.anchor_title ?? ev.attribution?.most_probable_reason?.slice(0, 60),
+      }))
+      .filter((d) => d.close != null && dateSet.has(d.date));
+  }, [se, priceSeries, dateSet]);
 
   const driverChartData = useMemo(() => {
     const themes = dm?.driver_themes;
@@ -416,91 +433,97 @@ function SharePriceAnalysisViewInner() {
                 </span>
               ),
             )}
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full bg-sky-500" />
+              AI-attributed event
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />
+              Other event
+            </span>
           </div>
         </CardHeader>
-        <CardContent>
-          {/* ── Clickable regime strip (widths = data-point count, matches chart X) */}
-          {periods.length > 0 && totalPoints > 0 && (
-            <div className="flex w-full h-8 rounded-lg overflow-hidden border border-border/40 mb-3 cursor-pointer">
-              {periods.map((p, i) => {
-                const widthPct = (periodPointCounts[i] / totalPoints) * 100;
-                const isActive = selectedPeriodIdx === i;
-                const hasAttr = periodHasAttribution[i];
-                const bg = p.regime.includes('bull')
-                  ? 'rgba(34,197,94,' + (isActive ? '0.55' : '0.25') + ')'
-                  : p.regime.includes('bear')
-                    ? 'rgba(239,68,68,' + (isActive ? '0.55' : '0.25') + ')'
-                    : 'rgba(148,163,184,' + (isActive ? '0.45' : '0.18') + ')';
-                return (
-                  <div
-                    key={i}
-                    onClick={() => handlePeriodClick(i)}
-                    title={`${regimeLabel(p.regime)}: ${fmtDate(p.start_date)} \u2192 ${fmtDate(p.end_date)} (${deltaPct(p.period_return)})${hasAttr ? ' \u2022 has AI attribution' : ''}`}
-                    className={`relative transition-all hover:opacity-80 ${isActive ? 'ring-2 ring-inset ring-sky-500 z-10' : ''}`}
-                    style={{ width: `${widthPct}%`, background: bg, minWidth: 4 }}
-                  >
-                    {/* Return label on wider segments */}
-                    {widthPct > 5 && (
-                      <span className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-foreground/70 select-none leading-none">
-                        {deltaPct(p.period_return, 0)}
-                      </span>
-                    )}
-                    {/* Attribution indicator dot — subtle bottom-right */}
-                    {hasAttr && (
-                      <span
-                        className="absolute bottom-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-sky-500"
-                        title="AI-attributed events available"
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+        <CardContent className="h-[440px]">
+          {priceSeries.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                data={priceSeries}
+                margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
+                onClick={(state: { activeLabel?: string } | null) => {
+                  if (!state?.activeLabel) return;
+                  const d = state.activeLabel;
+                  // Check event first
+                  const ei = se.findIndex((e) => e.date === d);
+                  if (ei >= 0) { handleEventClick(ei); return; }
+                  // Otherwise find containing period
+                  const pi = periods.findIndex((p) => d >= p.start_date && d <= p.end_date);
+                  if (pi >= 0) handlePeriodClick(pi);
+                }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.25} />
+                <XAxis
+                  dataKey="date"
+                  interval={Math.floor(priceSeries.length / 7)}
+                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                  tickFormatter={(v: string) => (v ? v.slice(0, 7) : '')}
+                />
+                <YAxis
+                  yAxisId="price"
+                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                  tickFormatter={(v: number) => String(Math.round(v))}
+                  width={42}
+                />
+                <Tooltip content={<PriceTooltip />} />
 
-          {/* ── Price line chart ───────────────────────────────────────── */}
-          <div className="h-[380px]">
-            {priceSeries.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart
-                  data={priceSeries}
-                  margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
-                  onClick={(state: { activeLabel?: string } | null) => {
-                    if (!state?.activeLabel) return;
-                    const d = state.activeLabel;
-                    // Find event first
-                    const ei = se.findIndex((e) => e.date === d);
-                    if (ei >= 0) { handleEventClick(ei); return; }
-                    // Otherwise find period
-                    const pi = periods.findIndex((p) => d >= p.start_date && d <= p.end_date);
-                    if (pi >= 0) handlePeriodClick(pi);
-                  }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.25} />
-                  <XAxis
-                    dataKey="date"
-                    interval={Math.floor(priceSeries.length / 7)}
-                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                    tickFormatter={(v: string) => (v ? v.slice(0, 7) : '')}
-                  />
-                  <YAxis
+                {/* Regime period backgrounds — ReferenceAreas share the chart coordinate space */}
+                {snappedPeriods.map((sp, i) => {
+                  if (!sp.x1 || !sp.x2) return null;
+                  const p = periods[i];
+                  const isActive = selectedPeriodIdx === i;
+                  const fill = p.regime.includes('bull')
+                    ? '#22c55e'
+                    : p.regime.includes('bear')
+                      ? '#ef4444'
+                      : '#94a3b8';
+                  return (
+                    <ReferenceArea
+                      key={`regime-${i}`}
+                      yAxisId="price"
+                      x1={sp.x1}
+                      x2={sp.x2}
+                      fill={fill}
+                      fillOpacity={isActive ? 0.25 : 0.08}
+                      strokeOpacity={0}
+                      ifOverflow="hidden"
+                    />
+                  );
+                })}
+
+                {/* Attributed event dots — sky dots for events with AI sources */}
+                {attributedEventDots.map((d) => (
+                  <ReferenceDot
+                    key={`evt-${d.idx}`}
                     yAxisId="price"
-                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                    tickFormatter={(v: number) => String(Math.round(v))}
-                    width={42}
+                    x={d.date}
+                    y={d.close!}
+                    r={d.hasAttribution ? 4 : 2.5}
+                    fill={d.hasAttribution ? '#0ea5e9' : '#94a3b8'}
+                    stroke={d.hasAttribution ? '#0ea5e9' : '#94a3b8'}
+                    strokeWidth={1}
+                    fillOpacity={d.hasAttribution ? 0.8 : 0.4}
+                    ifOverflow="hidden"
                   />
-                  <Tooltip content={<PriceTooltip />} />
+                ))}
 
-                  {/* Price line */}
-                  <Line yAxisId="price" dataKey="close" name="Price" stroke="#3b82f6" dot={false} strokeWidth={2} isAnimationActive={false} />
-                  {showMA.ma50 && <Line yAxisId="price" dataKey="ma50" name="MA50" stroke="#10b981" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
-                  {showMA.ma200 && <Line yAxisId="price" dataKey="ma200" name="MA200" stroke="#f59e0b" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
-                </ComposedChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No price data.</div>
-            )}
-          </div>
+                {/* Price line */}
+                <Line yAxisId="price" dataKey="close" name="Price" stroke="#3b82f6" dot={false} strokeWidth={2} isAnimationActive={false} />
+                {showMA.ma50 && <Line yAxisId="price" dataKey="ma50" name="MA50" stroke="#10b981" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
+                {showMA.ma200 && <Line yAxisId="price" dataKey="ma200" name="MA200" stroke="#f59e0b" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No price data.</div>
+          )}
         </CardContent>
       </Card>
 
