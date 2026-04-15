@@ -14,10 +14,13 @@ export interface FinancialCompanyProfile {
   sector?: string;
   industry?: string;
   hq?: string;
+  country?: string;
   employees?: number;
   website?: string;
   exchange?: string;
   currency?: string;
+  primary_profit_metric?: string;
+  long_business_summary?: string;
 }
 
 export interface FinancialTopFlag {
@@ -34,12 +37,19 @@ export interface FinancialTopFlag {
   message?: string;
 }
 
+export interface FinancialFlag {
+  message?: string;
+  severity?: string;
+  section?: string;
+}
+
 export interface FinancialRiskSnapshot {
   deterministic_flags_total?: number;
   high_severity_flags?: number;
   risk_signals?: number;
   medium_or_high_accounting_checks?: number;
   low_confidence_claims?: number;
+  flags?: FinancialFlag[];
 }
 
 export interface FinancialExecutiveSummary {
@@ -57,6 +67,10 @@ export interface FinancialKpi {
   display_value?: string;
   subtext?: string;
   trend?: string;
+  unit?: string;
+  prior_year?: number | null;
+  yoy_change_pct?: number | null;
+  source?: string;
 }
 
 export interface FinancialTakeaway {
@@ -65,15 +79,44 @@ export interface FinancialTakeaway {
   priority?: string;
 }
 
+export interface FinancialDataTableRow {
+  [key: string]: string | number | null | undefined;
+}
+
+export interface FinancialDataTable {
+  name: string;
+  rows: FinancialDataTableRow[];
+}
+
+export interface FinancialSectionArVsYf {
+  concept?: string;
+  ar_metric?: string;
+  ar_value?: number | null;
+  ar_unit?: string;
+  yf_metric?: string;
+  yf_label?: string;
+  yf_value?: number | null;
+  comparability?: string;
+  gap_pct?: number | null;
+  definition_from_ar?: string;
+}
+
 export interface FinancialAnalysisSection {
-  aspect_key: string;
+  // legacy shape
+  aspect_key?: string;
   title: string;
-  text: string;
+  text?: string;
+  // new richer shape (from analysis/json_builder.py)
+  narrative?: string;
+  flags?: FinancialFlag[];
+  data_tables?: FinancialDataTable[];
+  ar_vs_yf?: FinancialSectionArVsYf[];
 }
 
 export interface FinancialMarketSnapshot {
   price?: number;
   price_display?: string;
+  currency?: string;
   market_cap?: number;
   market_cap_display?: string;
   enterprise_value?: number;
@@ -83,9 +126,17 @@ export interface FinancialMarketSnapshot {
   fifty_two_week_change_pct?: number;
   beta?: number;
   dividend_yield_pct?: number;
+  dividend_rate?: number;
+  payout_ratio?: number;
   pe_ratio?: number;
+  forward_pe?: number;
   ev_to_ebitda?: number;
+  ev_to_revenue?: number;
   price_to_book?: number;
+  price_to_sales?: number;
+  shares_outstanding?: number;
+  float_shares?: number;
+  source?: string;
 }
 
 export interface FinancialGovernanceScores {
@@ -94,32 +145,59 @@ export interface FinancialGovernanceScores {
   compensation_risk?: number;
   shareholder_rights_risk?: number;
   overall_risk?: number;
+  source?: string;
+  scale_note?: string;
 }
 
 export interface FinancialCharts {
-  years: string[];
-  revenue_b?: number[];
-  gross_profit_b?: number[];
-  operating_income_m?: number[];
-  ebitda_m?: number[];
-  net_income_m?: number[];
-  operating_cash_flow_m?: number[];
-  free_cash_flow_m?: number[];
-  capex_m?: number[];
-  gross_margin_pct?: number[];
-  operating_margin_pct?: number[];
-  ebitda_margin_pct?: number[];
-  net_margin_pct?: number[];
+  years: Array<string | number>;
+  // AR series (primary)
+  revenue_m?: Array<number | null>;
+  revenue_b?: Array<number | null>;
+  ebita_m?: Array<number | null>;
+  ebitda_m?: Array<number | null>;
+  net_profit_m?: Array<number | null>;
+  fcf_m?: Array<number | null>;
+  net_debt_m?: Array<number | null>;
+  working_capital_m?: Array<number | null>;
+  capex_m?: Array<number | null>;
+  ebita_margin_pct?: Array<number | null>;
+  // Margin series (derived / YF)
+  gross_margin_pct?: Array<number | null>;
+  operating_margin_pct?: Array<number | null>;
+  ebitda_margin_pct?: Array<number | null>;
+  ebitda_margin_pct_yf?: Array<number | null>;
+  net_margin_pct?: Array<number | null>;
+  // YF parallel series
+  revenue_m_yf?: Array<number | null>;
+  revenue_b_yf?: Array<number | null>;
+  ebitda_m_yf?: Array<number | null>;
+  net_profit_m_yf?: Array<number | null>;
+  fcf_m_yf?: Array<number | null>;
+  capex_m_yf?: Array<number | null>;
+  // Legacy
+  gross_profit_b?: Array<number | null>;
+  operating_income_m?: Array<number | null>;
+  net_income_m?: Array<number | null>;
+  operating_cash_flow_m?: Array<number | null>;
+  free_cash_flow_m?: Array<number | null>;
+  source?: string;
 }
 
 export interface FinancialHistoricalRow {
   metric: string;
   unit: string;
   values: Array<number | null>;
+  values_by_year?: Record<string, number | null>;
+  source?: string;
+  // YF parallel series
+  yf_values?: Array<number | null>;
+  yf_values_by_year?: Record<string, number | null>;
+  yf_metric_key?: string;
 }
 
 export interface FinancialHistoricalTable {
-  years: string[];
+  years: Array<string | number>;
   rows: FinancialHistoricalRow[];
 }
 
@@ -397,11 +475,48 @@ export interface FinancialMultiYearContext {
   metric_trends?: Record<string, FinancialMetricTrend>;
 }
 
+export interface FinancialBridgeRow {
+  concept?: string;
+  ar_metric?: string;
+  ar_value?: number | null;
+  ar_unit?: string;
+  yf_metric?: string;
+  yf_label?: string;
+  yf_value?: number | null;
+  comparability?: string;
+  gap_pct?: number | null;
+  definition_from_ar?: string;
+}
+
+export interface FinancialSegment {
+  segment: string;
+  is_reconciling_item?: boolean;
+  revenue?: number | null;
+  revenue_yoy?: number | null;
+  revenue_mix_pct?: number | null;
+  ebita?: number | null;
+  ebita_margin?: number | null;
+  ebita_mix_pct?: number | null;
+  organic_growth?: number | null;
+}
+
+export interface FinancialGuidance {
+  target_period?: string;
+  metric?: string;
+  segment?: string;
+  target_display?: string;
+  is_qualitative?: boolean;
+  actual_value?: number | null;
+  status?: string;
+  guidance_text?: string;
+}
+
 export interface FinancialAnalysisData {
   schema_version: string;
   generated_at_utc: string;
   run_meta: FinancialRunMeta;
   company_profile: FinancialCompanyProfile;
+  executive_summary?: string;
   executive?: FinancialExecutiveSummary;
   kpis?: FinancialKpi[];
   key_takeaways?: FinancialTakeaway[];
@@ -411,6 +526,11 @@ export interface FinancialAnalysisData {
   financial_charts?: FinancialCharts;
   historical_table?: FinancialHistoricalTable;
   ratio_cards?: FinancialRatioCards;
+  // New top-level sections from analysis/json_builder.py
+  ar_vs_yf_bridge?: FinancialBridgeRow[];
+  segment_analysis?: FinancialSegment[];
+  guidance_tracking?: FinancialGuidance[];
+  // Legacy optional sections
   statement_lab?: FinancialStatementLab;
   scenario_analysis?: FinancialScenarioAnalysis;
   discrepancy_bridge?: FinancialDiscrepancyBridge;

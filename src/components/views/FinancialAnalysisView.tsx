@@ -3,10 +3,25 @@ import { useForesight } from '@/contexts/ForesightContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import {
-  Area,
-  AreaChart,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import {
+  Bar,
+  BarChart,
   CartesianGrid,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
@@ -16,1128 +31,1473 @@ import {
   YAxis,
 } from 'recharts';
 import {
-  Activity,
   AlertTriangle,
-  BarChart3,
   Building2,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   CircleDollarSign,
-  ClipboardCheck,
-  FileSearch,
+  FileText,
   Gauge,
+  Info,
   Layers,
-  LineChart as LineChartIcon,
-  Search,
   ShieldCheck,
-  Sparkles,
-  Workflow,
+  Target,
+  TrendingDown,
+  TrendingUp,
 } from 'lucide-react';
 import {
+  FinancialAnalysisSection,
+  FinancialBridgeRow,
+  FinancialFlag,
+  FinancialHistoricalRow,
   FinancialRatioCard,
-  FinancialStatementHighlight,
-  FinancialStatementMetric,
-  FinancialStatementSection,
 } from '@/types/financial';
 
-const asDate = (value?: string) => {
-  if (!value) return 'N/A';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toISOString().slice(0, 10);
+/* ---------- Formatting helpers ---------- */
+
+const fmtNum = (v: number | null | undefined, digits = 1): string => {
+  if (v === null || v === undefined || Number.isNaN(v)) return '—';
+  const abs = Math.abs(v);
+  if (abs >= 1000) return v.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  return v.toFixed(digits);
 };
 
-const asNum = (value?: number | null, digits = 2) => {
-  if (value === undefined || value === null || Number.isNaN(value)) return 'N/A';
-  return value.toFixed(digits);
+const fmtPct = (v: number | null | undefined, digits = 1): string => {
+  if (v === null || v === undefined || Number.isNaN(v)) return '—';
+  return `${v.toFixed(digits)}%`;
 };
 
-const asPct = (value?: number | null, digits = 1) => {
-  if (value === undefined || value === null || Number.isNaN(value)) return 'N/A';
-  return `${value.toFixed(digits)}%`;
+const fmtDelta = (v: number | null | undefined, digits = 1): string => {
+  if (v === null || v === undefined || Number.isNaN(v)) return '—';
+  const sign = v > 0 ? '+' : '';
+  return `${sign}${v.toFixed(digits)}%`;
 };
 
-const asDeltaPct = (value?: number | null, digits = 1) => {
-  if (value === undefined || value === null || Number.isNaN(value)) return 'N/A';
-  const normalized = Math.abs(value) <= 1 ? value * 100 : value;
-  const sign = normalized > 0 ? '+' : '';
-  return `${sign}${normalized.toFixed(digits)}%`;
+const fmtRatio = (v: number | null | undefined, digits = 2): string => {
+  if (v === null || v === undefined || Number.isNaN(v)) return '—';
+  return `${v.toFixed(digits)}x`;
 };
 
-const asCurrency = (value?: number | null, currency = 'EUR', compact = true) => {
-  if (value === undefined || value === null || Number.isNaN(value)) return 'N/A';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    notation: compact ? 'compact' : 'standard',
-    maximumFractionDigits: 2,
-  }).format(value);
-};
-
-const tone = (status?: string) => {
-  const s = String(status || '').toLowerCase();
-  if (
-    s.includes('material_gap') ||
-    s.includes('material_lag') ||
-    s.includes('high') ||
-    s.includes('risk')
-  ) {
-    return 'bg-destructive/15 text-destructive border-destructive/30';
+const severityColor = (sev?: string): string => {
+  const s = String(sev || '').toLowerCase();
+  if (s.includes('high') || s.includes('critical') || s.includes('risk')) {
+    return 'bg-destructive/10 text-destructive border-destructive/30';
   }
-  if (
-    s.includes('watch') ||
-    s.includes('medium') ||
-    s.includes('lag')
-  ) {
-    return 'bg-amber-500/15 text-amber-600 border-amber-500/30';
+  if (s.includes('warn') || s.includes('medium')) {
+    return 'bg-amber-500/10 text-amber-600 border-amber-500/30';
   }
-  if (
-    s.includes('pass') ||
-    s.includes('aligned') ||
-    s.includes('outperform') ||
-    s.includes('strong') ||
-    s.includes('up')
-  ) {
-    return 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30';
+  if (s.includes('info') || s.includes('low')) {
+    return 'bg-blue-500/10 text-blue-600 border-blue-500/30';
   }
   return 'bg-muted text-muted-foreground border-border';
 };
 
-const formatStatementValue = (
-  metric: FinancialStatementMetric,
-  currency: string,
-) => {
-  if (metric.value === undefined || metric.value === null) return 'N/A';
-  if (metric.unit === 'currency') return asCurrency(metric.value, currency);
-  if (metric.unit === 'percent') return asPct(metric.value, 1);
+const priorityColor = (p?: string): string => {
+  const s = String(p || '').toLowerCase();
+  if (s === 'high') return 'bg-destructive/10 text-destructive border-destructive/30';
+  if (s === 'medium') return 'bg-amber-500/10 text-amber-600 border-amber-500/30';
+  return 'bg-muted text-muted-foreground border-border';
+};
 
-  if (metric.unit === 'ratio') {
-    if (
-      metric.metric_code.includes('margin') ||
-      metric.metric_code.includes('growth') ||
-      metric.metric_code.includes('yield') ||
-      metric.metric_code.includes('conversion') ||
-      metric.metric_code.includes('intensity')
-    ) {
-      return asPct(Math.abs(metric.value) <= 1 ? metric.value * 100 : metric.value, 1);
+const comparabilityColor = (c?: string): string => {
+  const s = String(c || '').toLowerCase();
+  if (s.includes('aligned') || s.includes('match')) {
+    return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
+  }
+  if (s.includes('material_gap') || s.includes('material_lag')) {
+    return 'bg-destructive/10 text-destructive border-destructive/30';
+  }
+  if (s.includes('minor') || s.includes('lag') || s.includes('watch')) {
+    return 'bg-amber-500/10 text-amber-600 border-amber-500/30';
+  }
+  return 'bg-muted text-muted-foreground border-border';
+};
+
+const yoySign = (v: number | null | undefined): 'up' | 'down' | 'flat' => {
+  if (v === null || v === undefined || Number.isNaN(v)) return 'flat';
+  if (v > 0.1) return 'up';
+  if (v < -0.1) return 'down';
+  return 'flat';
+};
+
+/* ---------- Chart helpers ---------- */
+
+interface ChartPoint {
+  year: string;
+  ar?: number | null;
+  yf?: number | null;
+}
+
+const buildChartSeries = (
+  years: Array<string | number> = [],
+  arSeries?: Array<number | null>,
+  yfSeries?: Array<number | null>,
+): ChartPoint[] => {
+  return years.map((y, i) => ({
+    year: String(y),
+    ar: arSeries?.[i] ?? null,
+    yf: yfSeries?.[i] ?? null,
+  }));
+};
+
+/* ---------- Group historical rows by topic ---------- */
+
+const INCOME_STATEMENT_KEYS = [
+  'Revenue', 'Organic Revenue Growth', 'Gross Profit',
+  'Adjusted EBITDA', 'Adjusted EBITDA Margin',
+  'Adjusted EBIT', 'Adjusted EBIT Margin',
+  'EBIT', 'EBIT Margin', 'Operating Income',
+  'EBITDA', 'EBITDA Margin',
+  'Net Profit', 'Adjusted Net Profit', 'Net Income',
+  'EPS', 'EPS (Adjusted)', 'Exceptional Items',
+];
+
+const BALANCE_SHEET_KEYS = [
+  'Total Assets', 'Total Equity', 'Total Liabilities',
+  'Net Debt', 'Gross Debt', 'Total Debt',
+  'Cash And Equivalents', 'Cash',
+  'Working Capital', 'Inventory', 'Receivables', 'Payables',
+  'Goodwill', 'Intangibles',
+];
+
+const CASH_FLOW_KEYS = [
+  'Operating Cash Flow', 'CFO',
+  'CapEx', 'Capital Expenditure',
+  'Free Cash Flow', 'FCF', 'FCF Conversion',
+  'Dividend', 'Dividends Paid',
+  'Acquisitions',
+];
+
+const matchGroup = (metric: string, patterns: string[]): boolean => {
+  const m = metric.toLowerCase();
+  return patterns.some(p => m.includes(p.toLowerCase()));
+};
+
+const groupHistoricalRows = (rows: FinancialHistoricalRow[] = []) => {
+  const income: FinancialHistoricalRow[] = [];
+  const balance: FinancialHistoricalRow[] = [];
+  const cash: FinancialHistoricalRow[] = [];
+  const other: FinancialHistoricalRow[] = [];
+
+  for (const row of rows) {
+    if (matchGroup(row.metric, INCOME_STATEMENT_KEYS)) {
+      income.push(row);
+    } else if (matchGroup(row.metric, BALANCE_SHEET_KEYS)) {
+      balance.push(row);
+    } else if (matchGroup(row.metric, CASH_FLOW_KEYS)) {
+      cash.push(row);
+    } else {
+      other.push(row);
     }
-    return asNum(metric.value, 2);
   }
 
-  return asNum(metric.value, 2);
+  return { income, balance, cash, other };
 };
 
-const RatioCardGroup = ({
-  title,
-  cards,
-  currency,
-}: {
-  title: string;
-  cards?: FinancialRatioCard[];
-  currency: string;
-}) => {
-  if (!cards?.length) return null;
-
-  return (
-    <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {cards.map((item) => (
-          <div key={`${title}-${item.label}`} className="rounded-xl border border-border/50 bg-background/70 p-3">
-            <p className="text-xs text-muted-foreground">{item.label}</p>
-            <p className="mt-1 text-lg font-semibold text-foreground">
-              {item.kind === 'percent'
-                ? asPct(item.value, 1)
-                : item.kind === 'currency'
-                  ? asCurrency(item.value, currency)
-                  : asNum(item.value, 2)}
-            </p>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  );
-};
-
-const StatementHighlights = ({
-  title,
-  rows,
-}: {
-  title: string;
-  rows?: FinancialStatementHighlight[];
-}) => {
-  if (!rows?.length) return null;
-
-  return (
-    <div className="space-y-2">
-      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {rows.slice(0, 6).map((row, idx) => (
-          <div key={`${title}-${row.metric_code || idx}`} className="rounded-xl border border-border/50 bg-background/70 p-3">
-            <p className="text-sm font-medium text-foreground">{row.label || row.metric_code || 'Metric'}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Status: {row.status || 'n/a'}</p>
-            <p className="text-xs text-muted-foreground">Peer gap: {asNum(row.peer_gap, 2)}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const StatementCard = ({
-  section,
-  currency,
-}: {
-  section?: FinancialStatementSection;
-  currency: string;
-}) => {
-  if (!section) return null;
-
-  return (
-    <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-      <CardHeader className="space-y-2">
-        <CardTitle className="text-base">{section.title}</CardTitle>
-        {section.summary && <p className="text-sm text-muted-foreground">{section.summary}</p>}
-        {section.question && (
-          <p className="rounded-xl border border-border/50 bg-background/70 p-3 text-xs text-muted-foreground">
-            <span className="font-semibold text-foreground">Analyst prompt:</span> {section.question}
-          </p>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {section.expert_assessment && (
-          <p className="rounded-xl border border-border/50 bg-background/70 p-3 text-sm text-muted-foreground">
-            {section.expert_assessment}
-          </p>
-        )}
-        {section.metrics?.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[680px] text-sm">
-              <thead>
-                <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-2 py-2">Metric</th>
-                  <th className="px-2 py-2">Value</th>
-                  <th className="px-2 py-2">YoY</th>
-                  <th className="px-2 py-2">Peer median</th>
-                  <th className="px-2 py-2">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {section.metrics.map((metric) => (
-                  <tr key={metric.metric_code} className="border-b border-border/40">
-                    <td className="px-2 py-2 font-medium text-foreground">{metric.label}</td>
-                    <td className="px-2 py-2">{formatStatementValue(metric, currency)}</td>
-                    <td className="px-2 py-2">{asDeltaPct(metric.yoy_change_pct, 1)}</td>
-                    <td className="px-2 py-2">{asNum(metric.peer_median, 2)}</td>
-                    <td className="px-2 py-2">
-                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] ${tone(metric.status)}`}>
-                        {metric.status || 'n/a'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-        <StatementHighlights title="Top strengths" rows={section.top_strengths} />
-        <StatementHighlights title="Top risks" rows={section.top_risks} />
-      </CardContent>
-    </Card>
-  );
-};
+/* ---------- Main component ---------- */
 
 export function FinancialAnalysisView() {
   const { financialData } = useForesight();
-  const [activeTab, setActiveTab] = useState<'executive' | 'performance' | 'statements' | 'validation'>(
-    'executive',
+  const [showFullSummary, setShowFullSummary] = useState(false);
+  const [chartMode, setChartMode] = useState<'ar' | 'yf' | 'both'>('both');
+
+  const fd = financialData;
+
+  const sections = fd?.analysis_sections ?? [];
+  const kpis = fd?.kpis ?? [];
+  const takeaways = fd?.key_takeaways ?? [];
+  const bridge = fd?.ar_vs_yf_bridge ?? [];
+  const segments = fd?.segment_analysis ?? [];
+  const guidance = fd?.guidance_tracking ?? [];
+  const charts = fd?.financial_charts;
+  const years = charts?.years ?? [];
+  const historical = fd?.historical_table;
+  const ratios = fd?.ratio_cards;
+  const market = fd?.market_snapshot;
+  const governance = fd?.governance_scores;
+  const profile = fd?.company_profile;
+  const exec = fd?.executive;
+  const riskSnapshot = exec?.risk_snapshot;
+
+  const thesis =
+    exec?.executive_thesis ||
+    exec?.professional_outcome_report ||
+    fd?.executive_summary ||
+    '';
+
+  const groupedHistorical = useMemo(
+    () => groupHistoricalRows(historical?.rows ?? []),
+    [historical],
   );
-  const currency = financialData?.company_profile?.currency || 'EUR';
-  const statementLab = financialData?.statement_lab;
-  const statementEntries = [
-    statementLab?.statements?.income_statement,
-    statementLab?.statements?.balance_sheet,
-    statementLab?.statements?.cash_flow,
-  ].filter(Boolean) as FinancialStatementSection[];
 
-  const trendRows = useMemo(() => {
-    const charts = financialData?.financial_charts;
-    if (!charts?.years?.length) return [];
-    return charts.years.map((year, idx) => ({
-      year,
-      revenue_b: charts.revenue_b?.[idx],
-      ebitda_m: charts.ebitda_m?.[idx],
-      free_cash_flow_m: charts.free_cash_flow_m?.[idx],
-      gross_margin_pct: charts.gross_margin_pct?.[idx],
-      operating_margin_pct: charts.operating_margin_pct?.[idx],
-      ebitda_margin_pct: charts.ebitda_margin_pct?.[idx],
+  const revenueSeries = useMemo(
+    () => buildChartSeries(years, charts?.revenue_m, charts?.revenue_m_yf),
+    [years, charts],
+  );
+  const ebitdaSeries = useMemo(
+    () => buildChartSeries(years, charts?.ebitda_m, charts?.ebitda_m_yf),
+    [years, charts],
+  );
+  const marginSeries = useMemo(
+    () => buildChartSeries(years, charts?.ebita_margin_pct, charts?.ebitda_margin_pct_yf),
+    [years, charts],
+  );
+  const fcfSeries = useMemo(
+    () => buildChartSeries(years, charts?.fcf_m, charts?.fcf_m_yf),
+    [years, charts],
+  );
+  const netIncomeSeries = useMemo(
+    () => buildChartSeries(years, charts?.net_profit_m, charts?.net_profit_m_yf),
+    [years, charts],
+  );
+  const capexSeries = useMemo(() => {
+    // YF capex is negative; flip it for display
+    return years.map((y, i) => ({
+      year: String(y),
+      ar: charts?.capex_m?.[i] ?? null,
+      yf: charts?.capex_m_yf?.[i] != null ? Math.abs(charts!.capex_m_yf![i] as number) : null,
     }));
-  }, [financialData?.financial_charts]);
+  }, [years, charts]);
 
-  if (!financialData) {
+  const netDebtSeries = useMemo(
+    () => years.map((y, i) => ({ year: String(y), ar: charts?.net_debt_m?.[i] ?? null })),
+    [years, charts],
+  );
+  const workingCapitalSeries = useMemo(
+    () => years.map((y, i) => ({ year: String(y), ar: charts?.working_capital_m?.[i] ?? null })),
+    [years, charts],
+  );
+
+  if (!fd) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <CircleDollarSign className="mb-4 h-12 w-12 text-muted-foreground" />
-        <h3 className="text-lg font-semibold text-foreground">No Financial Stream Loaded</h3>
-        <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-          Upload a financial analysis JSON payload to unlock this stream.
-        </p>
+      <div className="flex h-full items-center justify-center p-6">
+        <Card className="max-w-md">
+          <CardContent className="p-6 text-center">
+            <FileText className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+            <h2 className="mb-2 text-lg font-semibold">No financial analysis loaded</h2>
+            <p className="text-sm text-muted-foreground">
+              Upload a financial analysis JSON to view the fundamentals dashboard.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <Card className="relative overflow-hidden rounded-3xl border border-border/50 bg-gradient-to-br from-background/80 via-card/80 to-emerald-500/10 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.35)]">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-emerald-500/20 blur-3xl" />
-        <CardContent className="relative grid grid-cols-1 gap-6 p-6 lg:grid-cols-[1.2fr_1fr]">
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="rounded-2xl border border-border/60 bg-background/70 p-2 shadow-sm">
-                <Building2 className="h-5 w-5 text-emerald-600" />
+    <div className="space-y-6 p-4 md:p-6">
+      {/* ==================== HEADER ==================== */}
+      <HeaderCard
+        profile={profile}
+        exec={exec}
+        thesis={thesis}
+        showFullSummary={showFullSummary}
+        onToggle={() => setShowFullSummary(v => !v)}
+        riskFlags={riskSnapshot?.flags ?? []}
+      />
+
+      {/* ==================== KPI STRIP ==================== */}
+      {kpis.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          {kpis.slice(0, 5).map(k => (
+            <KpiCard key={k.key} kpi={k} />
+          ))}
+        </div>
+      )}
+
+      {/* ==================== KEY TAKEAWAYS ==================== */}
+      {takeaways.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Target className="h-4 w-4" /> Key Takeaways
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-2">
+              {takeaways.map((t, i) => (
+                <div
+                  key={i}
+                  className={`rounded-md border p-3 ${priorityColor(t.priority)}`}
+                >
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide">
+                      {t.headline}
+                    </div>
+                    {t.priority && (
+                      <Badge variant="outline" className={`text-xs ${priorityColor(t.priority)}`}>
+                        {t.priority}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-sm">{t.detail}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ==================== TABS: Performance / Balance Sheet / Cash Flow ==================== */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Gauge className="h-4 w-4" /> Financial Performance
+          </CardTitle>
+          <ChartModeToggle mode={chartMode} onChange={setChartMode} />
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="performance" className="w-full">
+            <TabsList className="mb-4">
+              <TabsTrigger value="performance">Performance</TabsTrigger>
+              <TabsTrigger value="balance">Balance Sheet</TabsTrigger>
+              <TabsTrigger value="cashflow">Cash Flow</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="performance" className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <ChartCard title="Revenue" unit="mn EUR">
+                  <DualLineChart data={revenueSeries} mode={chartMode} />
+                </ChartCard>
+                <ChartCard title="EBITDA" unit="mn EUR">
+                  <DualLineChart data={ebitdaSeries} mode={chartMode} />
+                </ChartCard>
+                <ChartCard title="Net Profit" unit="mn EUR">
+                  <DualLineChart data={netIncomeSeries} mode={chartMode} />
+                </ChartCard>
+                <ChartCard title="EBITA / EBITDA Margin" unit="%">
+                  <DualLineChart data={marginSeries} mode={chartMode} isPercent />
+                </ChartCard>
               </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Financial Analysis Stream</p>
-                <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-                  {financialData.company_profile?.name || financialData.run_meta?.company}
-                </h2>
+            </TabsContent>
+
+            <TabsContent value="balance" className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <ChartCard title="Net Debt" unit="mn EUR" arOnly>
+                  <DualLineChart data={netDebtSeries} mode="ar" />
+                </ChartCard>
+                <ChartCard title="Working Capital" unit="mn EUR" arOnly>
+                  <DualLineChart data={workingCapitalSeries} mode="ar" />
+                </ChartCard>
               </div>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {financialData.executive?.executive_thesis
-                || (financialData as any).executive_summary
-                || 'No executive thesis provided.'}
-            </p>
-            <div className="flex flex-wrap gap-2 text-[11px]">
-              <Badge variant="outline" className="font-mono">
-                {financialData.company_profile?.ticker || financialData.run_meta?.ticker}
-              </Badge>
-              <Badge variant="outline">Schema {financialData.schema_version}</Badge>
-              <Badge variant="outline">Generated {asDate(financialData.generated_at_utc)}</Badge>
-              {financialData.run_meta?.preferred_year !== undefined && (
-                <Badge variant="outline">Preferred year {financialData.run_meta.preferred_year}</Badge>
-              )}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-border/60 bg-background/70 p-3">
-              <p className="text-xs text-muted-foreground">Market cap</p>
-              <p className="mt-1 text-lg font-semibold text-foreground">
-                {financialData.market_snapshot?.market_cap_display ||
-                  asCurrency(financialData.market_snapshot?.market_cap, currency)}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-border/60 bg-background/70 p-3">
-              <p className="text-xs text-muted-foreground">Price</p>
-              <p className="mt-1 text-lg font-semibold text-foreground">
-                {financialData.market_snapshot?.price_display ||
-                  asCurrency(financialData.market_snapshot?.price, currency)}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-border/60 bg-background/70 p-3">
-              <p className="text-xs text-muted-foreground">Top flag severity</p>
-              <p className="mt-1 text-lg font-semibold text-foreground capitalize">
-                {financialData.executive?.top_flag?.severity || 'n/a'}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-border/60 bg-background/70 p-3">
-              <p className="text-xs text-muted-foreground">Run status</p>
-              <p className="mt-1 text-lg font-semibold text-foreground capitalize">
-                {financialData.run_meta?.status || 'n/a'}
-              </p>
-            </div>
-          </div>
+            </TabsContent>
+
+            <TabsContent value="cashflow" className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <ChartCard title="Free Cash Flow" unit="mn EUR">
+                  <DualLineChart data={fcfSeries} mode={chartMode} />
+                </ChartCard>
+                <ChartCard title="CapEx" unit="mn EUR">
+                  <DualBarChart data={capexSeries} mode={chartMode} />
+                </ChartCard>
+              </div>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
-        <TabsList className="flex w-full flex-wrap items-center gap-2 rounded-full border border-border/60 bg-card/70 p-1 shadow-sm backdrop-blur">
-          <TabsTrigger value="executive" className="rounded-full px-4 py-2 text-xs font-medium">
-            <Sparkles className="mr-1 h-4 w-4" />
-            Executive Pulse
-          </TabsTrigger>
-          <TabsTrigger value="performance" className="rounded-full px-4 py-2 text-xs font-medium">
-            <LineChartIcon className="mr-1 h-4 w-4" />
-            Performance
-          </TabsTrigger>
-          <TabsTrigger value="statements" className="rounded-full px-4 py-2 text-xs font-medium">
-            <Layers className="mr-1 h-4 w-4" />
-            Statement Lab
-          </TabsTrigger>
-          <TabsTrigger value="validation" className="rounded-full px-4 py-2 text-xs font-medium">
-            <ClipboardCheck className="mr-1 h-4 w-4" />
-            Validation Layer
-          </TabsTrigger>
-        </TabsList>
+      {/* ==================== SECTION NARRATIVES ==================== */}
+      {sections.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <FileText className="h-4 w-4" /> Analysis Sections
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {sections.map((section, i) => (
+              <SectionBlock key={i} section={section} />
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
-        <TabsContent value="executive" className="space-y-6 pt-4">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  Outcome Report
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 text-sm text-muted-foreground">
-                <p>
-                  {financialData.executive?.professional_outcome_report
-                    || (financialData as any).executive_summary
-                    || 'No outcome report provided.'}
-                </p>
-                <div className="rounded-xl border border-border/50 bg-background/70 p-3">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Critic verdict</p>
-                  <p className="mt-1 text-sm text-foreground">
-                    {financialData.executive?.critic_verdict || 'No critic verdict provided.'}
-                  </p>
-                </div>
-                {financialData.executive?.top_flag && (
-                  <div className="rounded-xl border border-border/50 bg-background/70 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Top flag</p>
-                      <Badge className={tone(financialData.executive.top_flag.severity)}>
-                        {financialData.executive.top_flag.severity || 'n/a'}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 text-sm text-foreground">
-                      {financialData.executive.top_flag.message || 'No message'}
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+      {/* ==================== AR vs YF BRIDGE ==================== */}
+      {bridge.length > 0 && <BridgeCard bridge={bridge} />}
 
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Gauge className="h-4 w-4 text-primary" />
-                  Risk Snapshot
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {[
-                  {
-                    label: 'Deterministic flags',
-                    value: financialData.executive?.risk_snapshot?.deterministic_flags_total,
-                  },
-                  {
-                    label: 'High severity flags',
-                    value: financialData.executive?.risk_snapshot?.high_severity_flags,
-                  },
-                  {
-                    label: 'Risk signals',
-                    value: financialData.executive?.risk_snapshot?.risk_signals,
-                  },
-                  {
-                    label: 'Accounting checks',
-                    value: financialData.executive?.risk_snapshot?.medium_or_high_accounting_checks,
-                  },
-                  {
-                    label: 'Low confidence claims',
-                    value: financialData.executive?.risk_snapshot?.low_confidence_claims,
-                  },
-                ].map((item) => (
-                  <div key={item.label} className="rounded-xl border border-border/50 bg-background/70 p-3">
-                    <p className="text-xs text-muted-foreground">{item.label}</p>
-                    <p className="mt-1 text-xl font-semibold text-foreground">
-                      {item.value === undefined || item.value === null ? 'N/A' : item.value}
-                    </p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
+      {/* ==================== SEGMENTS ==================== */}
+      {segments.length > 0 && <SegmentCard segments={segments} />}
 
-          {financialData.kpis?.length ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {financialData.kpis.map((kpi) => (
-                <Card key={kpi.key} className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-                  <CardContent className="p-4">
-                    <p className="text-xs text-muted-foreground">{kpi.label}</p>
-                    <p className="mt-1 text-xl font-semibold text-foreground">
-                      {kpi.display_value || asCurrency(kpi.value, currency)}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">{kpi.subtext}</p>
-                    {kpi.trend && (
-                      <Badge className={`mt-2 ${tone(kpi.trend)}`}>{kpi.trend}</Badge>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : null}
+      {/* ==================== GUIDANCE ==================== */}
+      {guidance.length > 0 && <GuidanceCard items={guidance} />}
 
-          {financialData.key_takeaways?.length ? (
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  Key Takeaways
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {financialData.key_takeaways.map((item) => (
-                  <div key={item.headline} className="rounded-xl border border-border/50 bg-background/70 p-3">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <h4 className="text-sm font-semibold text-foreground">{item.headline}</h4>
-                      {item.priority ? <Badge className={tone(item.priority)}>{item.priority}</Badge> : null}
-                    </div>
-                    <p className="text-sm text-muted-foreground">{item.detail}</p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          ) : null}
+      {/* ==================== RATIO CARDS ==================== */}
+      {ratios && <RatioCardsBlock ratios={ratios} />}
 
-          {financialData.analysis_sections?.length ? (
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <FileSearch className="h-4 w-4 text-primary" />
-                  Analysis Sections
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {financialData.analysis_sections.map((section, idx) => {
-                  // Support both shapes: { aspect_key, title, text } and { title, narrative, flags }
-                  const anySection = section as any;
-                  const title = anySection.title || anySection.aspect_key || `Section ${idx + 1}`;
-                  const subtitle = anySection.aspect_key && anySection.aspect_key !== title ? anySection.aspect_key : null;
-                  const body = anySection.text || anySection.narrative || '';
-                  const flags = Array.isArray(anySection.flags) ? anySection.flags : [];
-                  return (
-                    <div key={title + idx} className="rounded-xl border border-border/50 bg-background/70 p-3">
-                      <p className="text-sm font-semibold text-foreground">{title}</p>
-                      {subtitle && (
-                        <p className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">{subtitle}</p>
-                      )}
-                      {flags.length > 0 && (
-                        <ul className="mt-2 space-y-1">
-                          {flags.map((f: string, i: number) => (
-                            <li key={i} className="text-xs text-amber-700">⚠ {f}</li>
-                          ))}
-                        </ul>
-                      )}
-                      {body && <p className="mt-2 text-sm text-muted-foreground">{body}</p>}
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          ) : null}
-        </TabsContent>
+      {/* ==================== HISTORICAL TABLE ==================== */}
+      {historical && historical.rows.length > 0 && (
+        <HistoricalTableCard
+          years={historical.years}
+          groups={groupedHistorical}
+        />
+      )}
 
-        <TabsContent value="performance" className="space-y-6 pt-4">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <LineChartIcon className="h-4 w-4 text-primary" />
-                  Multi-year Financial Trajectory
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="h-80">
-                {trendRows.length ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={trendRows}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis dataKey="year" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line type="monotone" dataKey="revenue_b" name="Revenue (B)" stroke="#2563eb" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="ebitda_m" name="EBITDA (M)" stroke="#059669" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="free_cash_flow_m" name="FCF (M)" stroke="#f59e0b" strokeWidth={2} dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                    No financial chart series available.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Activity className="h-4 w-4 text-primary" />
-                  Margin Trend
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="h-80">
-                {trendRows.length ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={trendRows}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis dataKey="year" />
-                      <YAxis tickFormatter={(value) => `${value}%`} />
-                      <Tooltip formatter={(value: number) => asPct(value, 1)} />
-                      <Legend />
-                      <Area type="monotone" dataKey="gross_margin_pct" name="Gross margin" stroke="#0ea5e9" fill="#0ea5e933" />
-                      <Line type="monotone" dataKey="operating_margin_pct" name="Operating margin" stroke="#8b5cf6" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="ebitda_margin_pct" name="EBITDA margin" stroke="#22c55e" strokeWidth={2} dot={false} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                    No margin chart data available.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <CircleDollarSign className="h-4 w-4 text-primary" />
-                  Market Snapshot
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {[
-                  ['P/E', asNum(financialData.market_snapshot?.pe_ratio, 2)],
-                  ['EV/EBITDA', asNum(financialData.market_snapshot?.ev_to_ebitda, 2)],
-                  ['Price/Book', asNum(financialData.market_snapshot?.price_to_book, 2)],
-                  ['Dividend yield', asPct(financialData.market_snapshot?.dividend_yield_pct, 2)],
-                  ['52w change', asPct(financialData.market_snapshot?.fifty_two_week_change_pct, 1)],
-                  ['Beta', asNum(financialData.market_snapshot?.beta, 2)],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-xl border border-border/50 bg-background/70 p-3">
-                    <p className="text-xs text-muted-foreground">{label}</p>
-                    <p className="mt-1 text-lg font-semibold text-foreground">{value}</p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <ShieldCheck className="h-4 w-4 text-primary" />
-                  Governance Scores
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {[
-                  ['Audit', financialData.governance_scores?.audit_risk],
-                  ['Board', financialData.governance_scores?.board_risk],
-                  ['Compensation', financialData.governance_scores?.compensation_risk],
-                  ['Shareholder rights', financialData.governance_scores?.shareholder_rights_risk],
-                  ['Overall', financialData.governance_scores?.overall_risk],
-                ].map(([label, value]) => (
-                  <div key={String(label)} className="space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">{label}</span>
-                      <span className="font-semibold text-foreground">{asNum(value as number, 1)}</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full bg-primary"
-                        style={{ width: `${Math.max(0, Math.min(100, Number(value || 0) * 10))}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <BarChart3 className="h-4 w-4 text-primary" />
-                Scenario Analysis
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {financialData.scenario_analysis?.summary && (
-                <p className="text-sm text-muted-foreground">{financialData.scenario_analysis.summary}</p>
-              )}
-              {financialData.scenario_analysis?.rows?.length ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[760px] text-sm">
-                    <thead>
-                      <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                        <th className="px-2 py-2">Scenario</th>
-                        <th className="px-2 py-2">Rev growth</th>
-                        <th className="px-2 py-2">EBITDA margin</th>
-                        <th className="px-2 py-2">Debt/EBITDA</th>
-                        <th className="px-2 py-2">Implied equity</th>
-                        <th className="px-2 py-2">Upside</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {financialData.scenario_analysis.rows.map((row) => (
-                        <tr key={row.name} className="border-b border-border/40">
-                          <td className="px-2 py-2 font-medium capitalize text-foreground">{row.name}</td>
-                          <td className="px-2 py-2">{asPct(row.revenue_growth_pct, 1)}</td>
-                          <td className="px-2 py-2">{asPct(row.ebitda_margin_pct, 1)}</td>
-                          <td className="px-2 py-2">{asNum(row.projected_debt_to_ebitda, 2)}</td>
-                          <td className="px-2 py-2">{asCurrency(row.implied_equity_value, currency)}</td>
-                          <td className="px-2 py-2">{asPct(row.implied_upside_pct, 1)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No scenario rows available.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <RatioCardGroup title="Profitability & Returns" cards={financialData.ratio_cards?.profitability_returns} currency={currency} />
-            <RatioCardGroup title="Liquidity & Solvency" cards={financialData.ratio_cards?.liquidity_solvency} currency={currency} />
-            <RatioCardGroup title="Efficiency" cards={financialData.ratio_cards?.efficiency} currency={currency} />
-            <RatioCardGroup title="Valuation & Governance" cards={financialData.ratio_cards?.valuation_governance} currency={currency} />
-          </div>
-
-          {financialData.ratio_cards?.dupont ? (
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Workflow className="h-4 w-4 text-primary" />
-                  DuPont Decomposition
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-xl border border-border/50 bg-background/70 p-3">
-                  <p className="text-xs text-muted-foreground">Net margin</p>
-                  <p className="mt-1 text-lg font-semibold text-foreground">
-                    {asPct(financialData.ratio_cards.dupont.net_margin_pct, 1)}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border/50 bg-background/70 p-3">
-                  <p className="text-xs text-muted-foreground">Asset turnover</p>
-                  <p className="mt-1 text-lg font-semibold text-foreground">
-                    {asNum(financialData.ratio_cards.dupont.asset_turnover, 2)}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border/50 bg-background/70 p-3">
-                  <p className="text-xs text-muted-foreground">Financial leverage</p>
-                  <p className="mt-1 text-lg font-semibold text-foreground">
-                    {asNum(financialData.ratio_cards.dupont.financial_leverage, 2)}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border/50 bg-background/70 p-3">
-                  <p className="text-xs text-muted-foreground">ROE</p>
-                  <p className="mt-1 text-lg font-semibold text-foreground">
-                    {asPct(financialData.ratio_cards.dupont.roe_pct, 1)}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-            {financialData.multi_year_context?.highlights?.length ? (
-              <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-                <CardHeader>
-                  <CardTitle className="text-base">Multi-year Highlights</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm text-muted-foreground">
-                  {financialData.multi_year_context.highlights.map((item, idx) => (
-                    <div key={idx} className="flex items-start gap-2">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" />
-                      <span>{item}</span>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            ) : null}
-
-            {financialData.historical_table?.rows?.length ? (
-              <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-                <CardHeader>
-                  <CardTitle className="text-base">Historical Table</CardTitle>
-                </CardHeader>
-                <CardContent className="overflow-x-auto">
-                  <table className="w-full min-w-[620px] text-sm">
-                    <thead>
-                      <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                        <th className="px-2 py-2">Metric</th>
-                        <th className="px-2 py-2">Unit</th>
-                        {financialData.historical_table.years.map((year) => (
-                          <th key={year} className="px-2 py-2">{year}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {financialData.historical_table.rows.map((row) => {
-                        // Defensive: support either array values (canonical contract)
-                        // or object values keyed by year (older / alternative producers)
-                        const years = financialData.historical_table?.years ?? [];
-                        const valueAt = (idx: number, year: string): number | null => {
-                          if (Array.isArray(row.values)) return row.values[idx] ?? null;
-                          if (row.values && typeof row.values === 'object') {
-                            const obj = row.values as Record<string, number | null>;
-                            return obj[year] ?? null;
-                          }
-                          return null;
-                        };
-                        return (
-                          <tr key={row.metric} className="border-b border-border/40">
-                            <td className="px-2 py-2 font-medium text-foreground">{row.metric}</td>
-                            <td className="px-2 py-2 text-muted-foreground">{row.unit}</td>
-                            {years.map((year, idx) => {
-                              const value = valueAt(idx, year);
-                              return (
-                                <td key={`${row.metric}-${idx}`} className="px-2 py-2">
-                                  {value === null ? 'N/A' : asNum(value, 2)}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </CardContent>
-              </Card>
-            ) : null}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="statements" className="space-y-6 pt-4">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-base">Returns Dimension Metrics</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {statementLab?.returns_dimension_metrics?.length ? (
-                  statementLab.returns_dimension_metrics.map((metric) => (
-                    <div key={metric.metric_name} className="rounded-xl border border-border/50 bg-background/70 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-foreground">{metric.metric_name}</p>
-                        <Badge className={tone(metric.status)}>{metric.status || 'n/a'}</Badge>
-                      </div>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Target {asNum(metric.target_value, 2)} vs peer median {asNum(metric.peer_median, 2)}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No returns dimension metrics provided.</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-base">Liquidity Dimension Metrics</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {statementLab?.liquidity_dimension_metrics?.length ? (
-                  statementLab.liquidity_dimension_metrics.map((metric) => (
-                    <div key={metric.metric_name} className="rounded-xl border border-border/50 bg-background/70 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-foreground">{metric.metric_name}</p>
-                        <Badge className={tone(metric.status)}>{metric.status || 'n/a'}</Badge>
-                      </div>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Target {asNum(metric.target_value, 2)} vs peer median {asNum(metric.peer_median, 2)}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No liquidity metrics provided.</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {statementEntries.map((section) => (
-            <StatementCard key={section.title} section={section} currency={currency} />
-          ))}
-
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-base">Peer FX Context</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  {financialData.peer_fx_context?.requires_fx_normalization
-                    ? 'Mixed-currency peer set detected. Ratio-based comparisons are safer than absolute level comparisons.'
-                    : 'Peer set appears currency-homogeneous.'}
-                </p>
-                {financialData.peer_fx_context?.approved_peers?.length ? (
-                  <div className="flex flex-wrap gap-2">
-                    {financialData.peer_fx_context.approved_peers.map((peer) => (
-                      <Badge key={peer} variant="outline" className="font-mono text-[11px]">
-                        {peer}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-base">Sector Intelligence Pack</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Pack: <span className="font-medium text-foreground">{financialData.sector_intelligence?.pack || 'n/a'}</span>
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Sector / Industry:{' '}
-                  <span className="font-medium text-foreground">
-                    {financialData.sector_intelligence?.detected_sector || 'n/a'} /{' '}
-                    {financialData.sector_intelligence?.detected_industry || 'n/a'}
-                  </span>
-                </p>
-                {financialData.sector_intelligence?.focus_metrics?.length ? (
-                  <div className="flex flex-wrap gap-2">
-                    {financialData.sector_intelligence.focus_metrics.map((metric) => (
-                      <Badge key={metric} variant="secondary" className="text-[11px]">
-                        {metric}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="validation" className="space-y-6 pt-4">
-          <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Search className="h-4 w-4 text-primary" />
-                Discrepancy Bridge
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                {financialData.discrepancy_bridge?.summary || 'No discrepancy summary provided.'}
-              </p>
-              {financialData.discrepancy_bridge?.overall_assessment && (
-                <p className="rounded-xl border border-border/50 bg-background/70 p-3 text-sm text-muted-foreground">
-                  {financialData.discrepancy_bridge.overall_assessment}
-                </p>
-              )}
-              {financialData.discrepancy_bridge?.rows?.length ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[760px] text-sm">
-                    <thead>
-                      <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                        <th className="px-2 py-2">Metric</th>
-                        <th className="px-2 py-2">Statement</th>
-                        <th className="px-2 py-2">Status</th>
-                        <th className="px-2 py-2">Gap %</th>
-                        <th className="px-2 py-2">Next check</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {financialData.discrepancy_bridge.rows.map((row) => (
-                        <tr key={row.metric_key} className="border-b border-border/40">
-                          <td className="px-2 py-2 font-medium text-foreground">{row.metric_key}</td>
-                          <td className="px-2 py-2">{row.statement || 'n/a'}</td>
-                          <td className="px-2 py-2">
-                            <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] ${tone(row.status)}`}>
-                              {row.status || 'n/a'}
-                            </span>
-                          </td>
-                          <td className="px-2 py-2">{asDeltaPct(row.gap_pct_estimate, 1)}</td>
-                          <td className="px-2 py-2 text-muted-foreground">{row.next_check || 'n/a'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <ShieldCheck className="h-4 w-4 text-primary" />
-                  Accounting Quality Checks
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  {financialData.accounting_quality?.summary || 'No accounting quality summary provided.'}
-                </p>
-                {financialData.accounting_quality?.checks?.map((check) => (
-                  <div key={check.check_id} className="rounded-xl border border-border/50 bg-background/70 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-foreground">{check.check_id}</p>
-                      <Badge className={tone(check.severity)}>{check.severity}</Badge>
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">{check.message}</p>
-                    {check.recommendation && (
-                      <p className="mt-1 text-xs text-muted-foreground">Recommendation: {check.recommendation}</p>
-                    )}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <ClipboardCheck className="h-4 w-4 text-primary" />
-                  Verification Confidence
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {financialData.verification?.claim_confidence_rows?.length ? (
-                  financialData.verification.claim_confidence_rows.map((item) => (
-                    <div key={item.claim_id} className="rounded-xl border border-border/50 bg-background/70 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-foreground">{item.claim_id}</p>
-                        <Badge className={tone(item.confidence_level)}>
-                          {item.confidence_level} ({asNum(item.confidence_score, 2)})
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">{item.claim_text}</p>
-                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-primary"
-                          style={{ width: `${Math.max(0, Math.min(100, (item.confidence_score || 0) * 100))}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No verification rows provided.</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Workflow className="h-4 w-4 text-primary" />
-                Challenge Loop
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {financialData.challenge_loop?.verdict && (
-                <Badge className={tone(financialData.challenge_loop.verdict)}>
-                  Verdict: {financialData.challenge_loop.verdict}
-                </Badge>
-              )}
-              {[
-                ['Contradictions', financialData.challenge_loop?.contradictions],
-                ['Weak causality', financialData.challenge_loop?.weak_causality],
-                ['Missing risks', financialData.challenge_loop?.missing_risks],
-                ['Revision actions', financialData.challenge_loop?.revision_actions],
-              ].map(([title, list]) =>
-                Array.isArray(list) && list.length ? (
-                  <div key={title as string} className="space-y-2">
-                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {title}
-                    </h4>
-                    <div className="space-y-2">
-                      {list.map((item, idx) => (
-                        <div key={`${title}-${idx}`} className="rounded-xl border border-border/50 bg-background/70 p-3 text-sm text-muted-foreground">
-                          {item}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null,
-              )}
-              {financialData.challenge_loop?.revised_outcome_focus && (
-                <p className="rounded-xl border border-border/50 bg-background/70 p-3 text-sm text-foreground">
-                  {financialData.challenge_loop.revised_outcome_focus}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <AlertTriangle className="h-4 w-4 text-primary" />
-                  Action Plan
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {financialData.action_plan?.length ? (
-                  financialData.action_plan.map((item, idx) => (
-                    <div key={`${item.owner}-${idx}`} className="rounded-xl border border-border/50 bg-background/70 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-foreground">{item.owner}</p>
-                        {item.urgency && <Badge className={tone(item.urgency)}>{item.urgency}</Badge>}
-                      </div>
-                      <p className="mt-1 text-sm text-muted-foreground">{item.action}</p>
-                      {item.rationale && <p className="mt-1 text-xs text-muted-foreground">{item.rationale}</p>}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No action plan rows provided.</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Gauge className="h-4 w-4 text-primary" />
-                  Monitoring Indicators
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {financialData.monitoring_indicators?.length ? (
-                  financialData.monitoring_indicators.map((item) => (
-                    <div key={`${item.metric}-${item.trigger}`} className="rounded-xl border border-border/50 bg-background/70 p-3">
-                      <p className="text-sm font-medium text-foreground">{item.metric}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{item.why}</p>
-                      {item.trigger && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Trigger: <span className="font-medium text-foreground">{item.trigger}</span>
-                        </p>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No monitoring indicators provided.</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {financialData.challenge_followup?.research_items?.length ? (
-            <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-base">Challenge Follow-up Research</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {financialData.challenge_followup.research_items.map((item, idx) => (
-                  <div key={`${item.action}-${idx}`} className="rounded-xl border border-border/50 bg-background/70 p-3">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-foreground">{item.action || 'Action item'}</p>
-                      {item.confidence ? <Badge className={tone(item.confidence)}>{item.confidence}</Badge> : null}
-                    </div>
-                    {item.research_findings && <p className="text-sm text-muted-foreground">{item.research_findings}</p>}
-                    {item.recommended_update && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Recommended update: {item.recommended_update}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          ) : null}
-        </TabsContent>
-      </Tabs>
+      {/* ==================== MARKET & GOVERNANCE ==================== */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {market && <MarketSnapshotCard market={market} />}
+        {governance && <GovernanceCard gov={governance} />}
+      </div>
     </div>
   );
 }
+
+/* ================================================================
+   HEADER
+================================================================== */
+
+interface HeaderCardProps {
+  profile?: any;
+  exec?: any;
+  thesis: string;
+  showFullSummary: boolean;
+  onToggle: () => void;
+  riskFlags: FinancialFlag[];
+}
+
+function HeaderCard({
+  profile,
+  exec,
+  thesis,
+  showFullSummary,
+  onToggle,
+  riskFlags,
+}: HeaderCardProps) {
+  const truncated = thesis.length > 320 ? thesis.slice(0, 320) + '…' : thesis;
+  const topFlag = exec?.top_flag;
+
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-muted-foreground" />
+              <h1 className="text-xl font-semibold">
+                {profile?.name || 'Company'}
+              </h1>
+              <Badge variant="outline">{profile?.ticker}</Badge>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              {profile?.sector && <span>{profile.sector}</span>}
+              {profile?.industry && <span>· {profile.industry}</span>}
+              {profile?.country && <span>· {profile.country}</span>}
+              {profile?.exchange && <span>· {profile.exchange}</span>}
+              {profile?.employees && (
+                <span>
+                  · {Number(profile.employees).toLocaleString('en-US')} employees
+                </span>
+              )}
+            </div>
+          </div>
+          {topFlag?.message && (
+            <div
+              className={`flex min-w-0 max-w-md items-start gap-2 rounded-md border p-3 text-sm ${severityColor(topFlag.severity)}`}
+            >
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide">
+                  Top Flag · {topFlag.section || topFlag.severity}
+                </div>
+                <div>{topFlag.message}</div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {thesis && (
+          <div className="mt-4 rounded-md bg-muted/40 p-4 text-sm leading-relaxed">
+            {showFullSummary ? thesis : truncated}
+            {thesis.length > 320 && (
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto px-0 py-0 ml-1"
+                onClick={onToggle}
+              >
+                {showFullSummary ? 'Show less' : 'Read more'}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {riskFlags.length > 0 && (
+          <div className="mt-4">
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <AlertTriangle className="h-3 w-3" /> Risk Signals ({riskFlags.length})
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {riskFlags.map((f, i) => (
+                <Badge
+                  key={i}
+                  variant="outline"
+                  className={`max-w-full whitespace-normal text-left text-xs ${severityColor(f.severity)}`}
+                >
+                  {f.section && (
+                    <span className="font-semibold mr-1">{f.section}:</span>
+                  )}
+                  {f.message}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ================================================================
+   KPI CARD
+================================================================== */
+
+function KpiCard({ kpi }: { kpi: any }) {
+  const dir = yoySign(kpi.yoy_change_pct);
+  const Icon =
+    dir === 'up'
+      ? TrendingUp
+      : dir === 'down'
+        ? TrendingDown
+        : CircleDollarSign;
+  const trendClr =
+    dir === 'up'
+      ? 'text-emerald-600'
+      : dir === 'down'
+        ? 'text-destructive'
+        : 'text-muted-foreground';
+
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-medium text-muted-foreground">
+            {kpi.label}
+          </div>
+          <Icon className={`h-4 w-4 ${trendClr}`} />
+        </div>
+        <div className="mt-1 text-xl font-semibold tabular-nums">
+          {kpi.display_value || fmtNum(kpi.value)}
+        </div>
+        <div className="mt-1 flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">
+            {kpi.unit || ''}
+          </span>
+          {kpi.yoy_change_pct !== null && kpi.yoy_change_pct !== undefined && (
+            <span className={`tabular-nums ${trendClr}`}>
+              {fmtDelta(kpi.yoy_change_pct)} YoY
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ================================================================
+   CHART COMPONENTS
+================================================================== */
+
+function ChartModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: 'ar' | 'yf' | 'both';
+  onChange: (m: 'ar' | 'yf' | 'both') => void;
+}) {
+  const opts: Array<{ key: 'ar' | 'yf' | 'both'; label: string }> = [
+    { key: 'ar', label: 'AR' },
+    { key: 'yf', label: 'YF' },
+    { key: 'both', label: 'Both' },
+  ];
+  return (
+    <div className="inline-flex rounded-md border bg-background p-0.5 text-xs">
+      {opts.map(o => (
+        <button
+          key={o.key}
+          onClick={() => onChange(o.key)}
+          className={`rounded-sm px-2.5 py-1 font-medium transition-colors ${
+            mode === o.key
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ChartCard({
+  title,
+  unit,
+  arOnly = false,
+  children,
+}: {
+  title: string;
+  unit?: string;
+  arOnly?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-md border bg-card p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-sm font-semibold">{title}</div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {arOnly && <Badge variant="outline" className="text-[10px]">AR only</Badge>}
+          {unit && <span>{unit}</span>}
+        </div>
+      </div>
+      <div className="h-[220px]">{children}</div>
+    </div>
+  );
+}
+
+const AR_COLOR = '#2563eb'; // blue
+const YF_COLOR = '#f59e0b'; // amber
+
+function DualLineChart({
+  data,
+  mode,
+  isPercent = false,
+}: {
+  data: ChartPoint[];
+  mode: 'ar' | 'yf' | 'both';
+  isPercent?: boolean;
+}) {
+  const formatter = (v: number) => (isPercent ? fmtPct(v) : fmtNum(v));
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart data={data} margin={{ top: 5, right: 10, bottom: 0, left: -10 }}>
+        <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+        <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+        <YAxis tick={{ fontSize: 11 }} tickFormatter={formatter as any} />
+        <Tooltip
+          formatter={(v: any) => (v == null ? '—' : formatter(v))}
+          labelClassName="text-xs"
+        />
+        {mode !== 'ar' && (
+          <Line
+            type="monotone"
+            dataKey="yf"
+            name="Yahoo Finance"
+            stroke={YF_COLOR}
+            strokeWidth={2}
+            dot={{ r: 3 }}
+            connectNulls
+          />
+        )}
+        {mode !== 'yf' && (
+          <Line
+            type="monotone"
+            dataKey="ar"
+            name="Annual Report"
+            stroke={AR_COLOR}
+            strokeWidth={2.5}
+            dot={{ r: 3 }}
+            connectNulls
+          />
+        )}
+        <Legend wrapperStyle={{ fontSize: 11 }} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+function DualBarChart({
+  data,
+  mode,
+}: {
+  data: ChartPoint[];
+  mode: 'ar' | 'yf' | 'both';
+}) {
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={{ top: 5, right: 10, bottom: 0, left: -10 }}>
+        <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+        <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+        <YAxis tick={{ fontSize: 11 }} />
+        <Tooltip
+          formatter={(v: any) => (v == null ? '—' : fmtNum(v))}
+          labelClassName="text-xs"
+        />
+        {mode !== 'yf' && (
+          <Bar dataKey="ar" name="Annual Report" fill={AR_COLOR} />
+        )}
+        {mode !== 'ar' && (
+          <Bar dataKey="yf" name="Yahoo Finance" fill={YF_COLOR} />
+        )}
+        <Legend wrapperStyle={{ fontSize: 11 }} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/* ================================================================
+   ANALYSIS SECTION
+================================================================== */
+
+function SectionBlock({ section }: { section: FinancialAnalysisSection }) {
+  const [open, setOpen] = useState(true);
+  const narrative = section.narrative || section.text || '';
+  const flags = section.flags ?? [];
+  const dataTables = section.data_tables ?? [];
+  const arVsYf = section.ar_vs_yf ?? [];
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <div className="rounded-md border">
+        <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/40">
+          <div className="flex items-center gap-2 min-w-0">
+            {open ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+            <span className="font-semibold">{section.title}</span>
+            {flags.length > 0 && (
+              <Badge
+                variant="outline"
+                className={`text-xs ${severityColor(flags[0].severity)}`}
+              >
+                {flags.length} flag{flags.length > 1 ? 's' : ''}
+              </Badge>
+            )}
+          </div>
+        </CollapsibleTrigger>
+
+        <CollapsibleContent>
+          <div className="space-y-4 border-t px-4 py-4">
+            {narrative && (
+              <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">
+                {narrative}
+              </p>
+            )}
+
+            {flags.length > 0 && (
+              <div className="space-y-1.5">
+                {flags.map((f, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${severityColor(f.severity)}`}
+                  >
+                    <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                    <span>{f.message}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {dataTables.length > 0 && (
+              <div className="space-y-3">
+                {dataTables.map((dt, i) => (
+                  <DataTableBlock key={i} name={dt.name} rows={dt.rows} />
+                ))}
+              </div>
+            )}
+
+            {arVsYf.length > 0 && (
+              <div className="rounded-md border bg-muted/30 p-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  AR vs YF (this section)
+                </div>
+                <div className="space-y-2">
+                  {arVsYf.map((b, i) => (
+                    <BridgeRowInline key={i} row={b} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
+
+function DataTableBlock({ name, rows }: { name: string; rows: any[] }) {
+  if (!rows || rows.length === 0) return null;
+  const columns = Object.keys(rows[0]);
+
+  const formatCell = (v: any, col: string): string => {
+    if (v === null || v === undefined || v === '') return '—';
+    if (typeof v === 'number') {
+      if (col.toLowerCase().includes('pct') || col.toLowerCase().includes('margin') || col.toLowerCase().includes('growth')) {
+        return fmtPct(v);
+      }
+      return fmtNum(v);
+    }
+    return String(v);
+  };
+
+  return (
+    <div className="rounded-md border">
+      <div className="border-b bg-muted/40 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {name}
+      </div>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {columns.map(c => (
+                <TableHead key={c} className="whitespace-nowrap text-xs">
+                  {c.replace(/_/g, ' ')}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r, i) => (
+              <TableRow key={i}>
+                {columns.map(c => (
+                  <TableCell key={c} className="whitespace-nowrap text-xs tabular-nums">
+                    {formatCell(r[c], c)}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function BridgeRowInline({ row }: { row: FinancialBridgeRow }) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-sm bg-background px-2 py-1.5 text-xs">
+      <div className="flex-1 min-w-0">
+        <span className="font-medium">{row.concept || row.ar_metric}</span>
+        <span className="ml-2 text-muted-foreground">
+          AR: {fmtNum(row.ar_value)} {row.ar_unit}
+        </span>
+        <span className="ml-2 text-muted-foreground">
+          YF: {fmtNum(row.yf_value)}
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        {row.gap_pct !== null && row.gap_pct !== undefined && (
+          <span className="tabular-nums text-muted-foreground">
+            Δ {fmtDelta(row.gap_pct)}
+          </span>
+        )}
+        {row.comparability && (
+          <Badge
+            variant="outline"
+            className={`text-[10px] ${comparabilityColor(row.comparability)}`}
+          >
+            {row.comparability.replace(/_/g, ' ')}
+          </Badge>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
+   AR vs YF BRIDGE (dedicated section)
+================================================================== */
+
+function BridgeCard({ bridge }: { bridge: FinancialBridgeRow[] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Layers className="h-4 w-4" /> Annual Report ↔ Yahoo Finance Bridge
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Concept</TableHead>
+                <TableHead>AR metric</TableHead>
+                <TableHead className="text-right">AR value</TableHead>
+                <TableHead>YF metric</TableHead>
+                <TableHead className="text-right">YF value</TableHead>
+                <TableHead className="text-right">Gap</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {bridge.map((r, i) => {
+                const yfDisp =
+                  r.yf_value != null && Math.abs(r.yf_value) > 1e6
+                    ? r.yf_value / 1e6
+                    : r.yf_value;
+                return (
+                  <TableRow key={i}>
+                    <TableCell className="font-medium">{r.concept}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {r.ar_metric}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {fmtNum(r.ar_value)} <span className="text-[10px] text-muted-foreground">{r.ar_unit}</span>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {r.yf_label || r.yf_metric}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {fmtNum(yfDisp as number | null | undefined)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {fmtDelta(r.gap_pct)}
+                    </TableCell>
+                    <TableCell>
+                      {r.comparability && (
+                        <Badge
+                          variant="outline"
+                          className={`text-xs ${comparabilityColor(r.comparability)}`}
+                        >
+                          {r.comparability.replace(/_/g, ' ')}
+                        </Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+        {bridge.some(r => r.definition_from_ar) && (
+          <div className="mt-3 space-y-1.5 text-xs text-muted-foreground">
+            {bridge
+              .filter(r => r.definition_from_ar)
+              .map((r, i) => (
+                <div key={i} className="flex gap-2">
+                  <Info className="mt-0.5 h-3 w-3 shrink-0" />
+                  <span>
+                    <span className="font-medium text-foreground">{r.concept}:</span>{' '}
+                    {r.definition_from_ar}
+                  </span>
+                </div>
+              ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ================================================================
+   SEGMENTS
+================================================================== */
+
+function SegmentCard({ segments }: { segments: any[] }) {
+  const mainSegs = segments.filter(s => !s.is_reconciling_item);
+  const recon = segments.filter(s => s.is_reconciling_item);
+
+  const chartData = mainSegs.map(s => ({
+    name: s.segment,
+    revenue: s.revenue,
+    ebita: s.ebita,
+    revenueMix: s.revenue_mix_pct,
+    ebitaMix: s.ebita_mix_pct,
+    margin: s.ebita_margin,
+  }));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Building2 className="h-4 w-4" /> Segment Analysis
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="h-[240px] rounded-md border p-3">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Revenue & EBITA by Segment (mn EUR)
+            </div>
+            <ResponsiveContainer width="100%" height="85%">
+              <BarChart data={chartData} margin={{ top: 5, right: 10, bottom: 0, left: -10 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v: any) => (v == null ? '—' : fmtNum(v))} />
+                <Bar dataKey="revenue" name="Revenue" fill={AR_COLOR} />
+                <Bar dataKey="ebita" name="EBITA" fill={YF_COLOR} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="h-[240px] rounded-md border p-3">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              EBITA Margin by Segment
+            </div>
+            <ResponsiveContainer width="100%" height="85%">
+              <BarChart data={chartData} margin={{ top: 5, right: 10, bottom: 0, left: -10 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: any) => fmtPct(v, 0)} />
+                <Tooltip formatter={(v: any) => (v == null ? '—' : fmtPct(v))} />
+                <Bar dataKey="margin" name="EBITA margin %" fill="#10b981" />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Segment</TableHead>
+                <TableHead className="text-right">Revenue</TableHead>
+                <TableHead className="text-right">YoY</TableHead>
+                <TableHead className="text-right">Organic</TableHead>
+                <TableHead className="text-right">Mix %</TableHead>
+                <TableHead className="text-right">EBITA</TableHead>
+                <TableHead className="text-right">Margin</TableHead>
+                <TableHead className="text-right">EBITA mix %</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[...mainSegs, ...recon].map((s, i) => (
+                <TableRow key={i} className={s.is_reconciling_item ? 'text-muted-foreground italic' : ''}>
+                  <TableCell className="font-medium">
+                    {s.segment} {s.is_reconciling_item && <span className="text-xs">(reconciling)</span>}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{fmtNum(s.revenue)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmtDelta(s.revenue_yoy)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmtDelta(s.organic_growth)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmtPct(s.revenue_mix_pct)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmtNum(s.ebita)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmtPct(s.ebita_margin)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmtPct(s.ebita_mix_pct)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ================================================================
+   GUIDANCE
+================================================================== */
+
+function GuidanceCard({ items }: { items: any[] }) {
+  const [open, setOpen] = useState(false);
+  const byStatus = useMemo(() => {
+    const out: Record<string, any[]> = {};
+    for (const it of items) {
+      const key = (it.status || 'pending').toLowerCase();
+      (out[key] ||= []).push(it);
+    }
+    return out;
+  }, [items]);
+
+  const counts = {
+    achieved: byStatus['achieved']?.length ?? 0,
+    on_track: byStatus['on_track']?.length ?? 0,
+    behind: byStatus['behind']?.length ?? 0,
+    pending: byStatus['pending']?.length ?? 0,
+  };
+
+  return (
+    <Card>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CardHeader>
+          <CollapsibleTrigger className="flex w-full items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Target className="h-4 w-4" /> Guidance & Target Tracking
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                ({items.length} targets)
+              </span>
+            </CardTitle>
+            {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="mb-3 flex flex-wrap gap-2 text-xs">
+            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
+              <CheckCircle2 className="mr-1 h-3 w-3" />
+              {counts.achieved} achieved
+            </Badge>
+            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30">
+              {counts.on_track} on track
+            </Badge>
+            <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
+              {counts.behind} behind
+            </Badge>
+            <Badge variant="outline">{counts.pending} pending</Badge>
+          </div>
+          <CollapsibleContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Period</TableHead>
+                    <TableHead>Segment</TableHead>
+                    <TableHead>Metric</TableHead>
+                    <TableHead>Target</TableHead>
+                    <TableHead className="text-right">Actual</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((g, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="whitespace-nowrap">{g.target_period}</TableCell>
+                      <TableCell>{g.segment}</TableCell>
+                      <TableCell className="font-medium">{g.metric}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {g.is_qualitative ? (g.guidance_text || 'qualitative') : g.target_display}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {g.actual_value != null ? fmtNum(g.actual_value) : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={`text-xs ${statusColor(g.status)}`}>
+                          {g.status || 'pending'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CollapsibleContent>
+        </CardContent>
+      </Collapsible>
+    </Card>
+  );
+}
+
+function statusColor(s?: string): string {
+  const v = String(s || '').toLowerCase();
+  if (v.includes('achieved')) return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
+  if (v.includes('on_track')) return 'bg-blue-500/10 text-blue-600 border-blue-500/30';
+  if (v.includes('behind')) return 'bg-destructive/10 text-destructive border-destructive/30';
+  return 'bg-muted text-muted-foreground border-border';
+}
+
+/* ================================================================
+   RATIO CARDS
+================================================================== */
+
+function RatioCardsBlock({ ratios }: { ratios: any }) {
+  const groups: Array<{ label: string; items: FinancialRatioCard[] | undefined; icon: any }> = [
+    { label: 'Profitability & Returns', items: ratios.profitability_returns, icon: TrendingUp },
+    { label: 'Liquidity & Solvency', items: ratios.liquidity_solvency, icon: ShieldCheck },
+    { label: 'Efficiency', items: ratios.efficiency, icon: Gauge },
+    { label: 'Valuation', items: ratios.valuation_governance, icon: CircleDollarSign },
+  ];
+
+  const formatRatioValue = (c: FinancialRatioCard): string => {
+    if (c.value === null || c.value === undefined) return '—';
+    if (c.kind === 'pct') return fmtPct(c.value);
+    if (c.kind === 'ratio') return fmtRatio(c.value);
+    return fmtNum(c.value);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Gauge className="h-4 w-4" /> Ratio Dashboard
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {groups.map(group => {
+          if (!group.items || group.items.length === 0) return null;
+          const Icon = group.icon;
+          return (
+            <div key={group.label}>
+              <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <Icon className="h-3 w-3" /> {group.label}
+              </div>
+              <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
+                {group.items.map((c, i) => (
+                  <div key={i} className="rounded-md border p-3">
+                    <div className="text-xs text-muted-foreground">{c.label}</div>
+                    <div className="mt-1 text-lg font-semibold tabular-nums">
+                      {formatRatioValue(c)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+
+        {ratios.dupont && (
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              DuPont Decomposition
+            </div>
+            <div className="grid gap-2 md:grid-cols-4">
+              <DupontCard label="Net Margin" value={ratios.dupont.net_margin_pct} kind="pct" />
+              <DupontCard label="Asset Turnover" value={ratios.dupont.asset_turnover} kind="ratio" />
+              <DupontCard label="Financial Leverage" value={ratios.dupont.financial_leverage} kind="ratio" />
+              <DupontCard label="ROE" value={ratios.dupont.roe_pct} kind="pct" highlight />
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DupontCard({
+  label,
+  value,
+  kind,
+  highlight = false,
+}: {
+  label: string;
+  value?: number;
+  kind: 'pct' | 'ratio';
+  highlight?: boolean;
+}) {
+  const display =
+    value == null ? '—' : kind === 'pct' ? fmtPct(value) : fmtRatio(value);
+  return (
+    <div
+      className={`rounded-md border p-3 ${highlight ? 'border-primary bg-primary/5' : ''}`}
+    >
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 text-lg font-semibold tabular-nums">{display}</div>
+    </div>
+  );
+}
+
+/* ================================================================
+   HISTORICAL TABLE
+================================================================== */
+
+function HistoricalTableCard({
+  years,
+  groups,
+}: {
+  years: Array<string | number>;
+  groups: {
+    income: FinancialHistoricalRow[];
+    balance: FinancialHistoricalRow[];
+    cash: FinancialHistoricalRow[];
+    other: FinancialHistoricalRow[];
+  };
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <FileText className="h-4 w-4" /> Full Historical Data (AR &amp; YF side-by-side)
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Tabs defaultValue="income">
+          <TabsList className="mb-3">
+            {groups.income.length > 0 && <TabsTrigger value="income">Income ({groups.income.length})</TabsTrigger>}
+            {groups.balance.length > 0 && <TabsTrigger value="balance">Balance Sheet ({groups.balance.length})</TabsTrigger>}
+            {groups.cash.length > 0 && <TabsTrigger value="cash">Cash Flow ({groups.cash.length})</TabsTrigger>}
+            {groups.other.length > 0 && <TabsTrigger value="other">Other ({groups.other.length})</TabsTrigger>}
+          </TabsList>
+
+          {(['income', 'balance', 'cash', 'other'] as const).map(key => {
+            const rows = groups[key];
+            if (!rows || rows.length === 0) return null;
+            return (
+              <TabsContent key={key} value={key}>
+                <HistoricalTable years={years} rows={rows} />
+              </TabsContent>
+            );
+          })}
+        </Tabs>
+      </CardContent>
+    </Card>
+  );
+}
+
+function HistoricalTable({
+  years,
+  rows,
+}: {
+  years: Array<string | number>;
+  rows: FinancialHistoricalRow[];
+}) {
+  const formatV = (v: number | null | undefined, unit: string) => {
+    if (v === null || v === undefined) return '—';
+    if (unit === '%') return fmtPct(v);
+    return fmtNum(v);
+  };
+
+  return (
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="sticky left-0 bg-background">Metric</TableHead>
+            <TableHead>Unit</TableHead>
+            <TableHead>Source</TableHead>
+            {years.map(y => (
+              <TableHead key={String(y)} className="text-right whitespace-nowrap">
+                {y}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row, i) => {
+            const hasYf = row.yf_values && row.yf_values.some(v => v != null);
+            return (
+              <>
+                <TableRow key={`${i}-ar`}>
+                  <TableCell
+                    rowSpan={hasYf ? 2 : 1}
+                    className="sticky left-0 bg-background font-medium"
+                  >
+                    {row.metric}
+                  </TableCell>
+                  <TableCell rowSpan={hasYf ? 2 : 1} className="text-xs text-muted-foreground">
+                    {row.unit}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    <span
+                      className="rounded px-1.5 py-0.5"
+                      style={{ backgroundColor: `${AR_COLOR}22`, color: AR_COLOR }}
+                    >
+                      AR
+                    </span>
+                  </TableCell>
+                  {row.values.map((v, j) => (
+                    <TableCell
+                      key={j}
+                      className="text-right tabular-nums text-xs"
+                      style={{ color: v == null ? undefined : AR_COLOR }}
+                    >
+                      {formatV(v, row.unit)}
+                    </TableCell>
+                  ))}
+                </TableRow>
+                {hasYf && (
+                  <TableRow key={`${i}-yf`} className="border-b">
+                    <TableCell className="text-xs">
+                      <span
+                        className="rounded px-1.5 py-0.5"
+                        style={{ backgroundColor: `${YF_COLOR}22`, color: YF_COLOR }}
+                      >
+                        YF
+                      </span>
+                    </TableCell>
+                    {row.yf_values!.map((v, j) => (
+                      <TableCell
+                        key={j}
+                        className="text-right tabular-nums text-xs"
+                        style={{ color: v == null ? undefined : YF_COLOR }}
+                      >
+                        {formatV(v, row.unit)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                )}
+              </>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+/* ================================================================
+   MARKET / GOVERNANCE
+================================================================== */
+
+function MarketSnapshotCard({ market }: { market: any }) {
+  const rows: Array<[string, string]> = [
+    ['Price', market.price_display || fmtNum(market.price, 2)],
+    ['Market cap', market.market_cap_display || fmtNum(market.market_cap, 0)],
+    ['Enterprise value', market.enterprise_value_display || fmtNum(market.enterprise_value, 0)],
+    ['P/E (trailing)', fmtRatio(market.pe_ratio)],
+    ['P/E (forward)', fmtRatio(market.forward_pe)],
+    ['EV / EBITDA', fmtRatio(market.ev_to_ebitda)],
+    ['EV / Revenue', fmtRatio(market.ev_to_revenue)],
+    ['P / Book', fmtRatio(market.price_to_book)],
+    ['Dividend yield', fmtPct(market.dividend_yield_pct)],
+    ['Payout ratio', market.payout_ratio != null ? fmtPct(market.payout_ratio * 100) : '—'],
+    ['Beta', fmtNum(market.beta, 2)],
+    ['52W range', `${fmtNum(market.fifty_two_week_low, 2)} – ${fmtNum(market.fifty_two_week_high, 2)}`],
+    ['52W change', market.fifty_two_week_change_pct != null ? fmtDelta(market.fifty_two_week_change_pct * 100) : '—'],
+  ];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <CircleDollarSign className="h-4 w-4" /> Market Snapshot
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+          {rows.map(([label, value]) => (
+            <div key={label} className="flex items-baseline justify-between gap-2 border-b border-border/50 py-1 last:border-0">
+              <span className="text-xs text-muted-foreground">{label}</span>
+              <span className="tabular-nums">{value}</span>
+            </div>
+          ))}
+        </div>
+        {market.source && (
+          <div className="mt-2 text-[10px] text-muted-foreground">
+            Source: {market.source}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function GovernanceCard({ gov }: { gov: any }) {
+  const rows: Array<[string, number | undefined]> = [
+    ['Overall risk', gov.overall_risk],
+    ['Audit risk', gov.audit_risk],
+    ['Board risk', gov.board_risk],
+    ['Compensation risk', gov.compensation_risk],
+    ['Shareholder rights risk', gov.shareholder_rights_risk],
+  ];
+  const riskColor = (v?: number) => {
+    if (v == null) return 'bg-muted';
+    if (v <= 3) return 'bg-emerald-500';
+    if (v <= 6) return 'bg-amber-500';
+    return 'bg-destructive';
+  };
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <ShieldCheck className="h-4 w-4" /> Governance Risk
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          {rows.map(([label, v]) => (
+            <div key={label}>
+              <div className="mb-1 flex items-baseline justify-between text-xs">
+                <span className="text-muted-foreground">{label}</span>
+                <span className="tabular-nums font-medium">
+                  {v != null ? `${v.toFixed(1)} / 10` : '—'}
+                </span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={`h-full ${riskColor(v)} transition-all`}
+                  style={{ width: `${v != null ? Math.min(100, (v / 10) * 100) : 0}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        {gov.scale_note && (
+          <div className="mt-3 text-[10px] text-muted-foreground">
+            {gov.scale_note}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default FinancialAnalysisView;

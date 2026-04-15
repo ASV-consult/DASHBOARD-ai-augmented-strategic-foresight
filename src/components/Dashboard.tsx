@@ -7,7 +7,6 @@ import { SignalStream } from '@/components/views/SignalStream';
 import { OutlierForecast } from '@/components/views/OutlierForecast';
 import { WorkstreamsView } from '@/components/views/WorkstreamsView';
 import { FinancialAnalysisView } from '@/components/views/FinancialAnalysisView';
-import { FinancialFiguresView } from '@/components/views/FinancialFiguresView';
 import { SharePriceAnalysisView } from '@/components/views/SharePriceAnalysisView';
 import { MacroDashboard } from '@/components/views/MacroDashboard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,7 +53,6 @@ type DashboardView =
   | 'foresight-workstreams'
   | 'financial-overview'
   | 'financial-fundamentals'
-  | 'financial-figures'
   | 'financial-share-price'
   | 'macro-overview'
   | 'macro-risk';
@@ -149,11 +147,6 @@ const viewMetaMap: Record<DashboardView, { title: string; stream: string; note: 
     title: 'Financial Fundamentals',
     stream: 'Financial Stream',
     note: 'Fundamental performance and statement analysis.',
-  },
-  'financial-figures': {
-    title: 'Annual Report Figures',
-    stream: 'Financial Stream',
-    note: 'Multi-year story from extracted annual reports with AR vs Yahoo Finance bridge.',
   },
   'financial-share-price': {
     title: 'Share Price Analysis',
@@ -896,8 +889,6 @@ export function Dashboard() {
         return renderFinancialExecutiveOverview();
       case 'financial-fundamentals':
         return <FinancialAnalysisView />;
-      case 'financial-figures':
-        return <FinancialFiguresView />;
       case 'financial-share-price':
         return <SharePriceAnalysisView />;
       case 'macro-overview':
@@ -1143,14 +1134,6 @@ export function Dashboard() {
                     icon={CircleDollarSign}
                     isActive={activeView === 'financial-fundamentals'}
                     onClick={() => navigate('financial-fundamentals')}
-                    collapsed={isSidebarCollapsed}
-                    tone="financial"
-                  />
-                  <SidebarItem
-                    label="Annual Report Figures"
-                    icon={BookOpenText}
-                    isActive={activeView === 'financial-figures'}
-                    onClick={() => navigate('financial-figures')}
                     collapsed={isSidebarCollapsed}
                     tone="financial"
                   />
