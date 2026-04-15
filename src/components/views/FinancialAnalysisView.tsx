@@ -59,7 +59,6 @@ import { cn } from '@/lib/utils';
 import {
   FinancialAnalysisSection,
   FinancialBridgeRow,
-  FinancialFlag,
   FinancialHistoricalRow,
   FinancialRatioCard,
   FinancialSegment,
@@ -313,7 +312,6 @@ export function FinancialAnalysisView() {
   const governance = fd.governance_scores;
   const profile = fd.company_profile;
   const exec = fd.executive;
-  const riskFlags = exec?.risk_snapshot?.flags ?? [];
   const thesis =
     exec?.executive_thesis ||
     exec?.professional_outcome_report ||
@@ -337,7 +335,6 @@ export function FinancialAnalysisView() {
           <OverviewPage
             kpis={kpis}
             takeaways={takeaways}
-            riskFlags={riskFlags}
             guidance={guidance}
             market={market}
             governance={governance}
@@ -479,14 +476,12 @@ function HeroHeader({
 function OverviewPage({
   kpis,
   takeaways,
-  riskFlags,
   guidance,
   market,
   governance,
 }: {
   kpis: any[];
   takeaways: any[];
-  riskFlags: FinancialFlag[];
   guidance: any[];
   market?: any;
   governance?: any;
@@ -505,29 +500,27 @@ function OverviewPage({
         <SectionShell
           icon={Sparkles}
           title="Key Takeaways"
+          subtitle="Investor concern level — high needs immediate scrutiny, medium is worth watching, low is informational."
           count={takeaways.length}
         >
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-[10px]">
+            <span className={SECTION_LABEL_CLASS}>Priority legend:</span>
+            <Badge variant="outline" className={cn('rounded-full', SEVERITY_TONE.high.chip)}>
+              High — material risk
+            </Badge>
+            <Badge variant="outline" className={cn('rounded-full', SEVERITY_TONE.warning.chip)}>
+              Medium — watch closely
+            </Badge>
+            <Badge variant="outline" className={cn('rounded-full', SEVERITY_TONE.info.chip)}>
+              Low — informational
+            </Badge>
+          </div>
           <div className="grid gap-3 md:grid-cols-2">
             {takeaways.map((t: any, i: number) => (
               <TakeawayCard key={i} takeaway={t} />
             ))}
           </div>
         </SectionShell>
-      )}
-
-      {riskFlags.length > 0 && (
-        <FoldableSection
-          icon={AlertTriangle}
-          title="Risk Signals"
-          count={riskFlags.length}
-          defaultOpen={false}
-        >
-          <div className="grid gap-2 md:grid-cols-2">
-            {riskFlags.map((f, i) => (
-              <RiskFlagCard key={i} flag={f} />
-            ))}
-          </div>
-        </FoldableSection>
       )}
 
       {guidance.length > 0 && (
@@ -593,25 +586,6 @@ function TakeawayCard({ takeaway }: { takeaway: any }) {
         )}
       </div>
       <p className="text-sm leading-relaxed text-foreground">{takeaway.detail}</p>
-    </div>
-  );
-}
-
-function RiskFlagCard({ flag }: { flag: FinancialFlag }) {
-  const t = tone(flag.severity);
-  return (
-    <div className={cn('flex items-start gap-3 rounded-2xl border p-3', t.card)}>
-      <div className={cn('shrink-0 rounded-xl p-1.5', t.icon)}>
-        <AlertTriangle className="h-3.5 w-3.5" />
-      </div>
-      <div className="min-w-0">
-        {flag.section && (
-          <p className={cn('text-[10px] font-semibold uppercase tracking-[0.18em]', t.text)}>
-            {flag.section}
-          </p>
-        )}
-        <p className="text-sm text-foreground">{flag.message}</p>
-      </div>
     </div>
   );
 }
