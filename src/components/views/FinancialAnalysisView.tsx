@@ -1059,19 +1059,18 @@ function BridgePage({
 }) {
   const [selected, setSelected] = useState<FinancialBridgeRow | null>(null);
 
-  // Build a lookup of "supporting narrative" for each bridge concept
-  // by scanning sections for matching ar_vs_yf entries.
-  const reasoningByConcept = useMemo(() => {
-    const map = new Map<string, { sectionTitle: string; narrative: string }>();
+  // Per-row reasoning lives on the bridge row itself (`bridge_explanation`).
+  // We additionally collect any per-row `bridge_explanation` mentioned inside
+  // section ar_vs_yf payloads as a fallback, keyed by concept.
+  const fallbackByConcept = useMemo(() => {
+    const map = new Map<string, { sectionTitle: string; explanation: string }>();
     for (const s of sections) {
       const arVsYf = s.ar_vs_yf ?? [];
       for (const item of arVsYf) {
         const key = String(item.concept || item.ar_metric || '').toLowerCase();
-        if (key && !map.has(key)) {
-          map.set(key, {
-            sectionTitle: s.title,
-            narrative: s.narrative || s.text || '',
-          });
+        const expl = (item as any).bridge_explanation as string | undefined;
+        if (key && expl && !map.has(key)) {
+          map.set(key, { sectionTitle: s.title, explanation: expl });
         }
       }
     }
@@ -1162,7 +1161,7 @@ function BridgePage({
           {selected && (
             <BridgeDetail
               row={selected}
-              reasoning={reasoningByConcept.get(String(selected.concept || selected.ar_metric || '').toLowerCase())}
+              fallback={fallbackByConcept.get(String(selected.concept || selected.ar_metric || '').toLowerCase())}
             />
           )}
         </DialogContent>
@@ -1171,15 +1170,30 @@ function BridgePage({
   );
 }
 
+const confidenceTone = (c?: string): string => {
+  const v = String(c || '').toLowerCase();
+  if (v === 'high') return 'border-emerald-500/35 bg-emerald-500/10 text-emerald-600';
+  if (v === 'medium') return 'border-amber-500/35 bg-amber-500/10 text-amber-600';
+  if (v === 'low') return 'border-destructive/35 bg-destructive/10 text-destructive';
+  return 'border-border/60 text-muted-foreground';
+};
+
 function BridgeDetail({
   row,
-  reasoning,
+  fallback,
 }: {
   row: FinancialBridgeRow;
-  reasoning?: { sectionTitle: string; narrative: string };
+  fallback?: { sectionTitle: string; explanation: string };
 }) {
   const yfDisp =
     row.yf_value != null && Math.abs(row.yf_value) > 1e6 ? row.yf_value / 1e6 : row.yf_value;
+  const explanation = row.bridge_explanation || fallback?.explanation || '';
+  const explanationSource = row.bridge_explanation
+    ? 'Per-metric reasoning from the AR ↔ YF reconciliation'
+    : fallback
+      ? `Pulled from section: ${fallback.sectionTitle}`
+      : '';
+
   return (
     <>
       <DialogHeader>
@@ -1188,7 +1202,7 @@ function BridgeDetail({
           {row.concept}
         </DialogTitle>
         <DialogDescription>
-          AR metric <span className="font-medium">{row.ar_metric}</span> vs YF metric{' '}
+          AR metric <span className="font-medium">{row.ar_metric || '—'}</span> vs YF metric{' '}
           <span className="font-medium">{row.yf_label || row.yf_metric}</span>
         </DialogDescription>
       </DialogHeader>
@@ -1212,13 +1226,34 @@ function BridgeDetail({
           <div>
             <p className={SECTION_LABEL_CLASS}>Gap</p>
             <p className="mt-1 text-lg font-semibold tabular-nums">{fmtDelta(row.gap_pct)}</p>
-            {row.comparability && (
-              <Badge variant="outline" className={cn('mt-1 rounded-full text-[10px]', compToneClass(row.comparability))}>
-                {row.comparability.replace(/_/g, ' ')}
-              </Badge>
-            )}
+            <div className="mt-1 flex flex-wrap gap-1">
+              {row.comparability && (
+                <Badge variant="outline" className={cn('rounded-full text-[10px]', compToneClass(row.comparability))}>
+                  {row.comparability.replace(/_/g, ' ')}
+                </Badge>
+              )}
+              {row.review_confidence && (
+                <Badge variant="outline" className={cn('rounded-full text-[10px]', confidenceTone(row.review_confidence))}>
+                  confidence: {row.review_confidence}
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
+
+        {explanation && (
+          <div className="rounded-2xl border border-primary/20 bg-primary/[0.04] p-4">
+            <p className={cn(SECTION_LABEL_CLASS, 'flex items-center gap-1')}>
+              <Info className="h-3 w-3" /> Why this gap exists
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-foreground whitespace-pre-wrap">
+              {explanation}
+            </p>
+            {explanationSource && (
+              <p className="mt-2 text-[10px] text-muted-foreground">{explanationSource}</p>
+            )}
+          </div>
+        )}
 
         {row.definition_from_ar && (
           <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
@@ -1227,20 +1262,12 @@ function BridgeDetail({
           </div>
         )}
 
-        {reasoning && reasoning.narrative && (
-          <div className="rounded-2xl border border-primary/20 bg-primary/[0.04] p-4">
-            <p className={cn(SECTION_LABEL_CLASS, 'flex items-center gap-1')}>
-              <Info className="h-3 w-3" /> Why this gap exists — from {reasoning.sectionTitle}
-            </p>
-            <p className="mt-2 text-sm leading-relaxed text-foreground">{reasoning.narrative}</p>
-          </div>
-        )}
-
-        {!reasoning?.narrative && !row.definition_from_ar && (
+        {!explanation && !row.definition_from_ar && (
           <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
-            No additional reasoning has been recorded for this metric. The gap may be driven by:
-            scope (consolidation), timing (period cutoff), classification (operating vs financial),
-            or one-off items.
+            No reconciliation reasoning has been recorded for this metric yet. Common drivers of
+            AR ↔ YF gaps: scope (consolidation, minority interests), timing (period cutoff,
+            restated comparatives), classification (adjusted vs IFRS, operating vs financial),
+            or one-off items not flagged in YF.
           </div>
         )}
       </div>

@@ -99,6 +99,8 @@ export interface FinancialSectionArVsYf {
   comparability?: string;
   gap_pct?: number | null;
   definition_from_ar?: string;
+  bridge_explanation?: string;
+  review_confidence?: string;
 }
 
 export interface FinancialAnalysisSection {
@@ -486,6 +488,8 @@ export interface FinancialBridgeRow {
   comparability?: string;
   gap_pct?: number | null;
   definition_from_ar?: string;
+  bridge_explanation?: string;
+  review_confidence?: string;
 }
 
 export interface FinancialSegment {
