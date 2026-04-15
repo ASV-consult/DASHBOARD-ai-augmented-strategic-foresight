@@ -92,6 +92,11 @@ export interface TrendAnalysis {
   };
   vs_ma200?: number;
   trend_periods?: TrendPeriod[];
+  // Added by drawdown_v1 + peer_attribution pipeline
+  trend_periods_relative?: TrendPeriod[];
+  drawdown_cycles?: Array<{ leg_type: string; start_date: string; end_date: string; leg_return: number }>;
+  trend_detection_method?: string;
+  peer_attribution?: PeerAttribution;
 }
 
 export interface DriverTheme {
@@ -179,8 +184,28 @@ export interface PeerComparison {
 
 export interface ExecutiveGuide {
   stock_story?: string;
-  key_drivers?: Array<{ name: string; plain_summary: string }>;
+  key_drivers?: Array<{ name: string; plain_summary: string; monitoring_threshold?: string }>;
   current_watch?: string;
+}
+
+// Peer attribution + segment coverage (lives under trend_analysis.peer_attribution)
+export interface PeerAttribution {
+  peers_used?: string[];
+  peers_attempted?: string[];
+  peers_dropped_low_comparability?: Array<{
+    ticker: string;
+    name?: string;
+    comparability?: string;
+    reason?: string;
+  }>;
+  segment_weights?: Record<string, number>;
+  segment_coverage?: Record<string, { weight: number; peers: string[]; peer_count: number }>;
+  target_segment_mix?: Record<string, { revenue_eur: number; share_pct: number }>;
+  coverage_confidence?: 'high' | 'medium' | 'low';
+  coverage_notes?: string[];
+  composite_series?: Array<{ date: string; close: number }>;
+  sources?: { industry_analysis?: string; financial_bundle?: string };
+  degradation_notes?: string[];
 }
 
 // Root export — name kept as SharePriceAnalysisData so ForesightContext needs no change

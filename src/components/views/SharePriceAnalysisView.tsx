@@ -139,6 +139,7 @@ function SharePriceAnalysisViewInner() {
   const [selectedPeriodIdx, setSelectedPeriodIdx] = useState<number | null>(null);
   const [selectedEventIdx, setSelectedEventIdx] = useState<number | null>(null);
   const [showMA, setShowMA] = useState({ ma50: true, ma200: true });
+  const [showPeers, setShowPeers] = useState(false);
   const [detailTab, setDetailTab] = useState<'period' | 'event'>('period');
   const [expandedCounterHypo, setExpandedCounterHypo] = useState(false);
   const [expandedEvidence, setExpandedEvidence] = useState(false);
@@ -155,12 +156,17 @@ function SharePriceAnalysisViewInner() {
   const eg = sharePriceData?.executive_guide;
   const periods = ta?.trend_periods ?? [];
 
-  // Full price series (no downsampling — Recharts handles 1,789 points fine with dot=false)
+  // Full price series — also merge peer composite if available (indexed to 100, on right axis)
   const priceSeries = useMemo(() => {
     const raw = pp?.price_series;
     if (!raw || raw.length === 0) return [];
-    return raw;
-  }, [pp?.price_series]);
+    const composite = ta?.peer_attribution?.composite_series ?? [];
+    if (composite.length === 0) return raw;
+    // Build date → composite_close lookup
+    const compMap = new Map<string, number>();
+    for (const c of composite) compMap.set(c.date, c.close);
+    return raw.map((p) => ({ ...p, peer_composite: compMap.get(p.date) ?? null }));
+  }, [pp?.price_series, ta?.peer_attribution?.composite_series]);
 
   // Date set for quick lookup
   const dateSet = useMemo(() => new Set(priceSeries.map((p) => p.date)), [priceSeries]);
@@ -427,6 +433,19 @@ function SharePriceAnalysisViewInner() {
                   {ma.toUpperCase()}
                 </button>
               ))}
+              {ta?.peer_attribution?.composite_series && ta.peer_attribution.composite_series.length > 0 && (
+                <button
+                  onClick={() => setShowPeers((v) => !v)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                    showPeers
+                      ? 'bg-violet-500/15 text-violet-600 border-violet-500/30'
+                      : 'bg-muted text-muted-foreground border-border/60'
+                  }`}
+                  title="Toggle segment-weighted peer composite line"
+                >
+                  Peers
+                </button>
+              )}
             </div>
           </div>
           {/* Regime legend */}
@@ -451,6 +470,12 @@ function SharePriceAnalysisViewInner() {
               <span className="inline-block h-0.5 w-4 border-t-2 border-dashed" style={{ borderColor: '#8b5cf6' }} />
               {rm?.benchmark_label ?? 'Benchmark'}
             </span>
+            {showPeers && (
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-0.5 w-4 border-t-2 border-dashed" style={{ borderColor: '#a855f7' }} />
+                Peer composite
+              </span>
+            )}
           </div>
         </CardHeader>
         <CardContent className="h-[440px]">
@@ -545,6 +570,22 @@ function SharePriceAnalysisViewInner() {
 
                 {/* Benchmark normalized line (right axis) */}
                 <Line yAxisId="norm" dataKey="benchmark_normalized" name={rm?.benchmark_label ?? 'Benchmark'} stroke="#8b5cf6" dot={false} strokeWidth={1.5} strokeDasharray="6 3" isAnimationActive={false} opacity={0.55} />
+
+                {/* Peer composite line (right axis) — toggleable */}
+                {showPeers && (
+                  <Line
+                    yAxisId="norm"
+                    dataKey="peer_composite"
+                    name="Peer composite"
+                    stroke="#a855f7"
+                    dot={false}
+                    strokeWidth={1.5}
+                    strokeDasharray="3 3"
+                    isAnimationActive={false}
+                    connectNulls
+                    opacity={0.75}
+                  />
+                )}
               </ComposedChart>
             </ResponsiveContainer>
           ) : (
@@ -877,6 +918,16 @@ function SharePriceAnalysisViewInner() {
         </Card>
       )}
 
+      {/* ── 7b. Segment & Peer Map (NEW) ─────────────────────────────────── */}
+      {ta?.peer_attribution?.segment_coverage && Object.keys(ta.peer_attribution.segment_coverage).length > 0 && (
+        <SegmentPeerMap
+          peerAttribution={ta.peer_attribution}
+          peers={pc?.peers ?? []}
+          companyName={rm?.company || cp?.name || 'Target'}
+          companyTicker={rm?.ticker || ''}
+        />
+      )}
+
       {/* ── 8. Peer comparison ────────────────────────────────────────────── */}
       {pc?.peers && pc.peers.length > 0 && (
         <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
@@ -969,5 +1020,195 @@ function CollapsibleSection({
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Segment & Peer Map ──────────────────────────────────────────────────────
+// Static peer-name lookup (pipeline only stores tickers right now)
+const PEER_NAMES: Record<string, string> = {
+  'BEAN.SW': 'Belimo',
+  'GEBN.SW': 'Geberit',
+  'WTS':     'Watts Water',
+  'IMI.L':   'IMI plc',
+  'PH':      'Parker-Hannifin',
+  'ITT':     'ITT Inc.',
+  'BOY.L':   'Bodycote',
+  'OERL.SW': 'OC Oerlikon',
+  'CR':      'Crane Company',
+  'VACN.SW': 'VAT Group',
+  'ASM.AS':  'ASM International',
+  'ASML':    'ASML Holding',
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function SegmentPeerMap({ peerAttribution, peers, companyName, companyTicker }: {
+  peerAttribution: any;
+  peers: Array<{ ticker: string; name?: string; total_return?: number; annualized_volatility?: number; max_drawdown?: number; correlation_to_target?: number }>;
+  companyName: string;
+  companyTicker: string;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const segCoverage: Record<string, { weight: number; peers: string[]; peer_count: number }> =
+    peerAttribution?.segment_coverage ?? {};
+  const peerStatsByTicker = useMemo(() => {
+    const m: Record<string, typeof peers[number]> = {};
+    for (const p of peers) m[p.ticker] = p;
+    return m;
+  }, [peers]);
+
+  const segments = Object.entries(segCoverage)
+    .map(([name, info]) => ({ name, ...info }))
+    .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0));
+
+  const totalWeight = segments.reduce((s, x) => s + (x.weight ?? 0), 0) || 1;
+  const dropped = peerAttribution?.peers_dropped_low_comparability ?? [];
+  const confidence = peerAttribution?.coverage_confidence ?? 'unknown';
+  const notes = peerAttribution?.coverage_notes ?? [];
+
+  const confidenceCls =
+    confidence === 'high' ? 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30'
+    : confidence === 'medium' ? 'bg-amber-500/15 text-amber-600 border-amber-500/30'
+    : 'bg-red-500/15 text-red-500 border-red-500/30';
+
+  return (
+    <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
+      <CardHeader>
+        <button onClick={() => setExpanded(!expanded)} className="flex w-full items-center justify-between text-left">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <TrendingUp className="h-4 w-4 text-sky-600" />
+            Segment & Peer Map
+            <span className="text-xs font-normal text-muted-foreground ml-1">
+              · {segments.length} segments \u00b7 {peers.length} peers \u00b7 {dropped.length} excluded
+            </span>
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Badge className={`text-[10px] ${confidenceCls}`}>coverage: {confidence}</Badge>
+            {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+          </div>
+        </button>
+      </CardHeader>
+
+      {expanded && (
+        <CardContent className="space-y-4">
+          {/* Segment mix bar — proportional widths */}
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {companyName} ({companyTicker}) revenue mix by industry segment
+            </p>
+            <div className="flex h-7 w-full overflow-hidden rounded-lg border border-border/40">
+              {segments.map((s, i) => {
+                const widthPct = ((s.weight ?? 0) / totalWeight) * 100;
+                const colors = ['#0ea5e9', '#10b981', '#f59e0b', '#a855f7', '#ec4899', '#64748b'];
+                const bg = colors[i % colors.length];
+                const isThin = s.peer_count < 2;
+                return (
+                  <div
+                    key={s.name}
+                    style={{ width: `${widthPct}%`, background: bg, opacity: isThin ? 0.55 : 0.85 }}
+                    className="flex items-center justify-center text-[10px] font-medium text-white"
+                    title={`${s.name}: ${(s.weight*100).toFixed(1)}% weight, ${s.peer_count} peer(s)`}
+                  >
+                    {widthPct >= 8 && `${(s.weight*100).toFixed(0)}%`}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Coverage notes */}
+          {notes.length > 0 && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-1">
+              {notes.map((n: string, i: number) => (
+                <p key={i} className="text-xs text-amber-700 dark:text-amber-300 flex items-start gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />{n}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {/* Per-segment cards with peers */}
+          <div className="space-y-3">
+            {segments.map((s, i) => {
+              const colors = ['#0ea5e9', '#10b981', '#f59e0b', '#a855f7', '#ec4899', '#64748b'];
+              const accent = colors[i % colors.length];
+              const isThin = s.peer_count < 2;
+              return (
+                <div key={s.name} className="rounded-xl border border-border/50 bg-background/60 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block h-3 w-3 rounded-sm" style={{ background: accent }} />
+                      <span className="text-sm font-semibold text-foreground">{s.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {(s.weight*100).toFixed(1)}% weight
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {isThin && (
+                        <Badge className="text-[10px] bg-amber-500/15 text-amber-600 border-amber-500/30">
+                          THIN ({s.peer_count} peer)
+                        </Badge>
+                      )}
+                      <Badge variant="outline" className="text-[10px]">{s.peer_count} peer(s)</Badge>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                    {s.peers.map((ticker) => {
+                      const stat = peerStatsByTicker[ticker];
+                      const ret = stat?.total_return;
+                      const vol = stat?.annualized_volatility;
+                      const corr = stat?.correlation_to_target;
+                      const name = PEER_NAMES[ticker] ?? stat?.name ?? ticker;
+                      return (
+                        <div key={ticker} className="rounded-lg border border-border/40 bg-card/40 p-2 text-xs">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-mono font-semibold text-foreground">{ticker}</span>
+                            <span className="text-muted-foreground truncate ml-2 text-[10px]" title={name}>{name}</span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1 text-[10px]">
+                            <div>
+                              <span className="text-muted-foreground/70">Return</span>
+                              <div className={ret !== undefined && ret > 0 ? 'text-emerald-500 font-mono' : 'text-red-500 font-mono'}>
+                                {ret !== undefined ? `${(ret*100).toFixed(0)}%` : '\u2014'}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground/70">Vol</span>
+                              <div className="text-foreground font-mono">{vol !== undefined ? `${(vol*100).toFixed(0)}%` : '\u2014'}</div>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground/70">Corr</span>
+                              <div className="text-foreground font-mono">{corr !== undefined && corr !== null ? corr.toFixed(2) : '\u2014'}</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Excluded peers */}
+          {dropped.length > 0 && (
+            <div className="rounded-xl border border-border/30 bg-muted/20 p-3 space-y-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Peers excluded from composite (low comparability)
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {dropped.map((dp: { ticker: string; name?: string; comparability?: string }, i: number) => {
+                  const display = PEER_NAMES[dp.ticker] ?? dp.name ?? dp.ticker;
+                  return (
+                    <span key={i} className="rounded-md border border-border/50 bg-background/60 px-2 py-0.5 text-[10px] text-muted-foreground">
+                      <span className="font-mono">{dp.ticker}</span> · {display} · <span className="italic">{dp.comparability ?? '?'}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      )}
+    </Card>
   );
 }
