@@ -747,17 +747,33 @@ export function FinancialAnalysisView() {
                       </tr>
                     </thead>
                     <tbody>
-                      {financialData.historical_table.rows.map((row) => (
-                        <tr key={row.metric} className="border-b border-border/40">
-                          <td className="px-2 py-2 font-medium text-foreground">{row.metric}</td>
-                          <td className="px-2 py-2 text-muted-foreground">{row.unit}</td>
-                          {row.values.map((value, idx) => (
-                            <td key={`${row.metric}-${idx}`} className="px-2 py-2">
-                              {value === null ? 'N/A' : asNum(value, 2)}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
+                      {financialData.historical_table.rows.map((row) => {
+                        // Defensive: support either array values (canonical contract)
+                        // or object values keyed by year (older / alternative producers)
+                        const years = financialData.historical_table?.years ?? [];
+                        const valueAt = (idx: number, year: string): number | null => {
+                          if (Array.isArray(row.values)) return row.values[idx] ?? null;
+                          if (row.values && typeof row.values === 'object') {
+                            const obj = row.values as Record<string, number | null>;
+                            return obj[year] ?? null;
+                          }
+                          return null;
+                        };
+                        return (
+                          <tr key={row.metric} className="border-b border-border/40">
+                            <td className="px-2 py-2 font-medium text-foreground">{row.metric}</td>
+                            <td className="px-2 py-2 text-muted-foreground">{row.unit}</td>
+                            {years.map((year, idx) => {
+                              const value = valueAt(idx, year);
+                              return (
+                                <td key={`${row.metric}-${idx}`} className="px-2 py-2">
+                                  {value === null ? 'N/A' : asNum(value, 2)}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </CardContent>

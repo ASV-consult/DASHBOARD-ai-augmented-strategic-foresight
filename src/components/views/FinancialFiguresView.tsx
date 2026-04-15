@@ -101,7 +101,11 @@ interface AnalysisJson {
     years?: string[];
     rows?: Array<{
       metric: string;
-      values: Record<string, number | null>;
+      unit?: string;
+      // The dashboard contract: values is positionally aligned with `years`
+      values: Array<number | null>;
+      // Optional parallel dict form for convenience
+      values_by_year?: Record<string, number | null>;
       source?: string;
     }>;
   };
@@ -988,8 +992,13 @@ function HistoricalDeepTable({ data }: { data: AnalysisJson }) {
               {ht.rows.map((row, i) => (
                 <tr key={i} className="border-b border-border/20 hover:bg-muted/20">
                   <td className="py-1.5 pr-3 font-medium">{row.metric}</td>
-                  {ht.years!.map((y) => {
-                    const v = row.values?.[y];
+                  {ht.years!.map((y, idx) => {
+                    // Prefer values_by_year (object form), fall back to positional array
+                    const v = row.values_by_year
+                      ? row.values_by_year[y]
+                      : Array.isArray(row.values)
+                      ? row.values[idx]
+                      : undefined;
                     return (
                       <td key={y} className="py-1.5 pr-2 text-right tabular-nums text-muted-foreground">
                         {v == null ? '—' : Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 })}
