@@ -140,9 +140,12 @@ function SharePriceAnalysisViewInner() {
   const [selectedEventIdx, setSelectedEventIdx] = useState<number | null>(null);
   const [showMA, setShowMA] = useState({ ma50: true, ma200: true });
   const [showPeers, setShowPeers] = useState(false);
+  const [chartView, setChartView] = useState<'price' | 'relative'>('price');
   const [detailTab, setDetailTab] = useState<'period' | 'event'>('period');
   const [expandedCounterHypo, setExpandedCounterHypo] = useState(false);
   const [expandedEvidence, setExpandedEvidence] = useState(false);
+  const [expandedPeriodQueries, setExpandedPeriodQueries] = useState(false);
+  const [expandedPeriodEvidence, setExpandedPeriodEvidence] = useState(false);
 
   // ── Derived data ────────────────────────────────────────────────────────────
   const rm = sharePriceData?.run_meta;
@@ -206,11 +209,12 @@ function SharePriceAnalysisViewInner() {
         const att = ev.attribution;
         const evidenceCount = att?.evidence?.length ?? 0;
         const hasReasoning = !!att?.most_probable_reason;
+        const matchingPoint = priceSeries.find((pt) => pt.date === ev.date);
         return {
           idx: i,
           date: ev.date,
-          close: ev.close ?? priceSeries.find((pt) => pt.date === ev.date)?.close,
-          // "sourced" = has web evidence, "reasoning" = model reasoning only, "none" = no attribution
+          close: ev.close ?? matchingPoint?.close,
+          normalized: matchingPoint?.normalized ?? null,
           level: evidenceCount > 0 ? 'sourced' as const : hasReasoning ? 'reasoning' as const : 'none' as const,
           evidenceCount,
         };
@@ -305,6 +309,20 @@ function SharePriceAnalysisViewInner() {
     selectedPeriodIdx != null ? (periods[selectedPeriodIdx] ?? null) : null;
   const selectedEvent: SignificantEvent | null =
     selectedEventIdx != null ? (se[selectedEventIdx] ?? null) : null;
+
+  // Match the trend period to its anchor in significant_events (so the Period
+  // tab can show the same research trail / driver_breakdown / queries as Event tab)
+  const selectedPeriodAnchor: SignificantEvent | null = useMemo(() => {
+    if (!selectedPeriod) return null;
+    return (
+      se.find(
+        (e) =>
+          e.anchor_type === 'trend_period' &&
+          e.window_start === selectedPeriod.start_date &&
+          e.window_end === selectedPeriod.end_date,
+      ) ?? null
+    );
+  }, [selectedPeriod, se]);
 
   return (
     <div className="space-y-6">
@@ -417,8 +435,26 @@ function SharePriceAnalysisViewInner() {
                 </span>
               )}
             </CardTitle>
-            <div className="flex gap-2">
-              {(['ma50', 'ma200'] as const).map((ma) => (
+            <div className="flex gap-2 items-center">
+              {/* Price vs Relative view toggle */}
+              <div className="flex rounded-full border border-border/60 p-0.5 bg-muted/40">
+                {(['price', 'relative'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setChartView(mode)}
+                    className={`rounded-full px-3 py-0.5 text-xs font-medium transition-colors ${
+                      chartView === mode
+                        ? 'bg-sky-500/20 text-sky-700 dark:text-sky-400'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    title={mode === 'price' ? 'Show Aalberts in EUR + benchmark/peers indexed' : 'Show Aalberts + benchmark + peers all indexed to 100 at start (apples-to-apples)'}
+                  >
+                    {mode === 'price' ? 'Price' : 'Relative'}
+                  </button>
+                ))}
+              </div>
+              <div className="w-px h-5 bg-border/60" />
+              {chartView === 'price' && (['ma50', 'ma200'] as const).map((ma) => (
                 <button
                   key={ma}
                   onClick={() => setShowMA((prev) => ({ ...prev, [ma]: !prev[ma] }))}
@@ -502,23 +538,26 @@ function SharePriceAnalysisViewInner() {
                   tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                   tickFormatter={(v: string) => (v ? v.slice(0, 7) : '')}
                 />
+                {/* Price axis (left, EUR) — hidden ticks in relative view but kept for coord system */}
                 <YAxis
                   yAxisId="price"
-                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                  tick={chartView === 'price' ? { fontSize: 10, fill: 'hsl(var(--muted-foreground))' } : false}
                   tickFormatter={(v: number) => String(Math.round(v))}
-                  width={42}
+                  width={chartView === 'price' ? 42 : 0}
+                  hide={chartView === 'relative'}
                 />
+                {/* Normalized axis (right, indexed to 100) — primary in relative view */}
                 <YAxis
                   yAxisId="norm"
-                  orientation="right"
+                  orientation={chartView === 'relative' ? 'left' : 'right'}
                   tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                  tickFormatter={(v: number) => String(Math.round(v))}
-                  width={36}
+                  tickFormatter={(v: number) => chartView === 'relative' ? `${Math.round(v)}` : String(Math.round(v))}
+                  width={chartView === 'relative' ? 48 : 36}
                   domain={['auto', 'auto']}
                 />
                 <Tooltip content={<PriceTooltip />} />
 
-                {/* Regime period backgrounds — ReferenceAreas share the chart coordinate space */}
+                {/* Regime period backgrounds — bind to the visible axis */}
                 {snappedPeriods.map((sp, i) => {
                   if (!sp.x1 || !sp.x2) return null;
                   const p = periods[i];
@@ -531,7 +570,7 @@ function SharePriceAnalysisViewInner() {
                   return (
                     <ReferenceArea
                       key={`regime-${i}`}
-                      yAxisId="price"
+                      yAxisId={chartView === 'price' ? 'price' : 'norm'}
                       x1={sp.x1}
                       x2={sp.x2}
                       fill={fill}
@@ -542,17 +581,19 @@ function SharePriceAnalysisViewInner() {
                   );
                 })}
 
-                {/* Event dots: sky=sourced, amber-outline=reasoning only, grey=none */}
+                {/* Event dots — y value swaps between close (price) and normalized (relative) */}
                 {eventDots.map((d) => {
                   const fill = d.level === 'sourced' ? '#0ea5e9' : d.level === 'reasoning' ? 'transparent' : '#94a3b8';
                   const stroke = d.level === 'sourced' ? '#0ea5e9' : d.level === 'reasoning' ? '#f59e0b' : '#94a3b8';
                   const r = d.level === 'sourced' ? 4.5 : d.level === 'reasoning' ? 3.5 : 2;
+                  const y = chartView === 'price' ? d.close : d.normalized;
+                  if (y == null) return null;
                   return (
                     <ReferenceDot
                       key={`evt-${d.idx}`}
-                      yAxisId="price"
+                      yAxisId={chartView === 'price' ? 'price' : 'norm'}
                       x={d.date}
-                      y={d.close!}
+                      y={y}
                       r={r}
                       fill={fill}
                       stroke={stroke}
@@ -563,28 +604,26 @@ function SharePriceAnalysisViewInner() {
                   );
                 })}
 
-                {/* Price line */}
-                <Line yAxisId="price" dataKey="close" name="Price" stroke="#3b82f6" dot={false} strokeWidth={2} isAnimationActive={false} />
-                {showMA.ma50 && <Line yAxisId="price" dataKey="ma50" name="MA50" stroke="#10b981" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
-                {showMA.ma200 && <Line yAxisId="price" dataKey="ma200" name="MA200" stroke="#f59e0b" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
-
-                {/* Benchmark normalized line (right axis) */}
-                <Line yAxisId="norm" dataKey="benchmark_normalized" name={rm?.benchmark_label ?? 'Benchmark'} stroke="#8b5cf6" dot={false} strokeWidth={1.5} strokeDasharray="6 3" isAnimationActive={false} opacity={0.55} />
-
-                {/* Peer composite line (right axis) — toggleable */}
-                {showPeers && (
-                  <Line
-                    yAxisId="norm"
-                    dataKey="peer_composite"
-                    name="Peer composite"
-                    stroke="#a855f7"
-                    dot={false}
-                    strokeWidth={1.5}
-                    strokeDasharray="3 3"
-                    isAnimationActive={false}
-                    connectNulls
-                    opacity={0.75}
-                  />
+                {chartView === 'price' ? (
+                  <>
+                    {/* Price view: Aalberts in EUR on left axis */}
+                    <Line yAxisId="price" dataKey="close" name="Price (EUR)" stroke="#3b82f6" dot={false} strokeWidth={2} isAnimationActive={false} />
+                    {showMA.ma50 && <Line yAxisId="price" dataKey="ma50" name="MA50" stroke="#10b981" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
+                    {showMA.ma200 && <Line yAxisId="price" dataKey="ma200" name="MA200" stroke="#f59e0b" dot={false} strokeWidth={1} strokeDasharray="5 3" isAnimationActive={false} connectNulls />}
+                    <Line yAxisId="norm" dataKey="benchmark_normalized" name={rm?.benchmark_label ?? 'Benchmark'} stroke="#8b5cf6" dot={false} strokeWidth={1.5} strokeDasharray="6 3" isAnimationActive={false} opacity={0.55} />
+                    {showPeers && (
+                      <Line yAxisId="norm" dataKey="peer_composite" name="Peer composite" stroke="#a855f7" dot={false} strokeWidth={1.5} strokeDasharray="3 3" isAnimationActive={false} connectNulls opacity={0.75} />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {/* Relative view: all three indexed to 100 on single right axis */}
+                    <Line yAxisId="norm" dataKey="normalized" name={`${rm?.ticker ?? 'Target'} (indexed)`} stroke="#3b82f6" dot={false} strokeWidth={2.5} isAnimationActive={false} />
+                    <Line yAxisId="norm" dataKey="benchmark_normalized" name={rm?.benchmark_label ?? 'Benchmark'} stroke="#8b5cf6" dot={false} strokeWidth={1.5} strokeDasharray="6 3" isAnimationActive={false} opacity={0.75} />
+                    {showPeers && (
+                      <Line yAxisId="norm" dataKey="peer_composite" name="Peer composite" stroke="#a855f7" dot={false} strokeWidth={1.5} strokeDasharray="3 3" isAnimationActive={false} connectNulls opacity={0.8} />
+                    )}
+                  </>
                 )}
               </ComposedChart>
             </ResponsiveContainer>
@@ -678,6 +717,113 @@ function SharePriceAnalysisViewInner() {
                           </span>
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Period attribution — what the model thinks drove this period */}
+                  {selectedPeriodAnchor?.attribution?.most_probable_reason && (
+                    <div className="rounded-xl border border-border/50 bg-background/60 p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Period attribution</p>
+                        {selectedPeriodAnchor.attribution.confidence != null && (
+                          <Badge className={`text-[10px] ${confidenceCls(selectedPeriodAnchor.attribution.confidence)}`}>
+                            {pct(selectedPeriodAnchor.attribution.confidence, 0)} confidence
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-foreground leading-relaxed">
+                        {selectedPeriodAnchor.attribution.most_probable_reason}
+                      </p>
+                      {selectedPeriodAnchor.attribution.investor_interpretation && (
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {selectedPeriodAnchor.attribution.investor_interpretation}
+                        </p>
+                      )}
+
+                      {/* Reconciliation note when flavour ≠ driver weights */}
+                      {(() => {
+                        const flav = selectedPeriod.attribution_flavour;
+                        const total = Math.abs(selectedPeriod.period_return ?? 0);
+                        const sectorPct = total > 0 ? Math.abs(selectedPeriod.sector_component ?? 0) / total : 0;
+                        if (flav === 'sector' && sectorPct > 0.5) {
+                          return (
+                            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs">
+                              <p className="text-amber-700 dark:text-amber-300">
+                                <strong>Note:</strong> The mathematical decomposition shows this is a SECTOR move
+                                (peers moved {deltaPct(selectedPeriod.sector_component)} beyond the index — {(sectorPct*100).toFixed(0)}% of total).
+                                The drivers below explain the smaller {deltaPct(selectedPeriod.idiosyncratic_component)} idiosyncratic
+                                outperformance. Look at the "Segment & Peer Map" panel for which peer group drove the sector move.
+                              </p>
+                            </div>
+                          );
+                        }
+                        if (flav === 'market' && total > 0 && Math.abs(selectedPeriod.market_component ?? 0) / total > 0.5) {
+                          return (
+                            <div className="rounded-lg border border-slate-500/30 bg-slate-500/5 p-2.5 text-xs">
+                              <p className="text-slate-600 dark:text-slate-300">
+                                <strong>Note:</strong> This was primarily an INDEX-WIDE move (benchmark moved {deltaPct(selectedPeriod.market_component)}).
+                                Aalberts roughly tracked it. The reasoning below is the agent's best attempt to explain
+                                the residual idiosyncratic component.
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+
+                      {/* Driver breakdown bars */}
+                      {selectedPeriodAnchor.attribution.driver_breakdown && selectedPeriodAnchor.attribution.driver_breakdown.length > 0 && (
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Drivers (weighted to total move)</p>
+                          {selectedPeriodAnchor.attribution.driver_breakdown.map((d, i) => (
+                            <div key={i} className="space-y-0.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-foreground flex-1 mr-2">{d.driver}</span>
+                                <span className="font-mono text-muted-foreground">{pct(d.weight, 0)}</span>
+                              </div>
+                              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                                <div
+                                  className="h-full rounded-full"
+                                  style={{
+                                    width: `${Math.min(100, (d.weight ?? 0) * 100)}%`,
+                                    background: d.direction === 'positive' ? '#22c55e' : d.direction === 'negative' ? '#ef4444' : '#94a3b8',
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* What to monitor */}
+                      {selectedPeriodAnchor.attribution.what_to_monitor_next && selectedPeriodAnchor.attribution.what_to_monitor_next.length > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Watch next</p>
+                          {selectedPeriodAnchor.attribution.what_to_monitor_next.map((m, i) => (
+                            <p key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                              <ChevronRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-sky-500" />{m}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Research trail — collapsible queries + evidence */}
+                      <CollapsibleSection
+                        title={`Research queries (${selectedPeriodAnchor.attribution.queries?.length ?? 0})`}
+                        expanded={expandedPeriodQueries}
+                        toggle={() => setExpandedPeriodQueries(!expandedPeriodQueries)}
+                        items={(selectedPeriodAnchor.attribution.queries ?? []).map((q, i) =>
+                          (typeof q === 'string' ? q : `R${q.round ?? i + 1}: ${q.query}`)
+                        )}
+                      />
+                      <CollapsibleSection
+                        title={`Evidence captured (${selectedPeriodAnchor.attribution.evidence?.length ?? 0})`}
+                        expanded={expandedPeriodEvidence}
+                        toggle={() => setExpandedPeriodEvidence(!expandedPeriodEvidence)}
+                        items={(selectedPeriodAnchor.attribution.evidence ?? []).map((e) =>
+                          `${e.title || e.url}${e.snippet ? ' — ' + e.snippet.slice(0, 120) : ''}`
+                        )}
+                      />
                     </div>
                   )}
 
