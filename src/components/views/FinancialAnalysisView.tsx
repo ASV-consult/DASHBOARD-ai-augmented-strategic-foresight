@@ -305,7 +305,9 @@ export function FinancialAnalysisView() {
               </div>
             </div>
             <p className="text-sm text-muted-foreground">
-              {financialData.executive?.executive_thesis || 'No executive thesis provided.'}
+              {financialData.executive?.executive_thesis
+                || (financialData as any).executive_summary
+                || 'No executive thesis provided.'}
             </p>
             <div className="flex flex-wrap gap-2 text-[11px]">
               <Badge variant="outline" className="font-mono">
@@ -379,7 +381,11 @@ export function FinancialAnalysisView() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4 text-sm text-muted-foreground">
-                <p>{financialData.executive?.professional_outcome_report || 'No outcome report provided.'}</p>
+                <p>
+                  {financialData.executive?.professional_outcome_report
+                    || (financialData as any).executive_summary
+                    || 'No outcome report provided.'}
+                </p>
                 <div className="rounded-xl border border-border/50 bg-background/70 p-3">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Critic verdict</p>
                   <p className="mt-1 text-sm text-foreground">
@@ -493,15 +499,30 @@ export function FinancialAnalysisView() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {financialData.analysis_sections.map((section) => (
-                  <div key={section.aspect_key} className="rounded-xl border border-border/50 bg-background/70 p-3">
-                    <p className="text-sm font-semibold text-foreground">{section.title}</p>
-                    <p className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">
-                      {section.aspect_key}
-                    </p>
-                    <p className="mt-2 text-sm text-muted-foreground">{section.text}</p>
-                  </div>
-                ))}
+                {financialData.analysis_sections.map((section, idx) => {
+                  // Support both shapes: { aspect_key, title, text } and { title, narrative, flags }
+                  const anySection = section as any;
+                  const title = anySection.title || anySection.aspect_key || `Section ${idx + 1}`;
+                  const subtitle = anySection.aspect_key && anySection.aspect_key !== title ? anySection.aspect_key : null;
+                  const body = anySection.text || anySection.narrative || '';
+                  const flags = Array.isArray(anySection.flags) ? anySection.flags : [];
+                  return (
+                    <div key={title + idx} className="rounded-xl border border-border/50 bg-background/70 p-3">
+                      <p className="text-sm font-semibold text-foreground">{title}</p>
+                      {subtitle && (
+                        <p className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">{subtitle}</p>
+                      )}
+                      {flags.length > 0 && (
+                        <ul className="mt-2 space-y-1">
+                          {flags.map((f: string, i: number) => (
+                            <li key={i} className="text-xs text-amber-700">⚠ {f}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {body && <p className="mt-2 text-sm text-muted-foreground">{body}</p>}
+                    </div>
+                  );
+                })}
               </CardContent>
             </Card>
           ) : null}
