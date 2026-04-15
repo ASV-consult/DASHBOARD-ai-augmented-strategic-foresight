@@ -597,6 +597,49 @@ function SharePriceAnalysisViewInner() {
                   {selectedPeriod.period_summary && (
                     <p className="text-sm text-muted-foreground leading-relaxed">{selectedPeriod.period_summary}</p>
                   )}
+
+                  {/* Attribution bridge: 3-way decomposition */}
+                  {selectedPeriod.attribution_flavour && selectedPeriod.attribution_flavour !== 'unknown' && (
+                    <div className="rounded-xl border border-border/50 bg-background/60 p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Return decomposition
+                        </p>
+                        <Badge className={`text-[10px] ${
+                          selectedPeriod.attribution_flavour === 'idiosyncratic' ? 'bg-sky-500/15 text-sky-600 border-sky-500/30' :
+                          selectedPeriod.attribution_flavour === 'sector' ? 'bg-amber-500/15 text-amber-600 border-amber-500/30' :
+                          selectedPeriod.attribution_flavour === 'market' ? 'bg-slate-500/15 text-slate-500 border-slate-500/30' :
+                          'bg-muted text-muted-foreground'
+                        }`}>
+                          {selectedPeriod.attribution_flavour}
+                        </Badge>
+                      </div>
+                      <div className="space-y-1 text-xs">
+                        {[
+                          { label: 'Market (benchmark)', val: selectedPeriod.market_component, hint: 'index-wide beta' },
+                          { label: 'Sector (peers \u2212 market)', val: selectedPeriod.sector_component, hint: 'peer group move' },
+                          { label: 'Idiosyncratic', val: selectedPeriod.idiosyncratic_component, hint: 'company-specific', strong: selectedPeriod.attribution_flavour === 'idiosyncratic' },
+                        ].map(({ label, val, hint, strong }) => (
+                          <div key={label} className={`flex items-center justify-between gap-2 py-1 px-2 rounded ${strong ? 'bg-sky-500/10 font-semibold' : ''}`}>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-muted-foreground flex-shrink-0 w-40">{label}</span>
+                              <span className="text-muted-foreground/60 text-[10px] truncate">{hint}</span>
+                            </div>
+                            <span className={`font-mono ${colorPct(val)}`}>
+                              {val !== undefined && val !== null ? deltaPct(val) : '\u2014'}
+                            </span>
+                          </div>
+                        ))}
+                        <div className="flex items-center justify-between gap-2 py-1 px-2 rounded border-t border-border/40 mt-1 pt-2">
+                          <span className="text-foreground font-semibold">Total period return</span>
+                          <span className={`font-mono font-semibold ${colorPct(selectedPeriod.period_return)}`}>
+                            {deltaPct(selectedPeriod.period_return)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {periodEvents.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Events in period</p>

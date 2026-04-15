@@ -72,6 +72,14 @@ export interface TrendPeriod {
   event_count?: number;
   period_summary?: string;
   earnings_in_period?: number;
+  // Peer attribution (added by peer_attribution.py)
+  market_component?: number;
+  sector_component?: number;
+  idiosyncratic_component?: number;
+  peer_composite_return?: number;
+  attribution_flavour?: 'market' | 'sector' | 'idiosyncratic' | 'mixed' | 'unknown';
+  attribution_summary?: string;
+  strength_score?: number;
 }
 
 export interface TrendAnalysis {
