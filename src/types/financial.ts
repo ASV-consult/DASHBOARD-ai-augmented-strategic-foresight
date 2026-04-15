@@ -477,6 +477,72 @@ export interface FinancialMultiYearContext {
   metric_trends?: Record<string, FinancialMetricTrend>;
 }
 
+/* ──── Metric-bridge (schema: metric_bridge_v1) ──────────────────────────
+   Groups AR metrics into families (ebitda, ebita, ...) with named variants
+   (statutory, adjusted, before_exceptionals, ...) and per-variant series.
+   Replaces the single-value flat bridge row with structured variants + a
+   reconciliation walk. See Annual_report_Reader/METRIC_BRIDGE_SCHEMA.md. */
+
+export interface FinancialMetricVariant {
+  variant: string;                 // "statutory" | "adjusted" | "before_exceptionals" | ...
+  label: string;                   // display label
+  label_in_ar: string;             // original metric name as it appears in the report
+  series: Record<string, number | null>;
+  focus_year_value?: number | null;
+  source?: string;
+  confidence?: string;
+}
+
+export interface FinancialMetricYfComparable {
+  value_focus_year?: number | null;
+  series?: Record<string, number | null>;
+  variant_matched?: string | null;
+  residual_gap_pct?: number | null;
+  residual_gap_explanation?: string;
+}
+
+export interface FinancialMetricWalkComponent {
+  label: string;
+  amount: number;
+}
+
+export interface FinancialMetricWalk {
+  from_variant: string;
+  to_variant: string;
+  focus_year?: number;
+  delta: number;
+  reason: string;
+  confidence?: string;
+  components?: FinancialMetricWalkComponent[];
+}
+
+export interface FinancialMetricFamily {
+  family_key: string;
+  canonical_label: string;
+  currency?: string;
+  unit?: string;
+  variants: Record<string, FinancialMetricVariant>;
+  yf_comparable?: FinancialMetricYfComparable | null;
+  reconciliation_walks?: FinancialMetricWalk[];
+  analyst_notes?: string;
+  analyst_confidence?: string;
+  primary_for_trend?: string;
+  primary_for_peers?: string;
+}
+
+export interface FinancialMetricBridgeCoverage {
+  families_with_multiple_variants?: string[];
+  families_single_variant?: string[];
+  families_yf_missing?: string[];
+}
+
+export interface FinancialMetricBridge {
+  schema_version: string;
+  generated_by: string;
+  families: Record<string, FinancialMetricFamily>;
+  coverage?: FinancialMetricBridgeCoverage;
+}
+
 export interface FinancialBridgeRow {
   concept?: string;
   ar_metric?: string;
@@ -532,6 +598,7 @@ export interface FinancialAnalysisData {
   ratio_cards?: FinancialRatioCards;
   // New top-level sections from analysis/json_builder.py
   ar_vs_yf_bridge?: FinancialBridgeRow[];
+  metric_bridge?: FinancialMetricBridge;
   segment_analysis?: FinancialSegment[];
   guidance_tracking?: FinancialGuidance[];
   // Legacy optional sections

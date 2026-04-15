@@ -60,6 +60,8 @@ import {
   FinancialAnalysisSection,
   FinancialBridgeRow,
   FinancialHistoricalRow,
+  FinancialMetricBridge,
+  FinancialMetricFamily,
   FinancialRatioCard,
   FinancialSegment,
 } from '@/types/financial';
@@ -303,6 +305,7 @@ export function FinancialAnalysisView() {
   const kpis = fd.kpis ?? [];
   const takeaways = fd.key_takeaways ?? [];
   const bridge = fd.ar_vs_yf_bridge ?? [];
+  const metricBridge = fd.metric_bridge;
   const segments = fd.segment_analysis ?? [];
   const guidance = fd.guidance_tracking ?? [];
   const charts = fd.financial_charts;
@@ -346,7 +349,7 @@ export function FinancialAnalysisView() {
         </TabsContent>
 
         <TabsContent value="bridge" className="mt-6 space-y-6">
-          <BridgePage bridge={bridge} sections={sections} />
+          <BridgePage bridge={bridge} sections={sections} metricBridge={metricBridge} />
         </TabsContent>
 
         <TabsContent value="segments" className="mt-6 space-y-6">
@@ -1050,12 +1053,35 @@ function BridgeRowInline({ row }: { row: FinancialBridgeRow }) {
    AR ↔ YF BRIDGE PAGE — clickable rows with reasoning
 ============================================================ */
 
+/** Map a bridge-row concept/ar_metric to a metric_bridge family key.
+ *  Simple keyword match — same rules as the Python FAMILY_PATTERNS. */
+function familyKeyForConcept(concept: string): string | null {
+  const s = concept.toLowerCase();
+  if (/\bebitda\b/.test(s)) return 'ebitda';
+  if (/\bebita\b/.test(s)) return 'ebita';
+  if (/\bebit\b|operating profit|operating income/.test(s)) return 'ebit';
+  if (/free cash flow|\bfcf\b/.test(s)) return 'fcf';
+  if (/operating cash flow|cash flow from operations|\bcfo\b/.test(s)) return 'operating_cash_flow';
+  if (/\bcapex\b|capital expenditure/.test(s)) return 'capex';
+  if (/net profit|net income|profit attributable/.test(s)) return 'net_profit';
+  if (/\beps\b|earnings per share/.test(s)) return 'eps';
+  if (/\brevenue\b|turnover|net sales/.test(s)) return 'revenue';
+  if (/gross profit/.test(s)) return 'gross_profit';
+  if (/net debt/.test(s)) return 'net_debt';
+  if (/working capital/.test(s)) return 'working_capital';
+  if (/total assets/.test(s)) return 'total_assets';
+  if (/total equity|shareholders.? equity|^equity$/.test(s)) return 'total_equity';
+  return null;
+}
+
 function BridgePage({
   bridge,
   sections,
+  metricBridge,
 }: {
   bridge: FinancialBridgeRow[];
   sections: FinancialAnalysisSection[];
+  metricBridge?: FinancialMetricBridge;
 }) {
   const [selected, setSelected] = useState<FinancialBridgeRow | null>(null);
 
@@ -1157,13 +1183,19 @@ function BridgePage({
       </div>
 
       <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
-        <DialogContent className="max-w-2xl">
-          {selected && (
-            <BridgeDetail
-              row={selected}
-              fallback={fallbackByConcept.get(String(selected.concept || selected.ar_metric || '').toLowerCase())}
-            />
-          )}
+        <DialogContent className="max-w-3xl">
+          {selected && (() => {
+            const concept = String(selected.concept || selected.ar_metric || '');
+            const famKey = familyKeyForConcept(concept);
+            const family = famKey ? metricBridge?.families?.[famKey] : undefined;
+            return (
+              <BridgeDetail
+                row={selected}
+                family={family}
+                fallback={fallbackByConcept.get(concept.toLowerCase())}
+              />
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </SectionShell>
@@ -1180,13 +1212,13 @@ const confidenceTone = (c?: string): string => {
 
 function BridgeDetail({
   row,
+  family,
   fallback,
 }: {
   row: FinancialBridgeRow;
+  family?: FinancialMetricFamily;
   fallback?: { sectionTitle: string; explanation: string };
 }) {
-  const yfDisp =
-    row.yf_value != null && Math.abs(row.yf_value) > 1e6 ? row.yf_value / 1e6 : row.yf_value;
   const explanation = row.bridge_explanation || fallback?.explanation || '';
   const explanationSource = row.bridge_explanation
     ? 'Per-metric reasoning from the AR ↔ YF reconciliation'
@@ -1199,47 +1231,25 @@ function BridgeDetail({
       <DialogHeader>
         <DialogTitle className="flex items-center gap-2">
           <Layers className="h-4 w-4 text-primary" />
-          {row.concept}
+          {family?.canonical_label || row.concept}
         </DialogTitle>
         <DialogDescription>
-          AR metric <span className="font-medium">{row.ar_metric || '—'}</span> vs YF metric{' '}
-          <span className="font-medium">{row.yf_label || row.yf_metric}</span>
+          {family
+            ? `${Object.keys(family.variants ?? {}).length} AR variant${Object.keys(family.variants ?? {}).length === 1 ? '' : 's'} · Yahoo Finance: ${row.yf_label || row.yf_metric || 'n/a'}`
+            : `AR metric ${row.ar_metric || '—'} vs YF metric ${row.yf_label || row.yf_metric}`}
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-3 rounded-2xl border border-border/60 bg-muted/30 p-4">
-          <div>
-            <p className={SECTION_LABEL_CLASS}>Annual Report</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums" style={{ color: AR_COLOR }}>
-              {fmtNum(row.ar_value)}
-            </p>
-            <p className="text-[11px] text-muted-foreground">{row.ar_unit}</p>
-          </div>
-          <div>
-            <p className={SECTION_LABEL_CLASS}>Yahoo Finance</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums" style={{ color: YF_COLOR }}>
-              {fmtNum(yfDisp as number | null | undefined)}
-            </p>
-            <p className="text-[11px] text-muted-foreground">{row.ar_unit}</p>
-          </div>
-          <div>
-            <p className={SECTION_LABEL_CLASS}>Gap</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums">{fmtDelta(row.gap_pct)}</p>
-            <div className="mt-1 flex flex-wrap gap-1">
-              {row.comparability && (
-                <Badge variant="outline" className={cn('rounded-full text-[10px]', compToneClass(row.comparability))}>
-                  {row.comparability.replace(/_/g, ' ')}
-                </Badge>
-              )}
-              {row.review_confidence && (
-                <Badge variant="outline" className={cn('rounded-full text-[10px]', confidenceTone(row.review_confidence))}>
-                  confidence: {row.review_confidence}
-                </Badge>
-              )}
-            </div>
-          </div>
-        </div>
+      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+        {family ? (
+          <VariantsPanel family={family} />
+        ) : (
+          <LegacyValuesPanel row={row} />
+        )}
+
+        {family?.reconciliation_walks && family.reconciliation_walks.length > 0 && (
+          <WalksPanel family={family} />
+        )}
 
         {explanation && (
           <div className="rounded-2xl border border-primary/20 bg-primary/[0.04] p-4">
@@ -1262,7 +1272,7 @@ function BridgeDetail({
           </div>
         )}
 
-        {!explanation && !row.definition_from_ar && (
+        {!explanation && !row.definition_from_ar && !family && (
           <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
             No reconciliation reasoning has been recorded for this metric yet. Common drivers of
             AR ↔ YF gaps: scope (consolidation, minority interests), timing (period cutoff,
@@ -1272,6 +1282,188 @@ function BridgeDetail({
         )}
       </div>
     </>
+  );
+}
+
+function LegacyValuesPanel({ row }: { row: FinancialBridgeRow }) {
+  const yfDisp =
+    row.yf_value != null && Math.abs(row.yf_value) > 1e6 ? row.yf_value / 1e6 : row.yf_value;
+  return (
+    <div className="grid grid-cols-3 gap-3 rounded-2xl border border-border/60 bg-muted/30 p-4">
+      <div>
+        <p className={SECTION_LABEL_CLASS}>Annual Report</p>
+        <p className="mt-1 text-lg font-semibold tabular-nums" style={{ color: AR_COLOR }}>
+          {fmtNum(row.ar_value)}
+        </p>
+        <p className="text-[11px] text-muted-foreground">{row.ar_unit}</p>
+      </div>
+      <div>
+        <p className={SECTION_LABEL_CLASS}>Yahoo Finance</p>
+        <p className="mt-1 text-lg font-semibold tabular-nums" style={{ color: YF_COLOR }}>
+          {fmtNum(yfDisp as number | null | undefined)}
+        </p>
+        <p className="text-[11px] text-muted-foreground">{row.ar_unit}</p>
+      </div>
+      <div>
+        <p className={SECTION_LABEL_CLASS}>Gap</p>
+        <p className="mt-1 text-lg font-semibold tabular-nums">{fmtDelta(row.gap_pct)}</p>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {row.comparability && (
+            <Badge variant="outline" className={cn('rounded-full text-[10px]', compToneClass(row.comparability))}>
+              {row.comparability.replace(/_/g, ' ')}
+            </Badge>
+          )}
+          {row.review_confidence && (
+            <Badge variant="outline" className={cn('rounded-full text-[10px]', confidenceTone(row.review_confidence))}>
+              confidence: {row.review_confidence}
+            </Badge>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VariantsPanel({ family }: { family: FinancialMetricFamily }) {
+  const variants = Object.values(family.variants ?? {});
+  const yfCmp = family.yf_comparable;
+  const unit = family.unit || '';
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
+        <div className="mb-2 flex items-baseline justify-between">
+          <p className={SECTION_LABEL_CLASS}>Annual Report — {variants.length} variant{variants.length === 1 ? '' : 's'}</p>
+          <p className="text-[10px] text-muted-foreground">{unit}</p>
+        </div>
+        <div className="space-y-2">
+          {variants.map((v) => {
+            const isMatched = yfCmp?.variant_matched === v.variant;
+            return (
+              <div
+                key={v.variant}
+                className={cn(
+                  'rounded-xl border p-3 transition-colors',
+                  isMatched ? 'border-primary/45 bg-primary/[0.05]' : 'border-border/60 bg-background/70',
+                )}
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="rounded-full text-[10px] capitalize">
+                        {v.variant.replace(/_/g, ' ')}
+                      </Badge>
+                      {isMatched && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">
+                          ◄ YF's closest match
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground truncate">
+                      {v.label_in_ar}
+                    </p>
+                  </div>
+                  <p className="text-lg font-semibold tabular-nums" style={{ color: AR_COLOR }}>
+                    {fmtNum(v.focus_year_value)}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
+        <div className="mb-2 flex items-baseline justify-between">
+          <p className={SECTION_LABEL_CLASS}>Yahoo Finance</p>
+          {yfCmp?.residual_gap_pct !== null && yfCmp?.residual_gap_pct !== undefined && (
+            <Badge
+              variant="outline"
+              className={cn(
+                'rounded-full text-[10px]',
+                Math.abs(yfCmp.residual_gap_pct) < 1
+                  ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-600'
+                  : Math.abs(yfCmp.residual_gap_pct) < 10
+                    ? 'border-amber-500/35 bg-amber-500/10 text-amber-600'
+                    : 'border-destructive/35 bg-destructive/10 text-destructive',
+              )}
+            >
+              Residual {fmtDelta(yfCmp.residual_gap_pct)} after variant alignment
+            </Badge>
+          )}
+        </div>
+        <p className="text-lg font-semibold tabular-nums" style={{ color: YF_COLOR }}>
+          {fmtNum(yfCmp?.value_focus_year)}
+        </p>
+      </div>
+
+      {(family.primary_for_trend || family.primary_for_peers) && (
+        <div className="flex flex-wrap gap-3 rounded-xl border border-border/50 bg-background/60 p-3 text-[11px] text-muted-foreground">
+          {family.primary_for_trend && (
+            <span>
+              <span className="font-semibold text-foreground">Primary for trend:</span>{' '}
+              {family.primary_for_trend.replace(/_/g, ' ')}
+            </span>
+          )}
+          {family.primary_for_peers && (
+            <span>
+              <span className="font-semibold text-foreground">Primary for peer comparison:</span>{' '}
+              {family.primary_for_peers.replace(/_/g, ' ')}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WalksPanel({ family }: { family: FinancialMetricFamily }) {
+  const walks = family.reconciliation_walks ?? [];
+  if (walks.length === 0) return null;
+  return (
+    <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
+      <p className={cn(SECTION_LABEL_CLASS, 'mb-2')}>Reconciliation walks</p>
+      <div className="space-y-3">
+        {walks.map((w, i) => (
+          <div key={i} className="rounded-xl border border-border/50 bg-muted/20 p-3">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="rounded-full text-[10px] capitalize">
+                  {w.from_variant.replace(/_/g, ' ')}
+                </Badge>
+                <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                <Badge variant="outline" className="rounded-full text-[10px] capitalize">
+                  {w.to_variant.replace(/_/g, ' ')}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={cn(
+                  'font-semibold tabular-nums',
+                  w.delta > 0 ? 'text-emerald-600' : 'text-destructive',
+                )}>
+                  {w.delta > 0 ? '+' : ''}{fmtNum(w.delta)}
+                </span>
+                {w.confidence && (
+                  <Badge variant="outline" className={cn('rounded-full text-[10px]', confidenceTone(w.confidence))}>
+                    {w.confidence}
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-foreground">{w.reason}</p>
+            {w.components && w.components.length > 0 && (
+              <div className="mt-2 space-y-1 border-t border-border/40 pt-2 text-xs">
+                {w.components.map((c, j) => (
+                  <div key={j} className="flex items-baseline justify-between text-muted-foreground">
+                    <span>{c.label}</span>
+                    <span className="tabular-nums">{fmtNum(c.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
