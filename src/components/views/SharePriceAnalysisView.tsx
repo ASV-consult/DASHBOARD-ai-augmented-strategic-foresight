@@ -720,6 +720,58 @@ function SharePriceAnalysisViewInner() {
                     </div>
                   )}
 
+                  {/* L2: Sub-sector peer decomposition — shows WHICH peer group drove the move */}
+                  {selectedPeriod.segment_peer_returns && selectedPeriod.segment_peer_returns.length > 0 && (
+                    <div className="rounded-xl border border-border/50 bg-background/60 p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Sub-sector peer returns in this window
+                        </p>
+                        <span className="text-[10px] text-muted-foreground">answers "which sub-sector moved"</span>
+                      </div>
+                      <div className="space-y-1 text-xs">
+                        {(() => {
+                          const rows = [...(selectedPeriod.segment_peer_returns ?? [])];
+                          // Find max absolute return to highlight strongest mover
+                          const maxAbs = Math.max(...rows.map((r) => Math.abs(r.avg_return ?? 0)), 0.0001);
+                          return rows.map((r) => {
+                            const isStrongest = Math.abs(r.avg_return ?? 0) === maxAbs;
+                            const isThin = r.peer_count < 2;
+                            return (
+                              <div key={r.segment} className={`flex items-center justify-between gap-2 py-1 px-2 rounded ${isStrongest ? 'bg-sky-500/10' : ''}`}>
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <span className={`${isStrongest ? 'font-semibold text-foreground' : 'text-foreground/90'} truncate`} title={r.segment}>
+                                    {r.segment}
+                                  </span>
+                                  <span className="text-[10px] text-muted-foreground/70 flex-shrink-0">
+                                    ({r.peers.join(', ')})
+                                  </span>
+                                  {isThin && (
+                                    <span className="text-[10px] text-amber-600 flex-shrink-0">thin</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <span className="text-[10px] text-muted-foreground">w={pct(r.weight, 0)}</span>
+                                  <span className={`font-mono ${colorPct(r.avg_return)} w-12 text-right`}>
+                                    {deltaPct(r.avg_return)}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                      {selectedPeriod.peer_composite_return != null && (
+                        <div className="flex items-center justify-between gap-2 py-1 px-2 rounded border-t border-border/40 pt-2 text-xs">
+                          <span className="text-muted-foreground italic">Peer composite (weighted)</span>
+                          <span className={`font-mono italic ${colorPct(selectedPeriod.peer_composite_return)}`}>
+                            {deltaPct(selectedPeriod.peer_composite_return)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Period attribution — what the model thinks drove this period */}
                   {selectedPeriodAnchor?.attribution?.most_probable_reason && (
                     <div className="rounded-xl border border-border/50 bg-background/60 p-3 space-y-3">
@@ -738,6 +790,74 @@ function SharePriceAnalysisViewInner() {
                         <p className="text-xs text-muted-foreground leading-relaxed">
                           {selectedPeriodAnchor.attribution.investor_interpretation}
                         </p>
+                      )}
+
+                      {/* L3: two-part explanation for sector-flavour periods (when populated by new pipeline) */}
+                      {(selectedPeriodAnchor.attribution.sector_move_explanation || selectedPeriodAnchor.attribution.company_specific_explanation) && (
+                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 mt-3">
+                          {selectedPeriodAnchor.attribution.sector_move_explanation?.what_drove_peers && (
+                            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                                  Sector move
+                                </p>
+                                {selectedPeriodAnchor.attribution.sector_move_explanation.peer_group_return_pp != null && (
+                                  <span className={`text-xs font-mono ${colorPct(selectedPeriodAnchor.attribution.sector_move_explanation.peer_group_return_pp)}`}>
+                                    {deltaPct(selectedPeriodAnchor.attribution.sector_move_explanation.peer_group_return_pp)}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-foreground leading-relaxed">
+                                {selectedPeriodAnchor.attribution.sector_move_explanation.what_drove_peers}
+                              </p>
+                              {selectedPeriodAnchor.attribution.sector_move_explanation.catalysts && selectedPeriodAnchor.attribution.sector_move_explanation.catalysts.length > 0 && (
+                                <ul className="space-y-0.5">
+                                  {selectedPeriodAnchor.attribution.sector_move_explanation.catalysts.map((c, i) => (
+                                    <li key={i} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+                                      <ChevronRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-amber-600" />{c}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {(selectedPeriodAnchor.attribution.sector_move_explanation.evidence_urls || []).length > 0 && (
+                                <p className="text-[10px] text-muted-foreground">
+                                  {selectedPeriodAnchor.attribution.sector_move_explanation.evidence_urls!.length} sector sources
+                                </p>
+                              )}
+                            </div>
+                          )}
+                          {selectedPeriodAnchor.attribution.company_specific_explanation?.what_aalberts_added && (
+                            <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-400">
+                                  Company-specific (idiosyncratic)
+                                </p>
+                                {selectedPeriodAnchor.attribution.company_specific_explanation.idiosyncratic_return_pp != null && (
+                                  <span className={`text-xs font-mono ${colorPct(selectedPeriodAnchor.attribution.company_specific_explanation.idiosyncratic_return_pp)}`}>
+                                    {deltaPct(selectedPeriodAnchor.attribution.company_specific_explanation.idiosyncratic_return_pp)}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-foreground leading-relaxed">
+                                {selectedPeriodAnchor.attribution.company_specific_explanation.what_aalberts_added}
+                              </p>
+                              {selectedPeriodAnchor.attribution.company_specific_explanation.catalysts && selectedPeriodAnchor.attribution.company_specific_explanation.catalysts.length > 0 && (
+                                <ul className="space-y-0.5">
+                                  {selectedPeriodAnchor.attribution.company_specific_explanation.catalysts.map((c, i) => (
+                                    <li key={i} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+                                      <ChevronRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-sky-600" />{c}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {(selectedPeriodAnchor.attribution.company_specific_explanation.evidence_urls || []).length > 0 && (
+                                <p className="text-[10px] text-muted-foreground">
+                                  {selectedPeriodAnchor.attribution.company_specific_explanation.evidence_urls!.length} company sources
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       )}
 
                       {/* Reconciliation note when flavour ≠ driver weights */}

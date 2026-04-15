@@ -80,6 +80,15 @@ export interface TrendPeriod {
   attribution_flavour?: 'market' | 'sector' | 'idiosyncratic' | 'mixed' | 'unknown';
   attribution_summary?: string;
   strength_score?: number;
+  // L2: sub-sector decomposition of the peer move during this period
+  segment_peer_returns?: Array<{
+    segment: string;
+    weight: number;
+    peer_count: number;
+    peers: string[];
+    peer_returns: Record<string, number>;
+    avg_return: number;
+  }>;
 }
 
 export interface TrendAnalysis {
@@ -139,6 +148,19 @@ export interface EventAttribution {
   evidence?: Array<{ title: string; url: string; snippet?: string }>;
   relevant_results_count?: number;
   search_results_count?: number;
+  // L3: sector-aware two-part explanation (populated for sector-flavour anchors)
+  sector_move_explanation?: {
+    peer_group_return_pp?: number;
+    what_drove_peers?: string;
+    catalysts?: string[];
+    evidence_urls?: string[];
+  };
+  company_specific_explanation?: {
+    idiosyncratic_return_pp?: number;
+    what_aalberts_added?: string;
+    catalysts?: string[];
+    evidence_urls?: string[];
+  };
 }
 
 export interface SignificantEvent {
