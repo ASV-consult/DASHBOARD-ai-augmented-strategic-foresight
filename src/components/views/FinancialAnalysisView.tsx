@@ -1324,20 +1324,85 @@ function LegacyValuesPanel({ row }: { row: FinancialBridgeRow }) {
   );
 }
 
+const VARIANT_DESCRIPTIONS: Record<string, string> = {
+  statutory: 'As reported on the consolidated IFRS income statement / balance sheet.',
+  adjusted: 'Company APM. Excludes items management classifies as non-recurring.',
+  before_exceptionals: "Excludes items the company labels 'exceptional'.",
+  before_ppa: 'Excludes amortisation of acquired intangibles (PPA amortisation).',
+  pro_forma: 'Restated as if recent M&A happened at period start.',
+  constant_currency: 'Normalised to a prior-year FX rate.',
+  organic: 'Excludes contribution from M&A.',
+  segment: 'Segment-level figure (not the consolidated group total).',
+};
+
+// Whether YF's value can be meaningfully called a "match" for any AR
+// variant. If the smallest residual after alignment is huge (>20%), we
+// should NOT highlight any AR variant as "closest" — YF is using an
+// IFRS-statutory definition the AR data doesn't separately surface.
+const YF_MATCH_THRESHOLD_PCT = 20;
+
 function VariantsPanel({ family }: { family: FinancialMetricFamily }) {
   const variants = Object.values(family.variants ?? {});
   const yfCmp = family.yf_comparable;
   const unit = family.unit || '';
+  const yfValue = yfCmp?.value_focus_year ?? null;
+  const residualPct = yfCmp?.residual_gap_pct ?? null;
+  const hasYf = yfValue !== null && yfValue !== undefined;
+  const matchIsMeaningful =
+    residualPct !== null &&
+    residualPct !== undefined &&
+    Math.abs(residualPct) < YF_MATCH_THRESHOLD_PCT;
+  const matchedVariant = matchIsMeaningful ? yfCmp?.variant_matched : undefined;
+
+  // Are all AR variants within 1% of each other? If so, they're effectively
+  // the same number published under different labels.
+  const focusValues = variants
+    .map(v => v.focus_year_value)
+    .filter((v): v is number => v !== null && v !== undefined);
+  const allConverge =
+    focusValues.length > 1 &&
+    (Math.max(...focusValues) - Math.min(...focusValues)) / Math.max(...focusValues.map(Math.abs)) < 0.01;
+
   return (
     <div className="space-y-3">
+      {/* ─── Yahoo Finance (always first, prominent) ─────────────────── */}
+      {hasYf && (
+        <div className="rounded-2xl border-2 border-amber-500/25 bg-amber-500/[0.04] p-4">
+          <div className="flex items-baseline justify-between">
+            <div>
+              <p className={SECTION_LABEL_CLASS}>Yahoo Finance</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                IFRS-statutory definition (third-party feed)
+              </p>
+            </div>
+            <p className="text-2xl font-semibold tabular-nums" style={{ color: YF_COLOR }}>
+              {fmtNum(yfValue)}
+              <span className="ml-1.5 text-xs text-muted-foreground font-normal">{unit}</span>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Annual Report variants ──────────────────────────────────── */}
       <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
-        <div className="mb-2 flex items-baseline justify-between">
-          <p className={SECTION_LABEL_CLASS}>Annual Report — {variants.length} variant{variants.length === 1 ? '' : 's'}</p>
+        <div className="mb-3 flex items-baseline justify-between">
+          <p className={SECTION_LABEL_CLASS}>
+            Annual Report — {variants.length} variant{variants.length === 1 ? '' : 's'} from company
+          </p>
           <p className="text-[10px] text-muted-foreground">{unit}</p>
         </div>
+
+        {allConverge && (
+          <div className="mb-3 rounded-lg border border-blue-500/25 bg-blue-500/[0.04] px-3 py-2 text-xs text-blue-700">
+            <span className="font-semibold">Note:</span> All variants converge within 1% for this
+            year — the company presents the same figure under multiple labels.
+          </div>
+        )}
+
         <div className="space-y-2">
           {variants.map((v) => {
-            const isMatched = yfCmp?.variant_matched === v.variant;
+            const isMatched = matchedVariant === v.variant;
+            const description = VARIANT_DESCRIPTIONS[v.variant];
             return (
               <div
                 key={v.variant}
@@ -1346,23 +1411,24 @@ function VariantsPanel({ family }: { family: FinancialMetricFamily }) {
                   isMatched ? 'border-primary/45 bg-primary/[0.05]' : 'border-border/60 bg-background/70',
                 )}
               >
-                <div className="flex items-baseline justify-between gap-2">
-                  <div className="min-w-0">
+                <div className="flex items-baseline justify-between gap-3">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="rounded-full text-[10px] capitalize">
                         {v.variant.replace(/_/g, ' ')}
                       </Badge>
                       {isMatched && (
                         <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">
-                          ◄ YF's closest match
+                          ◄ matches Yahoo
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground truncate">
-                      {v.label_in_ar}
-                    </p>
+                    <p className="mt-1 text-sm truncate">{v.label_in_ar}</p>
+                    {description && (
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">{description}</p>
+                    )}
                   </div>
-                  <p className="text-lg font-semibold tabular-nums" style={{ color: AR_COLOR }}>
+                  <p className="text-lg font-semibold tabular-nums shrink-0" style={{ color: AR_COLOR }}>
                     {fmtNum(v.focus_year_value)}
                   </p>
                 </div>
@@ -1372,29 +1438,34 @@ function VariantsPanel({ family }: { family: FinancialMetricFamily }) {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
-        <div className="mb-2 flex items-baseline justify-between">
-          <p className={SECTION_LABEL_CLASS}>Yahoo Finance</p>
-          {yfCmp?.residual_gap_pct !== null && yfCmp?.residual_gap_pct !== undefined && (
-            <Badge
-              variant="outline"
-              className={cn(
-                'rounded-full text-[10px]',
-                Math.abs(yfCmp.residual_gap_pct) < 1
-                  ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-600'
-                  : Math.abs(yfCmp.residual_gap_pct) < 10
-                    ? 'border-amber-500/35 bg-amber-500/10 text-amber-600'
-                    : 'border-destructive/35 bg-destructive/10 text-destructive',
-              )}
-            >
-              Residual {fmtDelta(yfCmp.residual_gap_pct)} after variant alignment
-            </Badge>
+      {/* ─── Gap interpretation ──────────────────────────────────────── */}
+      {hasYf && residualPct !== null && residualPct !== undefined && (
+        <div className={cn(
+          'rounded-xl border p-3 text-xs',
+          Math.abs(residualPct) < 1
+            ? 'border-emerald-500/25 bg-emerald-500/[0.04] text-emerald-700'
+            : Math.abs(residualPct) < YF_MATCH_THRESHOLD_PCT
+              ? 'border-amber-500/25 bg-amber-500/[0.04] text-amber-700'
+              : 'border-destructive/25 bg-destructive/[0.04] text-destructive',
+        )}>
+          {Math.abs(residualPct) < 1 ? (
+            <span>
+              <span className="font-semibold">AR and YF agree</span> — residual {fmtDelta(residualPct)}.
+            </span>
+          ) : matchIsMeaningful ? (
+            <span>
+              <span className="font-semibold">Minor gap: {fmtDelta(residualPct)}</span> vs Yahoo's
+              definition. Common drivers: IFRS 16 lease treatment, impairment classification, timing.
+            </span>
+          ) : (
+            <span>
+              <span className="font-semibold">Large gap: {fmtDelta(residualPct)}</span> — Yahoo uses
+              the IFRS-statutory line, but this annual report appears to publish only APM variants.
+              No true apples-to-apples AR counterpart was extracted.
+            </span>
           )}
         </div>
-        <p className="text-lg font-semibold tabular-nums" style={{ color: YF_COLOR }}>
-          {fmtNum(yfCmp?.value_focus_year)}
-        </p>
-      </div>
+      )}
 
       {(family.primary_for_trend || family.primary_for_peers) && (
         <div className="flex flex-wrap gap-3 rounded-xl border border-border/50 bg-background/60 p-3 text-[11px] text-muted-foreground">

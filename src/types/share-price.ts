@@ -186,6 +186,14 @@ export interface EventAttribution {
     catalysts?: string[];
     evidence_urls?: string[];
   };
+  // NEW: model's own verdict on what the move was, separate from the triangulation math.
+  move_classification?: {
+    verdict?: 'company_specific_negative' | 'company_specific_positive' |
+              'sector_wide_up' | 'sector_wide_down' | 'mixed' | 'macro_drift' | string;
+    model_reasoning?: string;
+    agreement_with_math?: 'agrees' | 'partial' | 'contradicts' | string;
+    limitations_noted?: string;
+  };
 }
 
 export interface SignificantEvent {

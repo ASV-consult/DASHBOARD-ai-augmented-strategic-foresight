@@ -837,6 +837,44 @@ function SharePriceAnalysisViewInner() {
                         </p>
                       )}
 
+                      {/* Move classification — model's own verdict separate from triangulation math */}
+                      {selectedPeriodAnchor.attribution.move_classification && (
+                        <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-400">
+                              Model verdict
+                            </p>
+                            {selectedPeriodAnchor.attribution.move_classification.verdict && (
+                              <Badge variant="outline" className="text-[10px] border-sky-500/40 bg-background/40">
+                                {selectedPeriodAnchor.attribution.move_classification.verdict.replace(/_/g, ' ')}
+                              </Badge>
+                            )}
+                            {selectedPeriodAnchor.attribution.move_classification.agreement_with_math && (
+                              <Badge className={`text-[10px] ${
+                                selectedPeriodAnchor.attribution.move_classification.agreement_with_math === 'agrees'
+                                  ? 'bg-emerald-500/15 text-emerald-600'
+                                  : selectedPeriodAnchor.attribution.move_classification.agreement_with_math === 'partial'
+                                    ? 'bg-amber-500/15 text-amber-600'
+                                    : 'bg-destructive/15 text-destructive'
+                              }`}>
+                                {selectedPeriodAnchor.attribution.move_classification.agreement_with_math} math
+                              </Badge>
+                            )}
+                          </div>
+                          {selectedPeriodAnchor.attribution.move_classification.model_reasoning && (
+                            <p className="text-xs text-foreground leading-relaxed">
+                              {selectedPeriodAnchor.attribution.move_classification.model_reasoning}
+                            </p>
+                          )}
+                          {selectedPeriodAnchor.attribution.move_classification.limitations_noted && (
+                            <p className="text-[11px] italic text-muted-foreground leading-relaxed">
+                              <span className="font-semibold not-italic">Limitations: </span>
+                              {selectedPeriodAnchor.attribution.move_classification.limitations_noted}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
                       {/* L3: two-part explanation for sector-flavour periods (when populated by new pipeline) */}
                       {(selectedPeriodAnchor.attribution.sector_move_explanation || selectedPeriodAnchor.attribution.company_specific_explanation) && (
                         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 mt-3">
