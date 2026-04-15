@@ -89,6 +89,13 @@ export interface TrendPeriod {
     peer_returns: Record<string, number>;
     avg_return: number;
   }>;
+  // L2: broad sector-index returns + triangulation flag (added by sector_overlay.py)
+  sector_index_returns?: Record<string, number>;
+  sector_index_avg?: number;
+  triangulation?: {
+    flag?: 'sector_wide_confirmed' | 'sector_wide_partial' | 'peer_set_specific' | 'company_specific' | 'mixed' | 'inconclusive';
+    summary?: string;
+  };
 }
 
 export interface TrendAnalysis {
@@ -106,6 +113,24 @@ export interface TrendAnalysis {
   drawdown_cycles?: Array<{ leg_type: string; start_date: string; end_date: string; leg_return: number }>;
   trend_detection_method?: string;
   peer_attribution?: PeerAttribution;
+  sector_overlay?: SectorOverlay;
+}
+
+// L2 sector-index overlay (broader-than-peers triangulation)
+export interface SectorOverlay {
+  region?: string;
+  tags?: string[];
+  indices?: string[];
+  index_meta?: Record<string, { first_date?: string; last_date?: string; n_obs?: number }>;
+  period_overlay?: Array<{
+    start_date: string;
+    end_date: string;
+    sector_index_returns: Record<string, number>;
+    sector_index_avg?: number;
+    benchmark_return?: number;
+    triangulation?: { flag?: string; summary?: string };
+  }>;
+  degradation_notes?: string[];
 }
 
 export interface DriverTheme {

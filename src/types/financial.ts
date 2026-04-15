@@ -192,7 +192,11 @@ export interface FinancialHistoricalRow {
   values: Array<number | null>;
   values_by_year?: Record<string, number | null>;
   source?: string;
-  // YF parallel series
+  // Metric-bridge tagging (see METRIC_BRIDGE_SCHEMA.md)
+  family_key?: string | null;
+  variant?: string | null;
+  // YF parallel series — only present on statutory variants; adjusted/APM
+  // variants are company-only and have no YF counterpart.
   yf_values?: Array<number | null>;
   yf_values_by_year?: Record<string, number | null>;
   yf_metric_key?: string;

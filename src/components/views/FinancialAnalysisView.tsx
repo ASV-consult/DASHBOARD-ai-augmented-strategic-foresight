@@ -1833,67 +1833,215 @@ function HistoricalTable({
     return fmtNum(v);
   };
 
+  // Group rows by family_key. Rows with no family_key render as standalone
+  // entries (e.g. margins, ratios that didn't make it into a family).
+  // Within a family: the statutory variant (or the single variant) is the
+  // primary row shown by default, paired with YF where available. Other
+  // variants (adjusted, before_exceptionals, ...) render inside a
+  // collapsible "N variant(s) from company" block.
+  type RowGroup = {
+    familyKey: string | null;
+    primary: FinancialHistoricalRow;
+    apmVariants: FinancialHistoricalRow[];
+  };
+
+  const groups: RowGroup[] = [];
+  const byFamily = new Map<string, RowGroup>();
+  for (const r of rows) {
+    const fk = r.family_key ?? null;
+    if (!fk) {
+      groups.push({ familyKey: null, primary: r, apmVariants: [] });
+      continue;
+    }
+    const existing = byFamily.get(fk);
+    const isStatutory = (r.variant ?? 'statutory') === 'statutory';
+    const hasYfRow = !!(r.yf_values && r.yf_values.some(v => v != null));
+    if (!existing) {
+      const g: RowGroup = { familyKey: fk, primary: r, apmVariants: [] };
+      byFamily.set(fk, g);
+      groups.push(g);
+    } else {
+      const existingIsStatutory = (existing.primary.variant ?? 'statutory') === 'statutory';
+      const existingHasYf = !!(existing.primary.yf_values && existing.primary.yf_values.some(v => v != null));
+      // Prefer: (a) row that is statutory, (b) row that carries YF, (c) first seen.
+      const shouldReplace =
+        (isStatutory && !existingIsStatutory) ||
+        (isStatutory === existingIsStatutory && hasYfRow && !existingHasYf);
+      if (shouldReplace) {
+        existing.apmVariants.push(existing.primary);
+        existing.primary = r;
+      } else {
+        existing.apmVariants.push(r);
+      }
+    }
+  }
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-border/60">
+    <div className="space-y-2">
+      {/* Shared year header — one row above all family blocks. Column widths
+          align with the family-block tables below because every row in the
+          doc uses the same column structure (metric / unit / source / years). */}
+      <div className="overflow-hidden rounded-2xl border border-border/60 bg-muted/30">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="sticky left-0 bg-muted/30 w-[220px]">Metric</TableHead>
+                <TableHead className="w-[60px]">Unit</TableHead>
+                <TableHead className="w-[52px]">Source</TableHead>
+                {years.map(y => (
+                  <TableHead key={String(y)} className="text-right whitespace-nowrap">
+                    {y}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+          </Table>
+        </div>
+      </div>
+      {groups.map((g, gi) => (
+        <FamilyBlock
+          key={`${g.familyKey ?? 'none'}-${gi}`}
+          group={g}
+          years={years}
+          formatV={formatV}
+        />
+      ))}
+    </div>
+  );
+}
+
+function FamilyBlock({
+  group,
+  years,
+  formatV,
+}: {
+  group: {
+    familyKey: string | null;
+    primary: FinancialHistoricalRow;
+    apmVariants: FinancialHistoricalRow[];
+  };
+  years: Array<string | number>;
+  formatV: (v: number | null | undefined, unit: string) => string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const { primary, apmVariants } = group;
+  const hasYf = !!(primary.yf_values && primary.yf_values.some(v => v != null));
+  const hasApm = apmVariants.length > 0;
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card/70">
       <div className="overflow-x-auto">
         <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/30">
-              <TableHead className="sticky left-0 bg-muted/30">Metric</TableHead>
-              <TableHead>Unit</TableHead>
-              <TableHead>Source</TableHead>
-              {years.map(y => (
-                <TableHead key={String(y)} className="text-right whitespace-nowrap">
-                  {y}
-                </TableHead>
+          <TableBody>
+            {/* Primary row (AR — statutory or first variant) */}
+            <TableRow className={hasYf ? 'border-b-0' : ''}>
+              <TableCell rowSpan={hasYf ? 2 : 1} className="sticky left-0 bg-background align-top w-[220px]">
+                <div className="font-medium">{primary.metric}</div>
+                {primary.variant && primary.variant !== 'statutory' && (
+                  <div className="mt-0.5 text-[10px] text-muted-foreground capitalize">
+                    {primary.variant.replace(/_/g, ' ')}
+                  </div>
+                )}
+              </TableCell>
+              <TableCell rowSpan={hasYf ? 2 : 1} className="text-xs text-muted-foreground w-[60px]">
+                {primary.unit}
+              </TableCell>
+              <TableCell className="text-xs w-[52px]">
+                <span className="rounded-full px-2 py-0.5" style={{ backgroundColor: `${AR_COLOR}1A`, color: AR_COLOR }}>
+                  AR
+                </span>
+              </TableCell>
+              {primary.values.map((v, j) => (
+                <TableCell
+                  key={j}
+                  className="text-right tabular-nums text-xs"
+                  style={{ color: v == null ? undefined : AR_COLOR }}
+                >
+                  {formatV(v, primary.unit)}
+                </TableCell>
               ))}
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row, i) => {
-              const hasYf = row.yf_values && row.yf_values.some(v => v != null);
-              return (
-                <>
-                  <TableRow key={`${i}-ar`} className={hasYf ? 'border-b-0' : ''}>
-                    <TableCell rowSpan={hasYf ? 2 : 1} className="sticky left-0 bg-background font-medium">
-                      {row.metric}
-                    </TableCell>
-                    <TableCell rowSpan={hasYf ? 2 : 1} className="text-xs text-muted-foreground">
-                      {row.unit}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <span className="rounded-full px-2 py-0.5" style={{ backgroundColor: `${AR_COLOR}1A`, color: AR_COLOR }}>
-                        AR
-                      </span>
-                    </TableCell>
-                    {row.values.map((v, j) => (
-                      <TableCell key={j} className="text-right tabular-nums text-xs"
-                        style={{ color: v == null ? undefined : AR_COLOR }}>
-                        {formatV(v, row.unit)}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                  {hasYf && (
-                    <TableRow key={`${i}-yf`}>
-                      <TableCell className="text-xs">
-                        <span className="rounded-full px-2 py-0.5" style={{ backgroundColor: `${YF_COLOR}1A`, color: YF_COLOR }}>
-                          YF
-                        </span>
-                      </TableCell>
-                      {row.yf_values!.map((v, j) => (
-                        <TableCell key={j} className="text-right tabular-nums text-xs"
-                          style={{ color: v == null ? undefined : YF_COLOR }}>
-                          {formatV(v, row.unit)}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  )}
-                </>
-              );
-            })}
+
+            {/* YF row (only for rows where we have a YF counterpart) */}
+            {hasYf && (
+              <TableRow>
+                <TableCell className="text-xs">
+                  <span className="rounded-full px-2 py-0.5" style={{ backgroundColor: `${YF_COLOR}1A`, color: YF_COLOR }}>
+                    YF
+                  </span>
+                </TableCell>
+                {primary.yf_values!.map((v, j) => (
+                  <TableCell
+                    key={j}
+                    className="text-right tabular-nums text-xs"
+                    style={{ color: v == null ? undefined : YF_COLOR }}
+                  >
+                    {formatV(v, primary.unit)}
+                  </TableCell>
+                ))}
+              </TableRow>
+            )}
+
+            {/* Expandable APM variants (company-only) */}
+            {hasApm && expanded && apmVariants.map((v, vi) => (
+              <TableRow key={`apm-${vi}`} className="bg-muted/10">
+                <TableCell className="sticky left-0 bg-muted/10 align-top pl-6 text-xs">
+                  <div className="text-foreground">{v.metric}</div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground capitalize">
+                    {v.variant?.replace(/_/g, ' ') || '—'}
+                  </div>
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">{v.unit}</TableCell>
+                <TableCell className="text-xs">
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[10px]"
+                    style={{ backgroundColor: `${AR_COLOR}1A`, color: AR_COLOR }}
+                  >
+                    AR · APM
+                  </span>
+                </TableCell>
+                {v.values.map((val, j) => (
+                  <TableCell
+                    key={j}
+                    className="text-right tabular-nums text-xs"
+                    style={{ color: val == null ? undefined : AR_COLOR }}
+                  >
+                    {formatV(val, v.unit)}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
       </div>
+
+      {/* APM expander footer */}
+      {hasApm && (
+        <button
+          type="button"
+          onClick={() => setExpanded(v => !v)}
+          className="flex w-full items-center justify-between gap-2 border-t border-border/40 bg-muted/20 px-4 py-2 text-left text-xs text-muted-foreground hover:bg-muted/30"
+        >
+          <span className="flex items-center gap-1.5">
+            {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            <span>
+              {apmVariants.length} variant{apmVariants.length === 1 ? '' : 's'} from company{' '}
+              <span className="font-medium">
+                ({apmVariants.map(v => v.variant?.replace(/_/g, ' ') || 'other').join(', ')})
+              </span>
+            </span>
+          </span>
+          <span className="text-[10px] italic text-muted-foreground/80">
+            not published by Yahoo Finance
+          </span>
+        </button>
+      )}
+
+      {/* Years header at the top — injected via an initial empty row-equivalent.
+          Simpler approach: render years as labels only for the first group.
+          Here we keep the header implicit via column widths; cleaner rendering
+          is done at the wrapper level. */}
     </div>
   );
 }

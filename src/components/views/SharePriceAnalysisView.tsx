@@ -52,15 +52,16 @@ import type { SignificantEvent, TrendPeriod } from '@/types/share-price';
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 
+// Pipeline always emits returns/ratios as decimal fractions (0.5775 = 57.75%).
+// Always multiply by 100 — the previous heuristic clipped >100% returns to single-digit %.
 const pct = (v?: number | null, d = 1): string => {
   if (v == null || Number.isNaN(v)) return 'N/A';
-  const n = Math.abs(v) <= 1 ? v * 100 : v;
-  return `${n.toFixed(d)}%`;
+  return `${(v * 100).toFixed(d)}%`;
 };
 
 const deltaPct = (v?: number | null, d = 1): string => {
   if (v == null || Number.isNaN(v)) return 'N/A';
-  const n = Math.abs(v) <= 1 ? v * 100 : v;
+  const n = v * 100;
   return `${n > 0 ? '+' : ''}${n.toFixed(d)}%`;
 };
 
@@ -772,6 +773,50 @@ function SharePriceAnalysisViewInner() {
                     </div>
                   )}
 
+                  {/* L2: Broad sector indices + triangulation flag */}
+                  {selectedPeriod.sector_index_returns && Object.keys(selectedPeriod.sector_index_returns).length > 0 && (
+                    <div className="rounded-xl border border-border/50 bg-background/60 p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Broad sector indices in this window
+                        </p>
+                        <span className="text-[10px] text-muted-foreground">answers "was the sector moving too"</span>
+                      </div>
+                      <div className="space-y-1 text-xs">
+                        {Object.entries(selectedPeriod.sector_index_returns).map(([tk, ret]) => (
+                          <div key={tk} className="flex items-center justify-between gap-2 py-1 px-2 rounded">
+                            <span className="text-foreground/90 font-mono text-[11px]">{tk}</span>
+                            <span className={`font-mono ${colorPct(ret)} w-12 text-right`}>{deltaPct(ret)}</span>
+                          </div>
+                        ))}
+                        {selectedPeriod.sector_index_avg != null && (
+                          <div className="flex items-center justify-between gap-2 py-1 px-2 rounded border-t border-border/40 pt-2">
+                            <span className="text-muted-foreground italic">Sector index average</span>
+                            <span className={`font-mono italic ${colorPct(selectedPeriod.sector_index_avg)}`}>
+                              {deltaPct(selectedPeriod.sector_index_avg)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {selectedPeriod.triangulation?.flag && (
+                        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border/40">
+                          <Badge variant="outline" className={`text-[10px] ${
+                            selectedPeriod.triangulation.flag === 'company_specific' ? 'bg-sky-500/15 text-sky-600 border-sky-500/30' :
+                            selectedPeriod.triangulation.flag === 'sector_wide_confirmed' ? 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30' :
+                            selectedPeriod.triangulation.flag === 'sector_wide_partial' ? 'bg-amber-500/15 text-amber-600 border-amber-500/30' :
+                            selectedPeriod.triangulation.flag === 'peer_set_specific' ? 'bg-violet-500/15 text-violet-600 border-violet-500/30' :
+                            'bg-muted text-muted-foreground'
+                          }`}>
+                            {selectedPeriod.triangulation.flag.replace(/_/g, ' ')}
+                          </Badge>
+                          {selectedPeriod.triangulation.summary && (
+                            <span className="text-[10px] text-muted-foreground">{selectedPeriod.triangulation.summary}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Period attribution — what the model thinks drove this period */}
                   {selectedPeriodAnchor?.attribution?.most_probable_reason && (
                     <div className="rounded-xl border border-border/50 bg-background/60 p-3 space-y-3">
@@ -1135,7 +1180,7 @@ function SharePriceAnalysisViewInner() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border/50 text-muted-foreground">
-                    {['#', 'Start', 'End', 'Regime', 'Return', 'vs BM', 'Days', 'Ev.', ''].map((h, hi) => (
+                    {['#', 'Start', 'End', 'Regime', 'Return', 'vs BM', 'Days', 'Ev.', 'Triang.', ''].map((h, hi) => (
                       <th key={hi} className="px-3 py-2 text-left font-medium">{h}</th>
                     ))}
                   </tr>
@@ -1162,6 +1207,26 @@ function SharePriceAnalysisViewInner() {
                         <td className={`px-3 py-2 ${colorPct(p.period_abnormal_return)}`}>{p.period_abnormal_return != null ? deltaPct(p.period_abnormal_return) : '\u2014'}</td>
                         <td className="px-3 py-2 text-muted-foreground">{p.trading_days}</td>
                         <td className="px-3 py-2 text-muted-foreground">{p.event_count ?? 0}</td>
+                        <td className="px-3 py-2">
+                          {p.triangulation?.flag && (
+                            <span
+                              title={p.triangulation.summary || ''}
+                              className={`inline-flex h-4 items-center rounded-full px-1.5 text-[9px] font-medium ${
+                                p.triangulation.flag === 'company_specific' ? 'bg-sky-500/15 text-sky-600' :
+                                p.triangulation.flag === 'sector_wide_confirmed' ? 'bg-emerald-500/15 text-emerald-600' :
+                                p.triangulation.flag === 'sector_wide_partial' ? 'bg-amber-500/15 text-amber-600' :
+                                p.triangulation.flag === 'peer_set_specific' ? 'bg-violet-500/15 text-violet-600' :
+                                'bg-muted text-muted-foreground'
+                              }`}
+                            >
+                              {p.triangulation.flag === 'company_specific' ? 'company' :
+                               p.triangulation.flag === 'sector_wide_confirmed' ? 'sector' :
+                               p.triangulation.flag === 'sector_wide_partial' ? 'sector*' :
+                               p.triangulation.flag === 'peer_set_specific' ? 'peer-set' :
+                               p.triangulation.flag}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           {level === 'sourced' && (
                             <span className="inline-flex h-4 items-center rounded-full bg-sky-500/15 px-1.5 text-[9px] font-medium text-sky-600" title="AI attribution with web sources">
