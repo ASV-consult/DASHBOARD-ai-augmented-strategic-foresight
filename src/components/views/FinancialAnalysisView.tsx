@@ -1863,22 +1863,47 @@ function HistoricalTableCard({
   years: Array<string | number>;
   groups: ReturnType<typeof groupHistoricalRows>;
 }) {
+  const [search, setSearch] = useState('');
+  const q = search.toLowerCase().trim();
+
+  const filterRows = (rows: FinancialHistoricalRow[]) =>
+    q ? rows.filter(r => r.metric.toLowerCase().includes(q)) : rows;
+
+  const filteredGroups = {
+    income: filterRows(groups.income),
+    balance: filterRows(groups.balance),
+    cash: filterRows(groups.cash),
+    other: filterRows(groups.other),
+  };
+  const totalFiltered = filteredGroups.income.length + filteredGroups.balance.length + filteredGroups.cash.length + filteredGroups.other.length;
+
   return (
     <SectionShell
       icon={FileText}
       title="Full Historical Data"
       subtitle="AR (blue) and YF (amber) shown side-by-side per metric."
     >
+      <div className="mb-3 flex items-center gap-3">
+        <input
+          type="text"
+          placeholder="Search metrics..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="h-8 w-64 rounded-lg border border-border/60 bg-background px-3 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+        />
+        {q && <span className="text-xs text-muted-foreground">{totalFiltered} result{totalFiltered !== 1 ? 's' : ''}</span>}
+      </div>
+
       <Tabs defaultValue={groups.income.length ? 'income' : groups.balance.length ? 'balance' : 'cash'}>
         <TabsList className="mb-3 rounded-xl">
-          {groups.income.length > 0 && <TabsTrigger value="income" className="rounded-lg">Income ({groups.income.length})</TabsTrigger>}
-          {groups.balance.length > 0 && <TabsTrigger value="balance" className="rounded-lg">Balance ({groups.balance.length})</TabsTrigger>}
-          {groups.cash.length > 0 && <TabsTrigger value="cash" className="rounded-lg">Cash ({groups.cash.length})</TabsTrigger>}
-          {groups.other.length > 0 && <TabsTrigger value="other" className="rounded-lg">Other ({groups.other.length})</TabsTrigger>}
+          {filteredGroups.income.length > 0 && <TabsTrigger value="income" className="rounded-lg">Income ({filteredGroups.income.length})</TabsTrigger>}
+          {filteredGroups.balance.length > 0 && <TabsTrigger value="balance" className="rounded-lg">Balance ({filteredGroups.balance.length})</TabsTrigger>}
+          {filteredGroups.cash.length > 0 && <TabsTrigger value="cash" className="rounded-lg">Cash ({filteredGroups.cash.length})</TabsTrigger>}
+          {filteredGroups.other.length > 0 && <TabsTrigger value="other" className="rounded-lg">Other ({filteredGroups.other.length})</TabsTrigger>}
         </TabsList>
 
         {(['income', 'balance', 'cash', 'other'] as const).map(key => {
-          const rows = groups[key];
+          const rows = filteredGroups[key];
           if (!rows || rows.length === 0) return null;
           return (
             <TabsContent key={key} value={key}>

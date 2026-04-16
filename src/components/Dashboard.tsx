@@ -397,19 +397,23 @@ export function Dashboard() {
 
   const companyContext = useMemo(() => {
     const strategyCompany = data?.strategy_context?.company || data?.company_strategy?.company;
-    const financialCompany = financialData?.company_profile;
-    const displayName = companyName || strategyCompany?.name || financialCompany?.name || 'Company';
-    const industry = strategyCompany?.industry || financialCompany?.industry || 'Industry';
+    // Home page hero derives identity from the strategic stream ONLY.
+    // Financial / macro streams show their own company info inside their
+    // respective cards — they should NOT override the top-level display
+    // when the strategic stream is loaded for a different company.
+    const displayName =
+      strategyCompany?.name ||
+      data?.meta?.company ||
+      companyName ||
+      'Company';
+    const industry = strategyCompany?.industry || 'Industry';
     const asOf =
       strategyCompany?.as_of_date ||
       data?.meta?.generated_at ||
-      financialData?.generated_at_utc ||
-      financialData?.run_meta?.created_at ||
       sharePriceData?._meta?.generated_at;
     const oneLine =
       data?.strategy_context?.strategy_snapshot?.one_line_positioning ||
       data?.company_strategy?.strategy_snapshot?.one_line_positioning ||
-      financialData?.executive?.executive_thesis ||
       macroData?.overview_view?.title ||
       'Use Streams Home to orient quickly, then open each stream executive overview.';
     return {
@@ -418,7 +422,7 @@ export function Dashboard() {
       asOf,
       oneLine,
     };
-  }, [companyName, data, financialData, macroData, sharePriceData]);
+  }, [companyName, data, macroData, sharePriceData]);
 
   const navigate = (view: DashboardView, _sidebarBehavior = true) => {
     if (view !== activeView) {

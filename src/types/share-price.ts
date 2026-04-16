@@ -186,6 +186,9 @@ export interface EventAttribution {
     catalysts?: string[];
     evidence_urls?: string[];
   };
+  // Claude analyst: explicit step-by-step reasoning chain
+  reasoning_chain?: string[];
+  hypothesis_formed?: string;
   // NEW: model's own verdict on what the move was, separate from the triangulation math.
   move_classification?: {
     verdict?: 'company_specific_negative' | 'company_specific_positive' |
