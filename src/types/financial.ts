@@ -574,6 +574,78 @@ export interface FinancialSegment {
   organic_growth?: number | null;
 }
 
+/* ──── Earnings Quality (AR vs YF quality-of-earnings analysis) ─────────
+   Produced by earnings_quality.py on top of ar_vs_yf_bridge and
+   metric_bridge. Primary signal: `favorability === "aggressive"` means
+   the annual report is presenting this metric more favorably than Yahoo
+   Finance — that is the main flag to surface. See
+   execution/part1/convergence/EARNINGS_QUALITY_PLAYBOOK.md. */
+
+export type EqFavorability =
+  | 'aggressive'
+  | 'conservative'
+  | 'aligned'
+  | 'disclosure_gap';
+export type EqSeverity = 'none' | 'low' | 'medium' | 'high';
+export type EqVerdict = 'clean' | 'mixed' | 'concerning' | 'limited';
+export type EqFavorableDirection = 'up' | 'down' | 'neutral';
+
+export interface EqBridgeMetric {
+  metric_name: string;
+  concept: string;
+  ar_value: number | null;
+  yf_value: number | null;
+  unit: string;
+  gap_pct: number | null;
+  favorable_direction: EqFavorableDirection;
+  favorability: EqFavorability;
+  severity: EqSeverity;
+  interpretation: string;
+}
+
+export interface EqHistoricalPattern {
+  pattern_key:
+    | 'adjustment_asymmetry'
+    | 'recurring_non_recurring'
+    | 'trend_divergence'
+    | 'disclosure_trend'
+    | string; // keep open for future pattern types
+  title: string;
+  narrative: string;
+  years_covered: number[];
+  favorable_years_count?: number | null;
+  unfavorable_years_count?: number | null;
+  cumulative_impact_eur_m?: number | null;
+  severity: EqSeverity;
+}
+
+export interface EqOneTimeDressing {
+  item: string;
+  amount_eur_m: number;
+  affects: string[];
+  recurring: boolean;
+  why_it_matters: string;
+}
+
+export interface EqDisclosureGap {
+  metric: string;
+  expected_in: string;
+  impact: string;
+  severity: EqSeverity;
+}
+
+export interface FinancialEarningsQuality {
+  overall_verdict: EqVerdict;
+  one_liner: string;
+  summary: string;
+  bridge_assessment: EqBridgeMetric[];
+  historical_patterns: EqHistoricalPattern[];
+  one_time_dressings: EqOneTimeDressing[];
+  disclosure_gaps: EqDisclosureGap[];
+  red_flags: string[];
+  methodology_note?: string | null;
+}
+
 export interface FinancialGuidance {
   target_period?: string;
   metric?: string;
@@ -603,6 +675,7 @@ export interface FinancialAnalysisData {
   // New top-level sections from analysis/json_builder.py
   ar_vs_yf_bridge?: FinancialBridgeRow[];
   metric_bridge?: FinancialMetricBridge;
+  earnings_quality?: FinancialEarningsQuality;
   segment_analysis?: FinancialSegment[];
   guidance_tracking?: FinancialGuidance[];
   // Legacy optional sections

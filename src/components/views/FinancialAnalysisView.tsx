@@ -59,11 +59,18 @@ import { cn } from '@/lib/utils';
 import {
   FinancialAnalysisSection,
   FinancialBridgeRow,
+  FinancialEarningsQuality,
   FinancialHistoricalRow,
   FinancialMetricBridge,
   FinancialMetricFamily,
   FinancialRatioCard,
   FinancialSegment,
+  EqBridgeMetric,
+  EqFavorability,
+  EqSeverity,
+  EqHistoricalPattern,
+  EqOneTimeDressing,
+  EqDisclosureGap,
 } from '@/types/financial';
 
 /* ============================================================
@@ -306,6 +313,7 @@ export function FinancialAnalysisView() {
   const takeaways = fd.key_takeaways ?? [];
   const bridge = fd.ar_vs_yf_bridge ?? [];
   const metricBridge = fd.metric_bridge;
+  const earningsQuality = fd.earnings_quality;
   const segments = fd.segment_analysis ?? [];
   const guidance = fd.guidance_tracking ?? [];
   const charts = fd.financial_charts;
@@ -330,6 +338,9 @@ export function FinancialAnalysisView() {
           <TabsTrigger value="overview" className="rounded-xl">Overview</TabsTrigger>
           <TabsTrigger value="performance" className="rounded-xl">Performance</TabsTrigger>
           <TabsTrigger value="bridge" className="rounded-xl">AR ↔ YF Bridge</TabsTrigger>
+          {earningsQuality && (
+            <TabsTrigger value="earnings-quality" className="rounded-xl">Earnings Quality</TabsTrigger>
+          )}
           <TabsTrigger value="segments" className="rounded-xl">Segments</TabsTrigger>
           <TabsTrigger value="ratios" className="rounded-xl">Ratios &amp; Historicals</TabsTrigger>
         </TabsList>
@@ -351,6 +362,12 @@ export function FinancialAnalysisView() {
         <TabsContent value="bridge" className="mt-6 space-y-6">
           <BridgePage bridge={bridge} sections={sections} metricBridge={metricBridge} />
         </TabsContent>
+
+        {earningsQuality && (
+          <TabsContent value="earnings-quality" className="mt-6 space-y-6">
+            <EarningsQualityPage data={earningsQuality} />
+          </TabsContent>
+        )}
 
         <TabsContent value="segments" className="mt-6 space-y-6">
           <SegmentsPage segments={segments} guidance={guidance} />
@@ -1534,6 +1551,351 @@ function WalksPanel({ family }: { family: FinancialMetricFamily }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   EARNINGS QUALITY PAGE — AR-vs-YF quality-of-earnings forensics
+============================================================ */
+
+function EarningsQualityPage({ data }: { data: FinancialEarningsQuality }) {
+  const verdictStyle: Record<string, string> = {
+    clean: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    mixed: 'bg-amber-100 text-amber-800 border-amber-200',
+    concerning: 'bg-red-100 text-red-800 border-red-200',
+    limited: 'bg-slate-100 text-slate-700 border-slate-200',
+  };
+
+  const hasData =
+    data.bridge_assessment.length > 0 ||
+    data.historical_patterns.length > 0 ||
+    data.one_time_dressings.length > 0 ||
+    data.disclosure_gaps.length > 0;
+
+  return (
+    <div className="space-y-6">
+      {/* Verdict banner */}
+      <Card className="border-2">
+        <CardContent className="p-6 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span
+              className={cn(
+                'inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide',
+                verdictStyle[data.overall_verdict] ?? verdictStyle.mixed
+              )}
+            >
+              {data.overall_verdict}
+            </span>
+            <span className="text-sm text-muted-foreground">
+              Earnings Quality Verdict
+            </span>
+          </div>
+          <p className="text-lg font-medium leading-relaxed">{data.one_liner}</p>
+          {data.summary && (
+            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+              {data.summary}
+            </p>
+          )}
+          {data.methodology_note && (
+            <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+              <strong>Methodology note:</strong> {data.methodology_note}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Red flags */}
+      {data.red_flags.length > 0 && (
+        <Card className="border-red-200 bg-red-50/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2 text-red-900">
+              <AlertTriangle className="h-4 w-4" />
+              Red Flags
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ol className="space-y-2 list-decimal list-inside text-sm text-red-900">
+              {data.red_flags.map((rf, i) => (
+                <li key={i} className="leading-relaxed">
+                  {rf}
+                </li>
+              ))}
+            </ol>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bridge assessment */}
+      {data.bridge_assessment.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              AR vs Yahoo Finance — Bridge Assessment
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Rows sorted aggressive-first. <strong>Aggressive</strong> means the
+              annual report is presenting this metric more favorably than Yahoo
+              Finance — the primary flag.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Metric</TableHead>
+                    <TableHead className="text-right">AR</TableHead>
+                    <TableHead className="text-right">YF</TableHead>
+                    <TableHead className="text-right">Gap %</TableHead>
+                    <TableHead>Favorability</TableHead>
+                    <TableHead>Severity</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.bridge_assessment.map((row, i) => (
+                    <BridgeAssessmentRow key={i} row={row} />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Historical patterns */}
+      {data.historical_patterns.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Historical Patterns</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Multi-year signals that single-year gaps cannot reveal.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.historical_patterns.map((p, i) => (
+              <HistoricalPatternCard key={i} pattern={p} />
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* One-time dressings */}
+      {data.one_time_dressings.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">One-Time Dressings</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Non-recurring items that inflate or deflate current-period headlines.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.one_time_dressings.map((d, i) => (
+              <OneTimeDressingCard key={i} item={d} />
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Disclosure gaps */}
+      {data.disclosure_gaps.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Disclosure Gaps</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {data.disclosure_gaps.map((g, i) => (
+                <li key={i} className="flex items-start gap-3 text-sm">
+                  <SeverityBadge severity={g.severity} />
+                  <div className="flex-1">
+                    <div className="font-medium">{g.metric}</div>
+                    <div className="text-xs text-muted-foreground">{g.impact}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {!hasData && (
+        <Card>
+          <CardContent className="p-6 text-sm text-muted-foreground">
+            No earnings-quality signals detected for this period.
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function FavorabilityBadge({ favorability }: { favorability: EqFavorability }) {
+  const styles: Record<EqFavorability, string> = {
+    aggressive: 'bg-red-100 text-red-800 border-red-200',
+    disclosure_gap: 'bg-amber-100 text-amber-800 border-amber-200',
+    conservative: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    aligned: 'bg-slate-100 text-slate-600 border-slate-200',
+  };
+  const labels: Record<EqFavorability, string> = {
+    aggressive: 'Aggressive (AR > YF)',
+    disclosure_gap: 'Disclosure gap',
+    conservative: 'Conservative',
+    aligned: 'Aligned',
+  };
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium',
+        styles[favorability] ?? styles.aligned
+      )}
+    >
+      {labels[favorability] ?? favorability}
+    </span>
+  );
+}
+
+function SeverityBadge({ severity }: { severity: EqSeverity }) {
+  const styles: Record<EqSeverity, string> = {
+    high: 'bg-red-600 text-white',
+    medium: 'bg-amber-500 text-white',
+    low: 'bg-slate-400 text-white',
+    none: 'bg-slate-200 text-slate-700',
+  };
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold uppercase',
+        styles[severity] ?? styles.none
+      )}
+    >
+      {severity}
+    </span>
+  );
+}
+
+function BridgeAssessmentRow({ row }: { row: EqBridgeMetric }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <TableRow
+        onClick={() => setOpen(o => !o)}
+        className="cursor-pointer hover:bg-muted/40"
+      >
+        <TableCell>
+          <div className="font-medium">{row.metric_name}</div>
+          <div className="text-xs text-muted-foreground">{row.concept}</div>
+        </TableCell>
+        <TableCell className="text-right tabular-nums">
+          {row.ar_value === null ? '—' : fmtNum(row.ar_value)}
+        </TableCell>
+        <TableCell className="text-right tabular-nums">
+          {row.yf_value === null ? '—' : fmtNum(row.yf_value)}
+        </TableCell>
+        <TableCell className="text-right tabular-nums">
+          {row.gap_pct === null ? '—' : `${row.gap_pct.toFixed(1)}%`}
+        </TableCell>
+        <TableCell>
+          <FavorabilityBadge favorability={row.favorability} />
+        </TableCell>
+        <TableCell>
+          <SeverityBadge severity={row.severity} />
+        </TableCell>
+      </TableRow>
+      {open && row.interpretation && (
+        <TableRow className="bg-muted/30">
+          <TableCell colSpan={6} className="text-sm text-muted-foreground">
+            {row.interpretation}
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
+}
+
+function HistoricalPatternCard({ pattern }: { pattern: EqHistoricalPattern }) {
+  return (
+    <div className="rounded-lg border p-4 space-y-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="font-medium text-sm">{pattern.title}</div>
+        <SeverityBadge severity={pattern.severity} />
+      </div>
+      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+        {pattern.years_covered.length > 0 && (
+          <span>
+            Years: {pattern.years_covered[0]}–
+            {pattern.years_covered[pattern.years_covered.length - 1]}
+          </span>
+        )}
+        {pattern.favorable_years_count !== null &&
+          pattern.favorable_years_count !== undefined &&
+          pattern.unfavorable_years_count !== null &&
+          pattern.unfavorable_years_count !== undefined && (
+            <span>
+              Favorable: <strong>{pattern.favorable_years_count}</strong> of{' '}
+              {pattern.favorable_years_count + pattern.unfavorable_years_count}
+            </span>
+          )}
+        {pattern.cumulative_impact_eur_m !== null &&
+          pattern.cumulative_impact_eur_m !== undefined && (
+            <span>
+              Cumulative impact:{' '}
+              <strong
+                className={cn(
+                  pattern.cumulative_impact_eur_m > 0
+                    ? 'text-red-700'
+                    : 'text-emerald-700'
+                )}
+              >
+                EUR {fmtNum(pattern.cumulative_impact_eur_m)}m
+              </strong>
+            </span>
+          )}
+      </div>
+      {pattern.narrative && (
+        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+          {pattern.narrative}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function OneTimeDressingCard({ item }: { item: EqOneTimeDressing }) {
+  const sign = item.amount_eur_m >= 0 ? '+' : '';
+  return (
+    <div className="rounded-lg border p-4 space-y-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="font-medium text-sm">{item.item}</div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold tabular-nums">
+            EUR {sign}
+            {fmtNum(item.amount_eur_m)}m
+          </span>
+          {item.recurring && (
+            <Badge
+              variant="outline"
+              className="border-amber-300 bg-amber-50 text-amber-800 text-[10px]"
+            >
+              Recurring
+            </Badge>
+          )}
+        </div>
+      </div>
+      {item.affects.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {item.affects.map(a => (
+            <Badge key={a} variant="secondary" className="text-[10px]">
+              {a}
+            </Badge>
+          ))}
+        </div>
+      )}
+      {item.why_it_matters && (
+        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+          {item.why_it_matters}
+        </p>
+      )}
     </div>
   );
 }
