@@ -48,7 +48,16 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react';
-import type { SignificantEvent, TrendPeriod } from '@/types/share-price';
+import type {
+  SignificantEvent,
+  TrendPeriod,
+  Watch as WatchType,
+  WatchItem,
+  WatchStatus,
+  WatchUrgency,
+  WatchCategory,
+} from '@/types/share-price';
+import { cn } from '@/lib/utils';
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 
@@ -158,6 +167,8 @@ function SharePriceAnalysisViewInner() {
   const pc = sharePriceData?.peer_comparison;
   const se = sharePriceData?.significant_events ?? [];
   const eg = sharePriceData?.executive_guide;
+  const fs = sharePriceData?.forward_scenarios;
+  const watch = sharePriceData?.watch;
   const periods = ta?.trend_periods ?? [];
 
   // Full price series — also merge peer composite if available (indexed to 100, on right axis)
@@ -410,13 +421,131 @@ function SharePriceAnalysisViewInner() {
                 ))}
               </div>
             )}
-            {eg.current_watch && (
+            {!watch && eg.current_watch && (
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-start gap-2">
                 <Eye className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
                 <div>
                   <span className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Watch now</span>
                   <p className="text-sm text-amber-900/80 dark:text-amber-200 mt-0.5">{eg.current_watch}</p>
                 </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* ── 3a-bis. Structured Watch section ───────────────────────────────── */}
+      {watch && watch.items && watch.items.length > 0 && (
+        <WatchSection watch={watch} />
+      )}
+
+      {/* ── 3b. Forward scenarios ──────────────────────────────────────────── */}
+      {fs?.scenarios && fs.scenarios.length > 0 ? (
+        <Card className="rounded-2xl border border-violet-500/30 bg-violet-500/5 shadow-sm">
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <Badge className="bg-violet-500/15 text-violet-600 border-violet-500/30">Scenarios</Badge>
+              <span className="text-xs text-muted-foreground">
+                Forward-looking outlook{fs.as_of_date ? ` (as of ${fs.as_of_date})` : ''}
+                {fs.current_price ? ` — Current: €${fs.current_price.toFixed(2)}` : ''}
+              </span>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              {fs.scenarios.map((sc, i) => {
+                const colorMap: Record<string, string> = {
+                  emerald: 'border-emerald-500/40 bg-emerald-500/8',
+                  slate: 'border-slate-400/40 bg-slate-400/8',
+                  red: 'border-red-500/40 bg-red-500/8',
+                  amber: 'border-amber-500/40 bg-amber-500/8',
+                };
+                const textColorMap: Record<string, string> = {
+                  emerald: 'text-emerald-600',
+                  slate: 'text-slate-500',
+                  red: 'text-red-600',
+                  amber: 'text-amber-600',
+                };
+                const borderColor = colorMap[sc.color ?? 'slate'] ?? colorMap.slate;
+                const textColor = textColorMap[sc.color ?? 'slate'] ?? textColorMap.slate;
+
+                return (
+                  <div key={i} className={`rounded-xl border p-4 space-y-2 ${borderColor}`}>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-sm font-bold ${textColor}`}>{sc.name}</span>
+                      <Badge variant="outline" className={`text-xs ${textColor} border-current`}>
+                        {sc.probability_pct}%
+                      </Badge>
+                    </div>
+
+                    {(sc.target_price_low != null || sc.target_price_high != null) && (
+                      <div className="text-lg font-semibold text-foreground">
+                        €{sc.target_price_low ?? '?'} – €{sc.target_price_high ?? '?'}
+                      </div>
+                    )}
+
+                    {sc.timeline && (
+                      <p className="text-xs text-muted-foreground">{sc.timeline}</p>
+                    )}
+
+                    {sc.triggers && sc.triggers.length > 0 && (
+                      <div className="space-y-1 pt-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          What needs to happen
+                        </p>
+                        {sc.triggers.map((t, j) => (
+                          <p key={j} className="text-xs text-muted-foreground leading-snug">
+                            • {t}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+
+                    {sc.what_confirms_it && sc.what_confirms_it.length > 0 && (
+                      <div className="space-y-1 pt-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Early confirmation signals
+                        </p>
+                        {sc.what_confirms_it.map((c, j) => (
+                          <p key={j} className="text-xs text-muted-foreground leading-snug">
+                            • {c}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {fs.next_catalyst && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-start gap-2">
+                <Eye className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+                    Next catalyst{fs.next_catalyst.date ? `: ${fs.next_catalyst.date}` : ''}
+                  </span>
+                  {fs.next_catalyst.event && (
+                    <p className="text-sm text-amber-900/80 dark:text-amber-200 mt-0.5 font-medium">
+                      {fs.next_catalyst.event}
+                    </p>
+                  )}
+                  {fs.next_catalyst.expected_impact && (
+                    <p className="text-xs text-amber-800/70 dark:text-amber-300/70 mt-0.5">
+                      {fs.next_catalyst.expected_impact}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {fs.key_uncertainties && fs.key_uncertainties.length > 0 && (
+              <div className="space-y-1 pt-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Key uncertainties
+                </p>
+                {fs.key_uncertainties.map((u, j) => (
+                  <p key={j} className="text-xs text-muted-foreground">• {u}</p>
+                ))}
               </div>
             )}
           </CardContent>
@@ -1579,5 +1708,455 @@ function SegmentPeerMap({ peerAttribution, peers, companyName, companyTicker }: 
         </CardContent>
       )}
     </Card>
+  );
+}
+
+/* ============================================================
+   WATCH SECTION — structured monitoring signals
+============================================================ */
+
+const CATEGORY_LABEL: Record<WatchCategory, string> = {
+  earnings_event: 'Earnings event',
+  commodity_price: 'Commodity price',
+  corporate_action: 'Corporate action',
+  partnership_risk: 'Partnership risk',
+  regulatory: 'Regulatory',
+  macro: 'Macro',
+  industry_structural: 'Industry structural',
+  competitor_action: 'Competitor action',
+  operational: 'Operational',
+  technology: 'Technology',
+};
+
+const STATUS_LABEL: Record<WatchStatus, string> = {
+  upcoming: 'Upcoming',
+  active: 'Active',
+  approaching: 'Approaching',
+  fired_bull: 'Fired bull',
+  fired_bear: 'Fired bear',
+  dormant: 'Dormant',
+};
+
+const STATUS_CLS: Record<WatchStatus, string> = {
+  upcoming: 'bg-sky-500/15 text-sky-700 border-sky-500/30',
+  active: 'bg-violet-500/15 text-violet-700 border-violet-500/30',
+  approaching: 'bg-amber-500/15 text-amber-700 border-amber-500/30',
+  fired_bull: 'bg-emerald-500/20 text-emerald-800 border-emerald-500/40',
+  fired_bear: 'bg-red-500/20 text-red-800 border-red-500/40',
+  dormant: 'bg-slate-300/40 text-slate-600 border-slate-300',
+};
+
+const URGENCY_CLS: Record<WatchUrgency, string> = {
+  high: 'bg-red-600 text-white',
+  medium: 'bg-amber-500 text-white',
+  low: 'bg-slate-400 text-white',
+};
+
+const STATUS_RANK: Record<WatchStatus, number> = {
+  fired_bear: 0,
+  fired_bull: 1,
+  approaching: 2,
+  upcoming: 3,
+  active: 4,
+  dormant: 5,
+};
+
+const URGENCY_RANK: Record<WatchUrgency, number> = { high: 0, medium: 1, low: 2 };
+
+function WatchSection({ watch }: { watch: WatchType }) {
+  const [filter, setFilter] = useState<'all' | WatchCategory>('all');
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const categories = useMemo(() => {
+    const set = new Set<WatchCategory>();
+    watch.items.forEach(i => set.add(i.category));
+    return Array.from(set);
+  }, [watch.items]);
+
+  const sortedFiltered = useMemo(() => {
+    const items =
+      filter === 'all' ? watch.items : watch.items.filter(i => i.category === filter);
+    return [...items].sort((a, b) => {
+      // urgency first, then status, then scheduled_date ascending
+      const u = URGENCY_RANK[a.urgency] - URGENCY_RANK[b.urgency];
+      if (u !== 0) return u;
+      const s = STATUS_RANK[a.status] - STATUS_RANK[b.status];
+      if (s !== 0) return s;
+      const da = a.scheduled_date ?? '9999';
+      const db = b.scheduled_date ?? '9999';
+      return da.localeCompare(db);
+    });
+  }, [watch.items, filter]);
+
+  return (
+    <Card className="rounded-2xl border border-amber-500/30 bg-amber-500/5 shadow-sm">
+      <CardContent className="p-6 space-y-4">
+        {/* Header */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Eye className="h-4 w-4 text-amber-600" />
+              <Badge className="bg-amber-500/20 text-amber-800 border-amber-500/30">
+                Watch
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                {watch.items.length} items · as of {watch.as_of}
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground max-w-3xl leading-relaxed">
+              {watch.summary}
+            </p>
+          </div>
+        </div>
+
+        {/* Filter chips */}
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setFilter('all')}
+            className={cn(
+              'rounded-full border px-3 py-1 text-xs font-medium transition',
+              filter === 'all'
+                ? 'bg-foreground text-background border-foreground'
+                : 'bg-background text-muted-foreground border-border hover:bg-muted'
+            )}
+          >
+            All ({watch.items.length})
+          </button>
+          {categories.map(cat => {
+            const count = watch.items.filter(i => i.category === cat).length;
+            return (
+              <button
+                key={cat}
+                onClick={() => setFilter(cat)}
+                className={cn(
+                  'rounded-full border px-3 py-1 text-xs font-medium transition',
+                  filter === cat
+                    ? 'bg-foreground text-background border-foreground'
+                    : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                )}
+              >
+                {CATEGORY_LABEL[cat]} ({count})
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Items */}
+        <div className="space-y-3">
+          {sortedFiltered.map(item => (
+            <WatchItemCard
+              key={item.id}
+              item={item}
+              open={!!expanded[item.id]}
+              onToggle={() =>
+                setExpanded(e => ({ ...e, [item.id]: !e[item.id] }))
+              }
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function WatchItemCard({
+  item,
+  open,
+  onToggle,
+}: {
+  item: WatchItem;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const hasNumericRange =
+    item.thresholds.unit &&
+    (item.thresholds.bull_level != null || item.thresholds.bear_level != null);
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-background/80 p-4 space-y-3">
+      {/* Top row: id, title, badges */}
+      <div
+        className="flex flex-wrap items-start justify-between gap-2 cursor-pointer"
+        onClick={onToggle}
+      >
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <span className="mt-0.5 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-mono font-semibold text-muted-foreground shrink-0">
+            {item.id}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <span className="text-sm font-semibold text-foreground">
+                {item.title}
+              </span>
+              <span
+                className={cn(
+                  'inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                  STATUS_CLS[item.status]
+                )}
+              >
+                {STATUS_LABEL[item.status]}
+              </span>
+              <span
+                className={cn(
+                  'inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase',
+                  URGENCY_CLS[item.urgency]
+                )}
+              >
+                {item.urgency}
+              </span>
+              <span className="inline-flex items-center rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                {CATEGORY_LABEL[item.category]}
+              </span>
+              <span className="inline-flex items-center rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                {item.horizon.replace('_', ' ')}
+              </span>
+              {item.scheduled_date && (
+                <span className="inline-flex items-center rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] text-sky-700">
+                  📅 {item.scheduled_date}
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {item.summary}
+            </p>
+          </div>
+        </div>
+        <button
+          className="shrink-0 text-muted-foreground hover:text-foreground transition"
+          aria-label={open ? 'Collapse' : 'Expand'}
+          onClick={e => {
+            e.stopPropagation();
+            onToggle();
+          }}
+        >
+          {open ? (
+            <ChevronUp className="h-4 w-4" />
+          ) : (
+            <ChevronDown className="h-4 w-4" />
+          )}
+        </button>
+      </div>
+
+      {/* Numeric threshold bar (when applicable) — always shown if numeric */}
+      {hasNumericRange && (
+        <ThresholdBar
+          bearLevel={item.thresholds.bear_level ?? null}
+          bullLevel={item.thresholds.bull_level ?? null}
+          current={item.current_value ?? null}
+          unit={item.thresholds.unit ?? ''}
+        />
+      )}
+
+      {/* Expanded body */}
+      {open && (
+        <div className="pt-2 space-y-3 border-t border-border/40">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+              Why it matters
+            </p>
+            <p className="text-sm text-foreground/90 leading-relaxed">
+              {item.why_it_matters}
+            </p>
+          </div>
+
+          {item.what_to_look_for.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                What to look for
+              </p>
+              <ul className="list-disc list-inside space-y-0.5 text-sm text-foreground/90">
+                {item.what_to_look_for.map((w, i) => (
+                  <li key={i} className="leading-relaxed">
+                    {w}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {(item.thresholds.bull || item.thresholds.bear) && (
+            <div className="grid gap-2 md:grid-cols-2">
+              {item.thresholds.bull && (
+                <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 mb-0.5">
+                    Bull trigger
+                  </p>
+                  <p className="text-xs text-foreground/90 leading-relaxed">
+                    {item.thresholds.bull}
+                  </p>
+                </div>
+              )}
+              {item.thresholds.bear && (
+                <div className="rounded-md border border-red-500/30 bg-red-500/5 p-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-red-700 mb-0.5">
+                    Bear trigger
+                  </p>
+                  <p className="text-xs text-foreground/90 leading-relaxed">
+                    {item.thresholds.bear}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {item.current_status_note && (
+            <div className="rounded-md border border-border/40 bg-muted/30 px-2 py-1.5 text-xs text-muted-foreground italic">
+              {item.current_status_note}
+            </div>
+          )}
+
+          {item.impact_estimate && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                Impact estimate
+              </p>
+              <div className="space-y-1 text-sm text-foreground/90">
+                {item.impact_estimate.bull && (
+                  <p>
+                    <span className="font-semibold text-emerald-700">Bull:</span>{' '}
+                    {item.impact_estimate.bull}
+                  </p>
+                )}
+                {item.impact_estimate.bear && (
+                  <p>
+                    <span className="font-semibold text-red-700">Bear:</span>{' '}
+                    {item.impact_estimate.bear}
+                  </p>
+                )}
+                {item.impact_estimate.per_unit_move && (
+                  <p className="text-muted-foreground">
+                    <span className="font-semibold">Per move:</span>{' '}
+                    {item.impact_estimate.per_unit_move}
+                  </p>
+                )}
+                {item.impact_estimate.notes && (
+                  <p className="text-xs text-muted-foreground italic">
+                    {item.impact_estimate.notes}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {(item.linked_scenarios.length > 0 ||
+            item.linked_drivers.length > 0) && (
+            <div className="flex flex-wrap gap-3">
+              {item.linked_scenarios.length > 0 && (
+                <div>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Scenarios:
+                  </span>{' '}
+                  {item.linked_scenarios.map(s => (
+                    <span
+                      key={s}
+                      className="inline-flex items-center rounded-md bg-violet-500/10 text-violet-700 border border-violet-500/30 px-1.5 py-0.5 text-[10px] mr-1"
+                    >
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {item.linked_drivers.length > 0 && (
+                <div>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Driver:
+                  </span>{' '}
+                  {item.linked_drivers.map(d => (
+                    <span
+                      key={d}
+                      className="inline-flex items-center rounded-md bg-sky-500/10 text-sky-700 border border-sky-500/30 px-1.5 py-0.5 text-[10px] mr-1"
+                    >
+                      {d}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Source footer */}
+          <div className="text-[10px] text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5 pt-1 border-t border-border/30">
+            <span>
+              <strong>Source:</strong> {item.source.type.replace('_', ' ')}
+              {item.source.provider ? ` — ${item.source.provider}` : ''}
+            </span>
+            <span>
+              <strong>Cadence:</strong> {item.source.cadence.replace('_', ' ')}
+            </span>
+            {item.last_checked && (
+              <span>
+                <strong>Last checked:</strong> {item.last_checked}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ThresholdBar({
+  bearLevel,
+  bullLevel,
+  current,
+  unit,
+}: {
+  bearLevel: number | null;
+  bullLevel: number | null;
+  current: number | null;
+  unit: string;
+}) {
+  // Build a simple labelled range from bear → current → bull.
+  if (bearLevel == null && bullLevel == null) return null;
+
+  const values: number[] = [];
+  if (bearLevel != null) values.push(bearLevel);
+  if (bullLevel != null) values.push(bullLevel);
+  if (current != null) values.push(current);
+  const minV = Math.min(...values);
+  const maxV = Math.max(...values);
+  const span = maxV - minV || 1;
+  const pos = (v: number): number => ((v - minV) / span) * 100;
+
+  return (
+    <div className="px-1 pt-1 pb-0.5">
+      <div className="relative h-2 rounded-full bg-gradient-to-r from-red-500/30 via-amber-400/30 to-emerald-500/30">
+        {bearLevel != null && (
+          <div
+            className="absolute -top-0.5 h-3 w-0.5 bg-red-600"
+            style={{ left: `${pos(bearLevel)}%` }}
+          />
+        )}
+        {bullLevel != null && (
+          <div
+            className="absolute -top-0.5 h-3 w-0.5 bg-emerald-600"
+            style={{ left: `${pos(bullLevel)}%` }}
+          />
+        )}
+        {current != null && (
+          <div
+            className="absolute -top-1 h-4 w-1 rounded-full bg-foreground shadow-lg"
+            style={{ left: `calc(${pos(current)}% - 2px)` }}
+          />
+        )}
+      </div>
+      <div className="flex justify-between mt-0.5 text-[10px] tabular-nums text-muted-foreground">
+        {bearLevel != null && (
+          <span className="text-red-700 font-semibold">
+            {bearLevel.toLocaleString()} {unit}
+          </span>
+        )}
+        {current != null && (
+          <span className="text-foreground font-semibold">
+            Now: {current.toLocaleString()} {unit}
+          </span>
+        )}
+        {bullLevel != null && (
+          <span className="text-emerald-700 font-semibold">
+            {bullLevel.toLocaleString()} {unit}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }

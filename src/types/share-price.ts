@@ -246,6 +246,138 @@ export interface ExecutiveGuide {
   current_watch?: string;
 }
 
+// Forward-looking scenarios (Layer 1 of predictive framework)
+export interface ForwardScenario {
+  name: string;                    // "Bull Case", "Base Case", "Bear Case"
+  probability_pct: number;         // 30, 45, 25
+  target_price_low?: number;
+  target_price_high?: number;
+  triggers: string[];              // what needs to happen for this scenario
+  what_confirms_it: string[];      // early signals that this scenario is playing out
+  timeline?: string;               // "12-18 months"
+  color?: string;                  // for dashboard rendering: "emerald", "slate", "red"
+}
+
+export interface ForwardScenarios {
+  as_of_date: string;              // when scenarios were written
+  current_price?: number;
+  scenarios: ForwardScenario[];
+  key_uncertainties?: string[];    // what the model genuinely cannot predict
+  next_catalyst?: {                // nearest date that could change the picture
+    date?: string;
+    event?: string;
+    expected_impact?: string;
+  };
+}
+
+/* ──── Structured Watch / monitoring section ─────────────────────────
+   Sits at top level inside the share price JSON alongside
+   `executive_guide` and `forward_scenarios`. Each watch item is a
+   specific signal to monitor with bull/bear thresholds, linked
+   scenarios and drivers, and a source/cadence stamp.
+   Schema defined in execution/part1/convergence/watch_models.py. */
+
+export type WatchCategory =
+  | 'earnings_event'
+  | 'commodity_price'
+  | 'corporate_action'
+  | 'partnership_risk'
+  | 'regulatory'
+  | 'macro'
+  | 'industry_structural'
+  | 'competitor_action'
+  | 'operational'
+  | 'technology';
+
+export type WatchDirection =
+  | 'bull_positive'
+  | 'bear_positive'
+  | 'symmetric'
+  | 'bidirectional';
+
+export type WatchHorizon = 'near_term' | 'ongoing' | 'medium_term';
+export type WatchUrgency = 'high' | 'medium' | 'low';
+
+export type WatchStatus =
+  | 'upcoming'
+  | 'active'
+  | 'approaching'
+  | 'fired_bull'
+  | 'fired_bear'
+  | 'dormant';
+
+export type WatchSourceType =
+  | 'market_data'
+  | 'company_release'
+  | 'news'
+  | 'regulatory_body'
+  | 'industry_body'
+  | 'analyst_report';
+
+export type WatchCadence =
+  | 'daily'
+  | 'weekly'
+  | 'monthly'
+  | 'quarterly'
+  | 'scheduled_event'
+  | 'as_available';
+
+export interface WatchThresholds {
+  bull?: string | null;
+  bear?: string | null;
+  bull_level?: number | null;
+  bear_level?: number | null;
+  unit?: string | null;
+}
+
+export interface WatchImpact {
+  bull?: string | null;
+  bear?: string | null;
+  per_unit_move?: string | null;
+  notes?: string | null;
+}
+
+export interface WatchSource {
+  type: WatchSourceType;
+  provider?: string | null;
+  cadence: WatchCadence;
+  reference?: string | null;
+}
+
+export interface WatchItem {
+  id: string;
+  title: string;
+  category: WatchCategory;
+  direction: WatchDirection;
+  horizon: WatchHorizon;
+  urgency: WatchUrgency;
+  status: WatchStatus;
+
+  summary: string;
+  why_it_matters: string;
+  what_to_look_for: string[];
+
+  scheduled_date?: string | null;
+  thresholds: WatchThresholds;
+  current_value?: number | null;
+  current_status_note?: string | null;
+
+  impact_estimate?: WatchImpact | null;
+
+  linked_scenarios: string[];
+  linked_drivers: string[];
+
+  source: WatchSource;
+  last_checked?: string | null;
+  verification?: string | null;
+}
+
+export interface Watch {
+  as_of: string;
+  summary: string;
+  items: WatchItem[];
+}
+
 // Peer attribution + segment coverage (lives under trend_analysis.peer_attribution)
 export interface PeerAttribution {
   peers_used?: string[];
@@ -278,4 +410,6 @@ export interface SharePriceAnalysisData {
   peer_comparison?: PeerComparison;
   significant_events?: SignificantEvent[];
   executive_guide?: ExecutiveGuide;
+  forward_scenarios?: ForwardScenarios;
+  watch?: Watch;
 }
