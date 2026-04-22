@@ -2,6 +2,7 @@ import React, { Component, useMemo, useRef, useState } from 'react';
 import { useForesight } from '@/contexts/ForesightContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // ─── Error boundary to catch render crashes ──────────────────────────────────
 class SharePriceErrorBoundary extends Component<
@@ -51,6 +52,7 @@ import {
 import type {
   SignificantEvent,
   TrendPeriod,
+  ForwardScenarios as ForwardScenariosType,
   Watch as WatchType,
   WatchItem,
   WatchStatus,
@@ -336,6 +338,9 @@ function SharePriceAnalysisViewInner() {
     );
   }, [selectedPeriod, se]);
 
+  const hasWatchOrScenarios = (watch && watch.items && watch.items.length > 0) ||
+    (fs?.scenarios && fs.scenarios.length > 0);
+
   return (
     <div className="space-y-6">
 
@@ -396,17 +401,34 @@ function SharePriceAnalysisViewInner() {
         <KpiStrip label="Ann. return" value={deltaPct(pp?.target?.annualized_return)} positive={(pp?.target?.annualized_return ?? 0) > 0} />
       </div>
 
+      {/* ── Tabs: Overview vs Watch & Scenarios ─────────────────────────────── */}
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="rounded-2xl bg-muted/50 p-1">
+          <TabsTrigger value="overview" className="rounded-xl">Overview</TabsTrigger>
+          {hasWatchOrScenarios && (
+            <TabsTrigger value="watch-scenarios" className="rounded-xl">
+              Watch &amp; Scenarios
+              {watch?.items && watch.items.length > 0 && (
+                <span className="ml-2 rounded-full bg-amber-500/20 text-amber-700 px-1.5 py-0.5 text-[10px] font-semibold">
+                  {watch.items.length}
+                </span>
+              )}
+            </TabsTrigger>
+          )}
+        </TabsList>
+
+        <TabsContent value="overview" className="mt-6 space-y-6">
+
       {/* ── 3. Executive guide ─────────────────────────────────────────────── */}
       {eg?.stock_story ? (
         <Card className="rounded-2xl border border-sky-500/30 bg-sky-500/5 shadow-sm">
-          <CardContent className="p-6 space-y-4">
+          <CardContent className="p-6 space-y-5">
             <div className="flex items-center gap-2">
               <Badge className="bg-sky-500/15 text-sky-600 border-sky-500/30">Guide</Badge>
-              <span className="text-xs text-muted-foreground">AI-generated orientation</span>
             </div>
-            <p className="text-sm text-foreground leading-relaxed">{eg.stock_story}</p>
+            <StockStory text={eg.stock_story} />
             {eg.key_drivers && eg.key_drivers.length > 0 && (
-              <div className="space-y-2">
+              <div className="space-y-2 pt-2 border-t border-sky-500/20">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Key drivers</p>
                 {eg.key_drivers.map((d, i) => (
                   <div key={i} className="flex gap-3 items-start">
@@ -434,123 +456,7 @@ function SharePriceAnalysisViewInner() {
         </Card>
       ) : null}
 
-      {/* ── 3a-bis. Structured Watch section ───────────────────────────────── */}
-      {watch && watch.items && watch.items.length > 0 && (
-        <WatchSection watch={watch} />
-      )}
-
-      {/* ── 3b. Forward scenarios ──────────────────────────────────────────── */}
-      {fs?.scenarios && fs.scenarios.length > 0 ? (
-        <Card className="rounded-2xl border border-violet-500/30 bg-violet-500/5 shadow-sm">
-          <CardContent className="p-6 space-y-4">
-            <div className="flex items-center gap-2">
-              <Badge className="bg-violet-500/15 text-violet-600 border-violet-500/30">Scenarios</Badge>
-              <span className="text-xs text-muted-foreground">
-                Forward-looking outlook{fs.as_of_date ? ` (as of ${fs.as_of_date})` : ''}
-                {fs.current_price ? ` — Current: €${fs.current_price.toFixed(2)}` : ''}
-              </span>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              {fs.scenarios.map((sc, i) => {
-                const colorMap: Record<string, string> = {
-                  emerald: 'border-emerald-500/40 bg-emerald-500/8',
-                  slate: 'border-slate-400/40 bg-slate-400/8',
-                  red: 'border-red-500/40 bg-red-500/8',
-                  amber: 'border-amber-500/40 bg-amber-500/8',
-                };
-                const textColorMap: Record<string, string> = {
-                  emerald: 'text-emerald-600',
-                  slate: 'text-slate-500',
-                  red: 'text-red-600',
-                  amber: 'text-amber-600',
-                };
-                const borderColor = colorMap[sc.color ?? 'slate'] ?? colorMap.slate;
-                const textColor = textColorMap[sc.color ?? 'slate'] ?? textColorMap.slate;
-
-                return (
-                  <div key={i} className={`rounded-xl border p-4 space-y-2 ${borderColor}`}>
-                    <div className="flex items-center justify-between">
-                      <span className={`text-sm font-bold ${textColor}`}>{sc.name}</span>
-                      <Badge variant="outline" className={`text-xs ${textColor} border-current`}>
-                        {sc.probability_pct}%
-                      </Badge>
-                    </div>
-
-                    {(sc.target_price_low != null || sc.target_price_high != null) && (
-                      <div className="text-lg font-semibold text-foreground">
-                        €{sc.target_price_low ?? '?'} – €{sc.target_price_high ?? '?'}
-                      </div>
-                    )}
-
-                    {sc.timeline && (
-                      <p className="text-xs text-muted-foreground">{sc.timeline}</p>
-                    )}
-
-                    {sc.triggers && sc.triggers.length > 0 && (
-                      <div className="space-y-1 pt-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          What needs to happen
-                        </p>
-                        {sc.triggers.map((t, j) => (
-                          <p key={j} className="text-xs text-muted-foreground leading-snug">
-                            • {t}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-
-                    {sc.what_confirms_it && sc.what_confirms_it.length > 0 && (
-                      <div className="space-y-1 pt-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Early confirmation signals
-                        </p>
-                        {sc.what_confirms_it.map((c, j) => (
-                          <p key={j} className="text-xs text-muted-foreground leading-snug">
-                            • {c}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {fs.next_catalyst && (
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-start gap-2">
-                <Eye className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                <div>
-                  <span className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
-                    Next catalyst{fs.next_catalyst.date ? `: ${fs.next_catalyst.date}` : ''}
-                  </span>
-                  {fs.next_catalyst.event && (
-                    <p className="text-sm text-amber-900/80 dark:text-amber-200 mt-0.5 font-medium">
-                      {fs.next_catalyst.event}
-                    </p>
-                  )}
-                  {fs.next_catalyst.expected_impact && (
-                    <p className="text-xs text-amber-800/70 dark:text-amber-300/70 mt-0.5">
-                      {fs.next_catalyst.expected_impact}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {fs.key_uncertainties && fs.key_uncertainties.length > 0 && (
-              <div className="space-y-1 pt-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Key uncertainties
-                </p>
-                {fs.key_uncertainties.map((u, j) => (
-                  <p key={j} className="text-xs text-muted-foreground">• {u}</p>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
+      {/* Watch + Forward Scenarios moved to the "Watch & Scenarios" tab — rendered at the bottom of Tabs. */}
 
       {/* ── 4. Price chart + regime strip ────────────────────────────────── */}
       <Card className="rounded-2xl border border-border/60 bg-card/70 shadow-sm">
@@ -1473,6 +1379,20 @@ function SharePriceAnalysisViewInner() {
           <KpiCard label="Window -3/+3" value={deltaPct(pc.earnings_reaction.avg_return_m3_p3)} />
         </div>
       )}
+
+        </TabsContent>
+
+        {hasWatchOrScenarios && (
+          <TabsContent value="watch-scenarios" className="mt-6 space-y-6">
+            {watch && watch.items && watch.items.length > 0 && (
+              <WatchSection watch={watch} />
+            )}
+            {fs?.scenarios && fs.scenarios.length > 0 && (
+              <ForwardScenariosCard fs={fs} />
+            )}
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   );
 }
@@ -2157,6 +2077,296 @@ function ThresholdBar({
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   FORWARD SCENARIOS — extracted from inline JSX so it can live
+   inside the Watch & Scenarios tab.
+============================================================ */
+
+function ForwardScenariosCard({ fs }: { fs: ForwardScenariosType }) {
+  return (
+    <Card className="rounded-2xl border border-violet-500/30 bg-violet-500/5 shadow-sm">
+      <CardContent className="p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <Badge className="bg-violet-500/15 text-violet-600 border-violet-500/30">Scenarios</Badge>
+          <span className="text-xs text-muted-foreground">
+            Forward-looking outlook{fs.as_of_date ? ` (as of ${fs.as_of_date})` : ''}
+            {fs.current_price ? ` — Current: €${fs.current_price.toFixed(2)}` : ''}
+          </span>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          {fs.scenarios.map((sc, i) => {
+            const colorMap: Record<string, string> = {
+              emerald: 'border-emerald-500/40 bg-emerald-500/8',
+              slate: 'border-slate-400/40 bg-slate-400/8',
+              red: 'border-red-500/40 bg-red-500/8',
+              amber: 'border-amber-500/40 bg-amber-500/8',
+            };
+            const textColorMap: Record<string, string> = {
+              emerald: 'text-emerald-600',
+              slate: 'text-slate-500',
+              red: 'text-red-600',
+              amber: 'text-amber-600',
+            };
+            const borderColor = colorMap[sc.color ?? 'slate'] ?? colorMap.slate;
+            const textColor = textColorMap[sc.color ?? 'slate'] ?? textColorMap.slate;
+
+            return (
+              <div key={i} className={`rounded-xl border p-4 space-y-2 ${borderColor}`}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-sm font-bold ${textColor}`}>{sc.name}</span>
+                  <Badge variant="outline" className={`text-xs ${textColor} border-current`}>
+                    {sc.probability_pct}%
+                  </Badge>
+                </div>
+
+                {(sc.target_price_low != null || sc.target_price_high != null) && (
+                  <div className="text-lg font-semibold text-foreground">
+                    €{sc.target_price_low ?? '?'} – €{sc.target_price_high ?? '?'}
+                  </div>
+                )}
+
+                {sc.timeline && (
+                  <p className="text-xs text-muted-foreground">{sc.timeline}</p>
+                )}
+
+                {sc.triggers && sc.triggers.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      What needs to happen
+                    </p>
+                    {sc.triggers.map((t, j) => (
+                      <p key={j} className="text-xs text-muted-foreground leading-snug">
+                        • {t}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {sc.what_confirms_it && sc.what_confirms_it.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Early confirmation signals
+                    </p>
+                    {sc.what_confirms_it.map((c, j) => (
+                      <p key={j} className="text-xs text-muted-foreground leading-snug">
+                        • {c}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {fs.next_catalyst && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-start gap-2">
+            <Eye className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <span className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+                Next catalyst{fs.next_catalyst.date ? `: ${fs.next_catalyst.date}` : ''}
+              </span>
+              {fs.next_catalyst.event && (
+                <p className="text-sm text-amber-900/80 dark:text-amber-200 mt-0.5 font-medium">
+                  {fs.next_catalyst.event}
+                </p>
+              )}
+              {fs.next_catalyst.expected_impact && (
+                <p className="text-xs text-amber-800/70 dark:text-amber-300/70 mt-0.5">
+                  {fs.next_catalyst.expected_impact}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {fs.key_uncertainties && fs.key_uncertainties.length > 0 && (
+          <div className="space-y-1 pt-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Key uncertainties
+            </p>
+            {fs.key_uncertainties.map((u, j) => (
+              <p key={j} className="text-xs text-muted-foreground">• {u}</p>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ============================================================
+   STOCK STORY — parse the executive guide narrative into
+   readable, structured sections. Headers are detected from the
+   known uppercase markers and Act I / II / III leads. No content
+   change — pure layout.
+============================================================ */
+
+interface StoryBlock {
+  heading?: string;
+  body: string;
+  isActs?: boolean;  // special-case for the Three Acts section
+  isBullets?: boolean;  // special-case for the Interesting Signals bullets
+}
+
+const KNOWN_HEADERS: Array<{ pattern: RegExp; label: string; type?: 'acts' | 'bullets' }> = [
+  { pattern: /^THE ONE-LINE STORY:\s*/im, label: 'The one-line story' },
+  { pattern: /^GROWTH OR VALUE\?\s*/im, label: 'Growth or value?' },
+  { pattern: /^WHAT MOVED THE SHARE PRICE[^:]*:\s*/im, label: 'What moved the share price — the three acts', type: 'acts' },
+  { pattern: /^THE KEY QUESTION NOW:\s*/im, label: 'The key question now' },
+  { pattern: /^INTERESTING SIGNALS:\s*/im, label: 'Interesting signals', type: 'bullets' },
+];
+
+function parseStockStory(text: string): StoryBlock[] {
+  // Build list of {index, label, type} and then slice between
+  type Hit = { index: number; matchLen: number; label: string; type?: 'acts' | 'bullets' };
+  const hits: Hit[] = [];
+  for (const { pattern, label, type } of KNOWN_HEADERS) {
+    const m = pattern.exec(text);
+    if (m) hits.push({ index: m.index, matchLen: m[0].length, label, type });
+  }
+  hits.sort((a, b) => a.index - b.index);
+
+  const blocks: StoryBlock[] = [];
+  if (hits.length === 0) {
+    // No recognized structure — return as a single body block
+    return [{ body: text.trim() }];
+  }
+
+  // Prelude text before the first header
+  const prelude = text.slice(0, hits[0].index).trim();
+  if (prelude) blocks.push({ body: prelude });
+
+  for (let i = 0; i < hits.length; i++) {
+    const cur = hits[i];
+    const next = hits[i + 1];
+    const start = cur.index + cur.matchLen;
+    const end = next ? next.index : text.length;
+    const body = text.slice(start, end).trim();
+    blocks.push({
+      heading: cur.label,
+      body,
+      isActs: cur.type === 'acts',
+      isBullets: cur.type === 'bullets',
+    });
+  }
+  return blocks;
+}
+
+const ACT_SPLIT = /^Act\s+(I{1,3}|IV|V|VI)\s*-\s*([^(:]+?)(?:\s*\(([^)]+)\))?:\s*/m;
+
+function parseActs(text: string): Array<{ label: string; subtitle: string; period?: string; body: string }> {
+  // Split the acts block into individual acts. We match each "Act I - ..." header.
+  const re = /Act\s+(I{1,3}|IV|V|VI)\s*-\s*([^(:\n]+?)(?:\s*\(([^)]+)\))?:\s*/g;
+  const acts: Array<{ label: string; subtitle: string; period?: string; body: string }> = [];
+  let m: RegExpExecArray | null;
+  const headers: Array<{ start: number; end: number; label: string; subtitle: string; period?: string }> = [];
+  while ((m = re.exec(text)) !== null) {
+    headers.push({
+      start: m.index,
+      end: m.index + m[0].length,
+      label: `Act ${m[1]}`,
+      subtitle: m[2].trim(),
+      period: m[3]?.trim(),
+    });
+  }
+  for (let i = 0; i < headers.length; i++) {
+    const h = headers[i];
+    const next = headers[i + 1];
+    const body = text.slice(h.end, next ? next.start : text.length).trim();
+    acts.push({ label: h.label, subtitle: h.subtitle, period: h.period, body });
+  }
+  return acts;
+}
+
+function parseBullets(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(l => l.length > 0)
+    .map(l => l.replace(/^[-•]\s*/, ''));
+}
+
+function StockStory({ text }: { text: string }) {
+  const blocks = useMemo(() => parseStockStory(text), [text]);
+
+  return (
+    <div className="space-y-4">
+      {blocks.map((b, i) => {
+        if (b.heading) {
+          return (
+            <div key={i} className="space-y-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-sky-700">
+                {b.heading}
+              </h4>
+              {b.isActs ? (
+                <ActsRenderer body={b.body} />
+              ) : b.isBullets ? (
+                <ul className="space-y-1.5 list-disc list-outside pl-5">
+                  {parseBullets(b.body).map((line, j) => (
+                    <li key={j} className="text-sm text-foreground/90 leading-relaxed">
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-foreground/90 leading-relaxed">{b.body}</p>
+              )}
+            </div>
+          );
+        }
+        // Unlabelled prelude — render as body
+        return (
+          <p key={i} className="text-sm text-foreground/90 leading-relaxed">
+            {b.body}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+function ActsRenderer({ body }: { body: string }) {
+  const acts = useMemo(() => parseActs(body), [body]);
+  if (acts.length === 0) {
+    return <p className="text-sm text-foreground/90 leading-relaxed">{body}</p>;
+  }
+
+  const actTone: Record<string, string> = {
+    'Act I': 'border-emerald-500/40 bg-emerald-500/5',
+    'Act II': 'border-red-500/40 bg-red-500/5',
+    'Act III': 'border-sky-500/40 bg-sky-500/5',
+  };
+  const actLabelTone: Record<string, string> = {
+    'Act I': 'text-emerald-700',
+    'Act II': 'text-red-700',
+    'Act III': 'text-sky-700',
+  };
+
+  return (
+    <div className="space-y-2">
+      {acts.map((a, i) => (
+        <div
+          key={i}
+          className={cn('rounded-lg border p-3', actTone[a.label] ?? 'border-border/60 bg-muted/30')}
+        >
+          <div className="flex flex-wrap items-baseline gap-2 mb-1">
+            <span className={cn('text-sm font-bold', actLabelTone[a.label] ?? 'text-foreground')}>
+              {a.label}
+            </span>
+            <span className="text-sm font-semibold text-foreground">{a.subtitle}</span>
+            {a.period && (
+              <span className="text-xs text-muted-foreground">({a.period})</span>
+            )}
+          </div>
+          <p className="text-sm text-foreground/85 leading-relaxed">{a.body}</p>
+        </div>
+      ))}
     </div>
   );
 }
