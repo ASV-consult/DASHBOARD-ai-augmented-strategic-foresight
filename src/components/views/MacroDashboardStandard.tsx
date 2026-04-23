@@ -15,6 +15,18 @@ import {
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import {
+  CartesianGrid,
+  Label as RechartsLabel,
+  ReferenceLine,
+  ResponsiveContainer,
+  Scatter,
+  ScatterChart,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis,
+  ZAxis,
+} from 'recharts';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -51,10 +63,40 @@ interface MacroDashboardProps {
 }
 
 const toneClassName: Record<string, string> = {
-  negative: 'border-rose-500/35 bg-rose-500/10 text-rose-700',
+  negative: 'border-rose-500/40 bg-rose-500/15 text-rose-700',
+  destructive: 'border-red-600/45 bg-red-600/15 text-red-700',  // stronger variant of negative
   warning: 'border-amber-500/35 bg-amber-500/10 text-amber-700',
   positive: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-700',
   neutral: 'border-slate-400/35 bg-slate-400/10 text-slate-700',
+  secondary: 'border-slate-400/35 bg-slate-400/10 text-slate-700',  // alias for neutral
+};
+
+// Status-label palette — the label itself drives color when tone is absent or generic.
+// This ensures Contested / Advantaged / Distinctive / Fragile / etc. each get visually
+// distinct styling regardless of upstream tone mismatches.
+const STATUS_LABEL_TONE: Record<string, string> = {
+  // right-to-play scale
+  weak: 'negative',
+  contested: 'warning',
+  credible: 'neutral',
+  advantaged: 'positive',
+  distinctive: 'positive',
+  // sustainability scale
+  eroding: 'negative',
+  fragile: 'negative',
+  holding: 'neutral',
+  durable: 'positive',
+  compounding: 'positive',
+  // other common status labels
+  leading: 'positive',
+  strong: 'positive',
+  stable: 'neutral',
+  pressured: 'warning',
+  'at risk': 'negative',
+  impaired: 'negative',
+  pending: 'neutral',
+  ready: 'positive',
+  active: 'positive',
 };
 
 const modeNote = {
@@ -64,7 +106,15 @@ const modeNote = {
     'Reading mode starts inside the richest available memo and keeps the same drill-down model without relying on a separate legacy reading bundle.',
 };
 
-const formatBadgeClassName = (tone?: string) => toneClassName[cleanMacroText(tone).toLowerCase()] || toneClassName.neutral;
+const formatBadgeClassName = (tone?: string, label?: string) => {
+  // 1. Honour explicit tone if known
+  const t = cleanMacroText(tone).toLowerCase();
+  if (t && toneClassName[t]) return toneClassName[t];
+  // 2. Otherwise infer from label (so "Contested" never defaults to the same grey as "Holding")
+  const l = cleanMacroText(label).toLowerCase();
+  if (l && STATUS_LABEL_TONE[l]) return toneClassName[STATUS_LABEL_TONE[l]];
+  return toneClassName.neutral;
+};
 
 const formatPublicationDate = (value?: string | null) => {
   const cleaned = cleanMacroText(value);
@@ -110,59 +160,216 @@ const SCORE_META: Record<string, { definition: string; scale: string[] }> = {
   },
 };
 
-const ScoreBar = ({ label, value }: { label: string; value?: number | null }) => {
+// Score colour — ties to the label (Fragile = red, Advantaged = green, etc)
+const scoreColour = (label: string | null): string => {
+  if (!label) return 'text-slate-500';
+  const l = label.toLowerCase();
+  if (['eroding', 'fragile', 'contracting', 'declining', 'weak'].includes(l)) return 'text-rose-600';
+  if (['contested', 'transitioning'].includes(l)) return 'text-amber-600';
+  if (['holding', 'credible'].includes(l)) return 'text-slate-600';
+  if (['durable', 'improving', 'advantaged'].includes(l)) return 'text-emerald-600';
+  if (['compounding', 'accelerating', 'distinctive'].includes(l)) return 'text-emerald-700';
+  return 'text-slate-500';
+};
+
+const ScoreBar = ({
+  label,
+  value,
+  reasoning,
+}: {
+  label: string;
+  value?: number | null;
+  reasoning?: string;
+}) => {
   const normalized = Math.max(0, Math.min(5, value ?? 0));
   const meta = SCORE_META[label];
-  const scaleLabel = meta && typeof value === 'number' && value >= 1 && value <= 5
-    ? meta.scale[Math.round(value) - 1]
+  const roundedValue = typeof value === 'number' ? Math.round(value) : null;
+  const scaleLabel = meta && roundedValue && roundedValue >= 1 && roundedValue <= 5
+    ? meta.scale[roundedValue - 1]
     : null;
+  const colour = scoreColour(scaleLabel);
 
   const bar = (
-    <div className="h-full rounded-2xl border border-border/60 bg-background/80 p-3">
-      <div className="min-w-0">
-        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-          {label}{meta ? <span className="ml-1 cursor-help opacity-40">?</span> : null}
+    <div className="h-full rounded-xl border border-border/60 bg-background/80 px-2.5 py-2 min-w-0">
+      <div className="flex items-center justify-between gap-1">
+        <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground truncate">
+          {label}
         </p>
-        <p className="mt-1 text-sm font-semibold text-foreground">
-          {value === null || value === undefined ? 'Pending' : `${normalized}/5`}
-          {scaleLabel ? (
-            <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground sm:ml-1.5 sm:mt-0 sm:inline">
-              · {scaleLabel}
-            </span>
-          ) : null}
-        </p>
+        {meta || reasoning ? (
+          <span className="text-[9px] text-muted-foreground/60 leading-none">?</span>
+        ) : null}
       </div>
-      <div className="mt-3 grid grid-cols-5 gap-1.5">
+      <div className="mt-1 flex items-baseline gap-1 min-w-0">
+        <span className="text-base font-bold text-foreground tabular-nums">
+          {value === null || value === undefined ? '—' : value % 1 === 0 ? normalized : value.toFixed(1)}
+        </span>
+        <span className="text-[10px] text-muted-foreground">/5</span>
+      </div>
+      {scaleLabel ? (
+        <p className={cn('mt-0.5 text-[10px] font-medium truncate', colour)}>{scaleLabel}</p>
+      ) : null}
+      <div className="mt-1.5 flex gap-0.5">
         {Array.from({ length: 5 }).map((_, index) => (
           <span
             key={`${label}-${index}`}
-            className={cn('h-2 rounded-full', index < normalized ? 'bg-primary' : 'bg-border/80')}
+            className={cn('h-1 flex-1 rounded-full', index < normalized ? 'bg-primary' : 'bg-border/60')}
           />
         ))}
       </div>
     </div>
   );
 
-  if (!meta) return bar;
+  if (!meta && !reasoning) return bar;
 
   return (
-    <TooltipProvider delayDuration={200}>
+    <TooltipProvider delayDuration={150}>
       <Tooltip>
         <TooltipTrigger asChild>{bar}</TooltipTrigger>
-        <TooltipContent side="top" className="max-w-xs space-y-2 p-3">
-          <p className="text-xs font-semibold">{label}</p>
-          <p className="text-xs text-muted-foreground">{meta.definition}</p>
-          <div className="grid grid-cols-5 gap-1 pt-1">
-            {meta.scale.map((lbl, i) => (
-              <div key={lbl} className="text-center">
-                <div className={cn('mx-auto mb-0.5 h-1.5 w-full rounded-full', i < normalized ? 'bg-primary' : 'bg-border/60')} />
-                <p className={cn('text-[9px]', i < normalized ? 'font-medium text-foreground' : 'text-muted-foreground')}>{lbl}</p>
-              </div>
-            ))}
+        <TooltipContent side="top" className="max-w-md space-y-2 p-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="text-xs font-semibold">{label}</p>
+            {scaleLabel ? (
+              <p className={cn('text-xs font-semibold', colour)}>
+                {value !== null && value !== undefined ? `${value % 1 === 0 ? normalized : value.toFixed(1)}/5 · ` : ''}
+                {scaleLabel}
+              </p>
+            ) : null}
           </div>
+          {meta ? (
+            <p className="text-[11px] text-muted-foreground italic">{meta.definition}</p>
+          ) : null}
+          {reasoning ? (
+            <div className="border-t border-border/40 pt-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Reasoning</p>
+              <p className="text-xs text-foreground/90 leading-relaxed">{reasoning}</p>
+            </div>
+          ) : null}
+          {meta ? (
+            <div className="grid grid-cols-5 gap-1 pt-1">
+              {meta.scale.map((lbl, i) => (
+                <div key={lbl} className="text-center">
+                  <div className={cn('mx-auto mb-0.5 h-1 w-full rounded-full', i < normalized ? 'bg-primary' : 'bg-border/60')} />
+                  <p className={cn('text-[9px] leading-tight', i < normalized ? 'font-medium text-foreground' : 'text-muted-foreground')}>{lbl}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+};
+
+// Portfolio Scatter Map — Market Trajectory (x) vs Right To Play (y), bubble size = Position Sustainability.
+// Each segment is a single bubble, labeled with its title. Helps the user see the portfolio shape at a glance.
+type SegmentScatterItem = {
+  name: string;
+  x: number;   // market trajectory 1-5
+  y: number;   // right to play 1-5
+  z: number;   // sustainability (used as bubble size)
+  rawZ: number | null;  // unscaled sustainability for tooltip
+};
+
+const SCATTER_AXIS_TICKS = [1, 2, 3, 4, 5];
+const SCATTER_LABEL_BY_AXIS: Record<'x' | 'y', string[]> = {
+  x: ['Contracting', 'Declining', 'Transitioning', 'Improving', 'Accelerating'],
+  y: ['Weak', 'Contested', 'Credible', 'Advantaged', 'Distinctive'],
+};
+
+const SegmentScatterMap = ({ segments }: { segments: Array<{ title: string; marketTrajectory: number | null; rightToPlay: number | null; positionSustainability: number | null }> }) => {
+  const data = segments
+    .filter((s) => s.marketTrajectory != null && s.rightToPlay != null)
+    .map<SegmentScatterItem>((s) => ({
+      name: s.title,
+      x: s.marketTrajectory as number,
+      y: s.rightToPlay as number,
+      // scale sustainability 1-5 to bubble area (z) 200-1400 so differences are visible
+      z: 200 + ((s.positionSustainability ?? 3) - 1) * 300,
+      rawZ: s.positionSustainability,
+    }));
+
+  if (data.length === 0) return null;
+
+  return (
+    <Card className="rounded-[30px] border border-border/60 bg-card/85 shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xl">Portfolio Scatter Map</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Market Trajectory (horizontal) vs Right To Play (vertical). Bubble size = Position Sustainability.
+          Top-right quadrant = growing market the company is well-positioned in.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="h-[380px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <ScatterChart margin={{ top: 20, right: 30, bottom: 40, left: 50 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.4} />
+              <XAxis
+                type="number"
+                dataKey="x"
+                name="Market"
+                domain={[0.5, 5.5]}
+                ticks={SCATTER_AXIS_TICKS}
+                tickFormatter={(v: number) => SCATTER_LABEL_BY_AXIS.x[v - 1] ?? String(v)}
+                tick={{ fontSize: 10 }}
+                stroke="hsl(var(--muted-foreground))"
+              >
+                <RechartsLabel value="Market Trajectory" offset={-25} position="insideBottom" style={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11, fontWeight: 600 }} />
+              </XAxis>
+              <YAxis
+                type="number"
+                dataKey="y"
+                name="Right to Play"
+                domain={[0.5, 5.5]}
+                ticks={SCATTER_AXIS_TICKS}
+                tickFormatter={(v: number) => SCATTER_LABEL_BY_AXIS.y[v - 1] ?? String(v)}
+                tick={{ fontSize: 10 }}
+                stroke="hsl(var(--muted-foreground))"
+              >
+                <RechartsLabel value="Right To Play" angle={-90} offset={-35} position="insideLeft" style={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11, fontWeight: 600 }} />
+              </YAxis>
+              <ZAxis type="number" dataKey="z" range={[200, 1400]} name="Sustainability" />
+              <ReferenceLine x={3} stroke="hsl(var(--border))" strokeDasharray="4 4" />
+              <ReferenceLine y={3} stroke="hsl(var(--border))" strokeDasharray="4 4" />
+              <RechartsTooltip
+                cursor={{ strokeDasharray: '3 3' }}
+                content={(props) => {
+                  const payload = props?.payload?.[0]?.payload as SegmentScatterItem | undefined;
+                  if (!payload) return null;
+                  const mtLabel = SCATTER_LABEL_BY_AXIS.x[Math.round(payload.x) - 1];
+                  const rtpLabel = SCATTER_LABEL_BY_AXIS.y[Math.round(payload.y) - 1];
+                  const psLabel = payload.rawZ != null ? ['Eroding', 'Fragile', 'Holding', 'Durable', 'Compounding'][Math.round(payload.rawZ) - 1] : '';
+                  return (
+                    <div className="rounded-xl border border-border bg-card p-3 shadow-lg text-xs space-y-1">
+                      <p className="font-semibold text-sm">{payload.name}</p>
+                      <p><span className="text-muted-foreground">Market:</span> <strong>{payload.x.toFixed(1)}</strong> ({mtLabel})</p>
+                      <p><span className="text-muted-foreground">Right to Play:</span> <strong>{payload.y.toFixed(1)}</strong> ({rtpLabel})</p>
+                      <p><span className="text-muted-foreground">Sustainability:</span> <strong>{payload.rawZ?.toFixed(1) ?? '—'}</strong> ({psLabel})</p>
+                    </div>
+                  );
+                }}
+              />
+              <Scatter
+                name="Segments"
+                data={data}
+                fill="hsl(var(--primary))"
+                fillOpacity={0.35}
+                stroke="hsl(var(--primary))"
+                strokeWidth={2}
+                shape="circle"
+                label={{
+                  dataKey: 'name',
+                  position: 'top',
+                  fontSize: 10,
+                  fill: 'hsl(var(--foreground))',
+                  offset: 14,
+                }}
+              />
+            </ScatterChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 
@@ -545,34 +752,6 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
   const toggleSourceGroup = (key: string) =>
     setExpandedSources((current) => ({ ...current, [key]: !current[key] }));
 
-  const USAGE_STEPS = [
-    {
-      label: 'Segment Decision Strip',
-      detail:
-        'Start here for the portfolio-level view. Each card shows scores for Market Trajectory, Right To Play and Position Sustainability — hover a score bar for the full scale definition.',
-    },
-    {
-      label: 'Portfolio Analysis',
-      detail:
-        'Read the cross-segment thesis below the decision strip. Use the tabs to switch between the macro industry read (Layer 2) and the company-specific executive synthesis (Layer 1).',
-    },
-    {
-      label: 'Segment Drill-Down',
-      detail:
-        'Click any segment card to open the drill-down. Switch between Industry Context (Layer 2 — market dynamics) and Company Position (Layer 1 — company-specific analysis and watchpoints).',
-    },
-    {
-      label: 'Activity Deep Dive',
-      detail:
-        'Within each segment, click an activity for granular scores, research mission results and source evidence. Activities are always Layer 1 — company-specific research.',
-    },
-    {
-      label: "Crow's Nest — Live Signals",
-      detail:
-        "Check the intelligence monitor (bottom of this page or via the nav) for threshold alerts, scenario drift and promotion candidates that may require new research missions.",
-    },
-  ];
-
   const crowNestCard = macroData.overview_view.segment_cards.find(
     (card) => card.segment_key === 'crow_nest_overview',
   );
@@ -586,9 +765,9 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
 
   const renderOverview = () => (
     <div className="space-y-5">
-      {/* Header + How to use */}
+      {/* Header — portfolio thesis + high-level counts (usage guide removed) */}
       <Card className="rounded-[30px] border border-border/60 bg-card/85 shadow-sm">
-        <CardContent className="grid gap-5 p-5 md:p-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <CardContent className="space-y-5 p-5 md:p-6">
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="rounded-full text-[11px]">
@@ -632,23 +811,6 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
               />
             </div>
           </div>
-
-          <div className="rounded-[28px] border border-amber-500/20 bg-amber-500/[0.06] p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">How to use this dashboard</p>
-            <div className="mt-4 space-y-2">
-              {USAGE_STEPS.map((step, index) => (
-                <div key={step.label} className="flex gap-3 rounded-2xl border border-amber-500/15 bg-background/80 p-3">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-black">
-                    {index + 1}
-                  </span>
-                  <div>
-                    <p className="text-xs font-semibold text-foreground">{step.label}</p>
-                    <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{step.detail}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
         </CardContent>
       </Card>
 
@@ -667,7 +829,7 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
             >
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge className={cn('rounded-full text-[11px]', formatBadgeClassName(segment.ready ? 'positive' : 'neutral'))}>
+                  <Badge className={cn('rounded-full text-[11px]', formatBadgeClassName(segment.statusTone, segment.statusLabel))}>
                     {segment.statusLabel}
                   </Badge>
                   <Badge variant="outline" className="rounded-full text-[11px]">
@@ -684,15 +846,18 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
                 <MetricCard label="Key Risk" value={segment.keyRisk} />
                 <MetricCard label="Key Upside" value={segment.keyUpside} />
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-                <ScoreBar label="Market" value={segment.marketTrajectory} />
-                <ScoreBar label="Right To Play" value={segment.rightToPlay} />
-                <ScoreBar label="Sustainability" value={segment.positionSustainability} />
+              <div className="grid gap-2 grid-cols-3">
+                <ScoreBar label="Market" value={segment.marketTrajectory} reasoning={segment.marketTrajectoryReasoning ?? undefined} />
+                <ScoreBar label="Right To Play" value={segment.rightToPlay} reasoning={segment.rightToPlayReasoning ?? undefined} />
+                <ScoreBar label="Sustainability" value={segment.positionSustainability} reasoning={segment.positionSustainabilityReasoning ?? undefined} />
               </div>
             </button>
           ))}
         </CardContent>
       </Card>
+
+      {/* Portfolio Scatter Map — Market (x) vs Right to Play (y), bubble = Sustainability */}
+      <SegmentScatterMap segments={portfolio.segmentDecisions} />
 
       {/* Portfolio Analysis — L2 macro read + L1 executive synthesis */}
       {hasPortfolioAnalysis ? (
@@ -760,7 +925,7 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-foreground">{card.title}</p>
-                  <Badge className={cn('rounded-full text-[11px]', formatBadgeClassName(card.status_badge?.tone))}>
+                  <Badge className={cn('rounded-full text-[11px]', formatBadgeClassName(card.status_badge?.tone, card.status_badge?.label || card.availability))}>
                     {card.status_badge?.label || card.availability || 'Pending'}
                   </Badge>
                 </div>
@@ -862,7 +1027,7 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
           <CardContent className="grid gap-5 p-5 md:p-6 xl:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge className={cn('rounded-full text-[11px]', formatBadgeClassName(segment.decision_summary?.status_badge?.tone))}>
+                <Badge className={cn('rounded-full text-[11px]', formatBadgeClassName(segment.decision_summary?.status_badge?.tone, segment.decision_summary?.status_badge?.label || (ready ? 'Ready' : 'Pending')))}>
                   {segment.decision_summary?.status_badge?.label || (ready ? 'Ready' : 'Pending')}
                 </Badge>
                 {segment.decision_summary?.outlook_badge?.label ? (

@@ -1387,6 +1387,21 @@ const getCardScore = (segment: MacroSegmentView | undefined, activities: MacroAc
   return mean(activities.map((activity) => activity.scorecard?.score_lookup[metricKey]).filter((v): v is number => typeof v === 'number'));
 };
 
+const getCardScoreReasoning = (
+  segment: MacroSegmentView | undefined,
+  activities: MacroActivityView[],
+  metricKey: keyof MacroScoreBundle,
+): string | null => {
+  // Prefer segment-level reasoning; fall back to the first activity that has one.
+  const summaryMetric = segment?.score_summary?.metrics?.find((m) => m.metric_key === metricKey);
+  if (summaryMetric?.reasoning) return summaryMetric.reasoning;
+  for (const activity of activities) {
+    const m = activity.scorecard?.metrics?.find((x) => x.metric_key === metricKey);
+    if (m?.reasoning) return m.reasoning;
+  }
+  return null;
+};
+
 const buildSegmentDecisionModel = (
   card: MacroOverviewSegmentCard,
   segment: MacroSegmentView | undefined,
@@ -1421,16 +1436,27 @@ const buildSegmentDecisionModel = (
       card.status_badge?.label ||
       segment?.decision_summary?.status_badge?.label ||
       (availability === 'ready' ? 'Active' : 'Pending'),
+    statusTone:
+      card.status_badge?.tone ||
+      segment?.decision_summary?.status_badge?.tone ||
+      null,
     outlookLabel:
       card.outlook_badge?.label ||
       segment?.decision_summary?.outlook_badge?.label ||
       titleCase(card.coverage_status || segment?.coverage_status || availability),
+    outlookTone:
+      card.outlook_badge?.tone ||
+      segment?.decision_summary?.outlook_badge?.tone ||
+      null,
     activityCount: card.activity_count || segment?.activity_cards?.length || activities.length,
     activityKeys: card.activity_keys?.length ? card.activity_keys : activities.map((activity) => activity.activity_key),
     ready: availability === 'ready',
     marketTrajectory: getCardScore(segment, activities, 'market_trajectory'),
     rightToPlay: getCardScore(segment, activities, 'right_to_play'),
     positionSustainability: getCardScore(segment, activities, 'position_sustainability'),
+    marketTrajectoryReasoning: getCardScoreReasoning(segment, activities, 'market_trajectory'),
+    rightToPlayReasoning: getCardScoreReasoning(segment, activities, 'right_to_play'),
+    positionSustainabilityReasoning: getCardScoreReasoning(segment, activities, 'position_sustainability'),
   };
 };
 

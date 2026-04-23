@@ -62,6 +62,8 @@ export interface MacroScoreMetric {
   score_label?: string | null;
   max_score?: number;
   average_score?: number | null;
+  /** Plain-English reasoning for this score — shown on hover in the dashboard. */
+  reasoning?: string | null;
 }
 
 export interface MacroScoreBundle {
@@ -350,6 +352,11 @@ export interface MacroRouteLookup {
   nodeByNodeKey: Record<string, MacroNavigationNode>;
 }
 
+export interface MacroSegmentScoreWithReasoning {
+  score: number | null;
+  reasoning: string | null;
+}
+
 export interface MacroSegmentDecisionModel {
   segmentKey: string;
   nodeKey: string;
@@ -361,13 +368,19 @@ export interface MacroSegmentDecisionModel {
   keyRisk: string;
   keyUpside: string;
   statusLabel: string;
+  statusTone?: string | null;
   outlookLabel: string;
+  outlookTone?: string | null;
   activityCount: number;
   activityKeys: string[];
   ready: boolean;
   marketTrajectory: number | null;
   rightToPlay: number | null;
   positionSustainability: number | null;
+  // Reasoning attached per score (from MacroScoreMetric.reasoning)
+  marketTrajectoryReasoning?: string | null;
+  rightToPlayReasoning?: string | null;
+  positionSustainabilityReasoning?: string | null;
 }
 
 export interface MacroPortfolioModel {
