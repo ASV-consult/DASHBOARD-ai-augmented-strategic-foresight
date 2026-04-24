@@ -74,6 +74,7 @@ import {
   FinancialWorkingCapitalAnalysis,
   WcBridgeRow,
   WcHeadlineMetric,
+  WcTopInsight,
 } from '@/types/financial';
 
 /* ============================================================
@@ -2825,6 +2826,40 @@ function WorkingCapitalPage({
         </CardContent>
       </Card>
 
+      {/* Key Conclusions — fast-read panel. Rendered BEFORE the deep dive. */}
+      {data.top_insights && data.top_insights.length > 0 && (
+        <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/[0.04] to-transparent">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Fast Read — Key Conclusions
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              The 4 things to know before diving into the detail below.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="grid gap-2 md:grid-cols-2">
+              {data.top_insights.map((ins, i) => (
+                <WcTopInsightCard key={i} insight={ins} />
+              ))}
+            </div>
+            {data.bottom_line && (
+              <div className="mt-4 rounded-lg border border-primary/30 bg-primary/[0.06] p-4">
+                <div className="flex items-start gap-2">
+                  <div className="rounded bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary shrink-0">
+                    Bottom line
+                  </div>
+                </div>
+                <p className="mt-2 text-sm leading-relaxed font-medium text-foreground">
+                  {data.bottom_line}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Headline metrics */}
       {data.headline_metrics?.length > 0 && (
         <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
@@ -2832,6 +2867,27 @@ function WorkingCapitalPage({
             <WcMetricCard key={m.key} metric={m} />
           ))}
         </div>
+      )}
+
+      {/* Red flags — promoted up so the story is visible before the detail */}
+      {data.red_flags?.length > 0 && (
+        <Card className="border-red-200 bg-red-50/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2 text-red-900">
+              <AlertTriangle className="h-4 w-4" />
+              Red Flags
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ol className="space-y-2 list-decimal list-inside text-sm text-red-900">
+              {data.red_flags.map((rf, i) => (
+                <li key={i} className="leading-relaxed">
+                  {rf}
+                </li>
+              ))}
+            </ol>
+          </CardContent>
+        </Card>
       )}
 
       {/* Multi-year trajectory chart */}
@@ -3102,26 +3158,7 @@ function WorkingCapitalPage({
         </Card>
       )}
 
-      {/* Red flags */}
-      {data.red_flags?.length > 0 && (
-        <Card className="border-red-200 bg-red-50/50">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2 text-red-900">
-              <AlertTriangle className="h-4 w-4" />
-              Red Flags
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ol className="space-y-2 list-decimal list-inside text-sm text-red-900">
-              {data.red_flags.map((rf, i) => (
-                <li key={i} className="leading-relaxed">
-                  {rf}
-                </li>
-              ))}
-            </ol>
-          </CardContent>
-        </Card>
-      )}
+      {/* (Red flags moved to top — see section above Headline metrics.) */}
 
       {/* Disclosure gaps */}
       {data.disclosure_gaps?.length > 0 && (
@@ -3262,6 +3299,37 @@ function WcBridgeRowComponent({ row }: { row: WcBridgeRow }) {
         {row.severity && <SeverityBadge severity={row.severity === 'none' ? 'low' : (row.severity as EqSeverity)} />}
       </TableCell>
     </TableRow>
+  );
+}
+
+function WcTopInsightCard({ insight }: { insight: WcTopInsight }) {
+  const icon = insight.icon ?? 'neutral';
+  const styles = {
+    cash_positive: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', Icon: TrendingUp },
+    cash_negative: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', Icon: TrendingDown },
+    warning: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', Icon: AlertTriangle },
+    neutral: { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-700', Icon: Activity },
+  }[icon];
+  const { Icon } = styles;
+  return (
+    <div className={cn('rounded-xl border p-3 space-y-2', styles.bg, styles.border)}>
+      <div className="flex items-start gap-2">
+        <Icon className={cn('h-5 w-5 shrink-0 mt-0.5', styles.text)} />
+        <div className="flex-1 min-w-0">
+          <div className={cn('font-semibold text-sm leading-tight', styles.text)}>
+            {insight.headline}
+          </div>
+          {insight.quantified_impact && (
+            <div className={cn('mt-1 inline-block rounded-md bg-white/60 px-2 py-0.5 text-xs font-mono font-semibold', styles.text)}>
+              {insight.quantified_impact}
+            </div>
+          )}
+        </div>
+      </div>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        {insight.detail}
+      </p>
+    </div>
   );
 }
 

@@ -767,11 +767,20 @@ export interface WcDisclosureGap {
   severity: WcSeverity;
 }
 
+export interface WcTopInsight {
+  icon?: 'cash_positive' | 'cash_negative' | 'warning' | 'neutral';
+  headline: string;
+  detail: string;
+  quantified_impact?: string;    // e.g. "+€266m cash released" or "-€94m/year"
+}
+
 export interface FinancialWorkingCapitalAnalysis {
   overall_verdict: WcVerdict;
   one_liner: string;
   summary: string;
   focus_year: number;
+  top_insights?: WcTopInsight[];      // NEW — curated fast-read panel
+  bottom_line?: string;                // NEW — single-sentence "so what"
   headline_metrics: WcHeadlineMetric[];
   trajectory: WcTrajectory;
   components_multi_year?: WcComponentsMultiYear;
