@@ -172,6 +172,17 @@ const scoreColour = (label: string | null): string => {
   return 'text-slate-500';
 };
 
+// Pull the per-metric reasoning string from a scorecard's metrics array.
+// Used at every ScoreBar callsite so the hover tooltip can show "why this score".
+const reasoningFor = (
+  scorecard: { metrics?: Array<{ metric_key: string; reasoning?: string | null }> } | undefined | null,
+  metricKey: 'market_trajectory' | 'right_to_play' | 'position_sustainability',
+): string | undefined => {
+  if (!scorecard?.metrics) return undefined;
+  const m = scorecard.metrics.find((x) => x.metric_key === metricKey);
+  return m?.reasoning ?? undefined;
+};
+
 // Map a 1-10 score to one of the 5 bucket labels. Each label covers 2 levels.
 const bucketLabel10 = (label: string, value: number | null | undefined): string | null => {
   const meta = SCORE_META[label];
@@ -955,33 +966,44 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
       {/* Portfolio Scatter Map — Market (x) vs Right to Play (y), bubble = Sustainability */}
       <SegmentScatterMap segments={portfolio.segmentDecisions} />
 
-      {/* Portfolio Analysis — L2 macro read + L1 executive synthesis */}
+      {/* Portfolio Analysis — L2 portfolio fit + L1 whole-company read */}
       {hasPortfolioAnalysis ? (
         macroData.portfolio_analysis?.markdown && macroData.executive_analysis?.markdown ? (
           <Tabs defaultValue="portfolio" className="w-full">
             <Card className="rounded-[30px] border border-border/60 bg-card/85 shadow-sm">
               <CardHeader className="pb-2">
-                <div className="flex items-center justify-between gap-4">
-                  <CardTitle className="text-xl">Portfolio Analysis</CardTitle>
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <CardTitle className="text-xl">Macro Synthesis</CardTitle>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Two complementary reads — portfolio fit (how the segments interact) vs whole-company narrative (the headline story).
+                    </p>
+                  </div>
                   <TabsList>
-                    <TabsTrigger value="portfolio">Cross-Segment Read</TabsTrigger>
-                    <TabsTrigger value="executive">Executive View</TabsTrigger>
+                    <TabsTrigger value="portfolio">Portfolio Fit</TabsTrigger>
+                    <TabsTrigger value="executive">Company Read</TabsTrigger>
                   </TabsList>
                 </div>
               </CardHeader>
               <CardContent>
                 <TabsContent value="portfolio" className="mt-0">
-                  <MarkdownMemo title="Cross-Segment Portfolio Read" markdown={macroData.portfolio_analysis?.markdown} fallback={macroData.portfolio_analysis?.summary} />
+                  <p className="mb-3 text-xs italic text-muted-foreground">
+                    How the segments fit together as a portfolio — correlations, balance, concentration risk.
+                  </p>
+                  <MarkdownMemo title="Portfolio Fit" markdown={macroData.portfolio_analysis?.markdown} fallback={macroData.portfolio_analysis?.summary} />
                 </TabsContent>
                 <TabsContent value="executive" className="mt-0">
-                  <MarkdownMemo title="Executive Synthesis" markdown={macroData.executive_analysis?.markdown} fallback={macroData.executive_analysis?.summary} />
+                  <p className="mb-3 text-xs italic text-muted-foreground">
+                    Headline narrative for the whole company — economic engine, capital allocation, valuation lens.
+                  </p>
+                  <MarkdownMemo title="Company Read" markdown={macroData.executive_analysis?.markdown} fallback={macroData.executive_analysis?.summary} />
                 </TabsContent>
               </CardContent>
             </Card>
           </Tabs>
         ) : (
           <MarkdownMemo
-            title="Portfolio Analysis"
+            title="Macro Synthesis"
             markdown={macroData.portfolio_analysis?.markdown ?? macroData.executive_analysis?.markdown}
             fallback={macroData.portfolio_analysis?.summary ?? macroData.executive_analysis?.summary}
           />
@@ -1149,23 +1171,7 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-amber-500/20 bg-amber-500/[0.06] p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">Mission Progress</p>
-              <div className="mt-4 grid gap-3">
-                <MetricCard
-                  label="Completed"
-                  value={`${segment.research_progress?.completed_mission_count ?? segment.visuals?.research_progress?.completed ?? 0}`}
-                />
-                <MetricCard
-                  label="Planned"
-                  value={`${segment.research_progress?.planned_mission_count ?? segment.visuals?.research_progress?.planned ?? 0}`}
-                />
-                <MetricCard
-                  label="Availability"
-                  value={ready ? 'Decision-grade drill-down available' : 'Placeholder drill-down'}
-                />
-              </div>
-            </div>
+            {/* Mission Progress panel removed — not informative for end-user reading flow. */}
           </CardContent>
         </Card>
 
@@ -1206,9 +1212,9 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
                       {activityCard.summary || 'Activity summary is pending.'}
                     </p>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-                      <ScoreBar label="Market" value={activityCard.scorecard?.score_lookup.market_trajectory} />
-                      <ScoreBar label="Right To Play" value={activityCard.scorecard?.score_lookup.right_to_play} />
-                      <ScoreBar label="Sustainability" value={activityCard.scorecard?.score_lookup.position_sustainability} />
+                      <ScoreBar label="Market" value={activityCard.scorecard?.score_lookup.market_trajectory} reasoning={reasoningFor(activityCard.scorecard, 'market_trajectory')} />
+                      <ScoreBar label="Right To Play" value={activityCard.scorecard?.score_lookup.right_to_play} reasoning={reasoningFor(activityCard.scorecard, 'right_to_play')} />
+                      <ScoreBar label="Sustainability" value={activityCard.scorecard?.score_lookup.position_sustainability} reasoning={reasoningFor(activityCard.scorecard, 'position_sustainability')} />
                     </div>
                   </button>
                 );
@@ -1271,9 +1277,9 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">{summary}</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <ScoreBar label="Market Trajectory" value={activity.scorecard?.score_lookup.market_trajectory} />
-                <ScoreBar label="Right To Play" value={activity.scorecard?.score_lookup.right_to_play} />
-                <ScoreBar label="Sustainability" value={activity.scorecard?.score_lookup.position_sustainability} />
+                <ScoreBar label="Market Trajectory" value={activity.scorecard?.score_lookup.market_trajectory} reasoning={reasoningFor(activity.scorecard, 'market_trajectory')} />
+                <ScoreBar label="Right To Play" value={activity.scorecard?.score_lookup.right_to_play} reasoning={reasoningFor(activity.scorecard, 'right_to_play')} />
+                <ScoreBar label="Sustainability" value={activity.scorecard?.score_lookup.position_sustainability} reasoning={reasoningFor(activity.scorecard, 'position_sustainability')} />
               </div>
             </div>
 
@@ -1317,14 +1323,6 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
               <MetricCard
                 label="Pending Topics"
                 value={`${activity.visuals?.topic_coverage?.pending ?? activity.supporting_topics?.pending?.length ?? 0}`}
-              />
-              <MetricCard
-                label="Completed Missions"
-                value={`${activity.research_progress?.completed_mission_count ?? 0}`}
-              />
-              <MetricCard
-                label="Planned Missions"
-                value={`${activity.research_progress?.planned_mission_count ?? 0}`}
               />
             </CardContent>
           </Card>
