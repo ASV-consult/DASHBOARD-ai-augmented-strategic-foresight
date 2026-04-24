@@ -966,37 +966,37 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
       {/* Portfolio Scatter Map — Market (x) vs Right to Play (y), bubble = Sustainability */}
       <SegmentScatterMap segments={portfolio.segmentDecisions} />
 
-      {/* Portfolio Analysis — L2 portfolio fit + L1 whole-company read */}
+      {/* Macro Synthesis — Company Read (internal) + Cross-Cutting Factors (external, STEEPLE) */}
       {hasPortfolioAnalysis ? (
-        macroData.portfolio_analysis?.markdown && macroData.executive_analysis?.markdown ? (
-          <Tabs defaultValue="portfolio" className="w-full">
+        macroData.executive_analysis?.markdown && macroData.portfolio_analysis?.markdown ? (
+          <Tabs defaultValue="company" className="w-full">
             <Card className="rounded-[30px] border border-border/60 bg-card/85 shadow-sm">
               <CardHeader className="pb-2">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <CardTitle className="text-xl">Macro Synthesis</CardTitle>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Two complementary reads — portfolio fit (how the segments interact) vs whole-company narrative (the headline story).
+                      Two orthogonal reads — the company itself (internal) vs the broad forces that could shift it (external, STEEPLE).
                     </p>
                   </div>
                   <TabsList>
-                    <TabsTrigger value="portfolio">Portfolio Fit</TabsTrigger>
-                    <TabsTrigger value="executive">Company Read</TabsTrigger>
+                    <TabsTrigger value="company">Company Read</TabsTrigger>
+                    <TabsTrigger value="factors">Cross-Cutting Factors</TabsTrigger>
                   </TabsList>
                 </div>
               </CardHeader>
               <CardContent>
-                <TabsContent value="portfolio" className="mt-0">
+                <TabsContent value="company" className="mt-0">
                   <p className="mb-3 text-xs italic text-muted-foreground">
-                    How the segments fit together as a portfolio — correlations, balance, concentration risk.
-                  </p>
-                  <MarkdownMemo title="Portfolio Fit" markdown={macroData.portfolio_analysis?.markdown} fallback={macroData.portfolio_analysis?.summary} />
-                </TabsContent>
-                <TabsContent value="executive" className="mt-0">
-                  <p className="mb-3 text-xs italic text-muted-foreground">
-                    Headline narrative for the whole company — economic engine, capital allocation, valuation lens.
+                    Headline narrative for the whole company — segment economics, portfolio dynamics, central investment question.
                   </p>
                   <MarkdownMemo title="Company Read" markdown={macroData.executive_analysis?.markdown} fallback={macroData.executive_analysis?.summary} />
+                </TabsContent>
+                <TabsContent value="factors" className="mt-0">
+                  <p className="mb-3 text-xs italic text-muted-foreground">
+                    Broad forces that could shift the whole company regardless of segment — STEEPLE pillars with real signal (Economic, Political/Regulatory, Technology, Environmental/Resources). Seeded from the latest Crow&apos;s Nest scan.
+                  </p>
+                  <MarkdownMemo title="Cross-Cutting Factors" markdown={macroData.portfolio_analysis?.markdown} fallback={macroData.portfolio_analysis?.summary} />
                 </TabsContent>
               </CardContent>
             </Card>
@@ -1004,8 +1004,8 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
         ) : (
           <MarkdownMemo
             title="Macro Synthesis"
-            markdown={macroData.portfolio_analysis?.markdown ?? macroData.executive_analysis?.markdown}
-            fallback={macroData.portfolio_analysis?.summary ?? macroData.executive_analysis?.summary}
+            markdown={macroData.executive_analysis?.markdown ?? macroData.portfolio_analysis?.markdown}
+            fallback={macroData.executive_analysis?.summary ?? macroData.portfolio_analysis?.summary}
           />
         )
       ) : null}
