@@ -172,22 +172,39 @@ const scoreColour = (label: string | null): string => {
   return 'text-slate-500';
 };
 
+// Map a 1-10 score to one of the 5 bucket labels. Each label covers 2 levels.
+const bucketLabel10 = (label: string, value: number | null | undefined): string | null => {
+  const meta = SCORE_META[label];
+  if (!meta || value == null) return null;
+  const rounded = Math.round(value);
+  if (rounded < 1 || rounded > 10) return null;
+  // 1-2 -> idx 0, 3-4 -> idx 1, 5-6 -> idx 2, 7-8 -> idx 3, 9-10 -> idx 4
+  const idx = Math.min(4, Math.floor((rounded - 1) / 2));
+  return meta.scale[idx];
+};
+
 const ScoreBar = ({
   label,
   value,
   reasoning,
+  maxScore = 10,
 }: {
   label: string;
   value?: number | null;
   reasoning?: string;
+  maxScore?: number;
 }) => {
-  const normalized = Math.max(0, Math.min(5, value ?? 0));
+  const max = maxScore || 10;
+  const normalized = Math.max(0, Math.min(max, value ?? 0));
   const meta = SCORE_META[label];
-  const roundedValue = typeof value === 'number' ? Math.round(value) : null;
-  const scaleLabel = meta && roundedValue && roundedValue >= 1 && roundedValue <= 5
-    ? meta.scale[roundedValue - 1]
-    : null;
+  const scaleLabel = max === 10
+    ? bucketLabel10(label, value ?? null)
+    : (meta && value != null && Math.round(value) >= 1 && Math.round(value) <= 5
+       ? meta.scale[Math.round(value) - 1]
+       : null);
   const colour = scoreColour(scaleLabel);
+  // Fill proportion 0-1 for the bar
+  const fill = value == null ? 0 : normalized / max;
 
   const bar = (
     <div className="h-full rounded-xl border border-border/60 bg-background/80 px-2.5 py-2 min-w-0">
@@ -201,20 +218,22 @@ const ScoreBar = ({
       </div>
       <div className="mt-1 flex items-baseline gap-1 min-w-0">
         <span className="text-base font-bold text-foreground tabular-nums">
-          {value === null || value === undefined ? '—' : value % 1 === 0 ? normalized : value.toFixed(1)}
+          {value === null || value === undefined
+            ? '—'
+            : value % 1 === 0
+              ? normalized
+              : value.toFixed(1)}
         </span>
-        <span className="text-[10px] text-muted-foreground">/5</span>
+        <span className="text-[10px] text-muted-foreground">/{max}</span>
       </div>
       {scaleLabel ? (
         <p className={cn('mt-0.5 text-[10px] font-medium truncate', colour)}>{scaleLabel}</p>
       ) : null}
-      <div className="mt-1.5 flex gap-0.5">
-        {Array.from({ length: 5 }).map((_, index) => (
-          <span
-            key={`${label}-${index}`}
-            className={cn('h-1 flex-1 rounded-full', index < normalized ? 'bg-primary' : 'bg-border/60')}
-          />
-        ))}
+      <div className="mt-1.5 relative h-1 rounded-full bg-border/60 overflow-hidden">
+        <div
+          className="absolute left-0 top-0 h-full bg-primary rounded-full transition-[width]"
+          style={{ width: `${Math.round(fill * 100)}%` }}
+        />
       </div>
     </div>
   );
@@ -230,7 +249,7 @@ const ScoreBar = ({
             <p className="text-xs font-semibold">{label}</p>
             {scaleLabel ? (
               <p className={cn('text-xs font-semibold', colour)}>
-                {value !== null && value !== undefined ? `${value % 1 === 0 ? normalized : value.toFixed(1)}/5 · ` : ''}
+                {value != null ? `${value % 1 === 0 ? normalized : value.toFixed(1)}/${max} · ` : ''}
                 {scaleLabel}
               </p>
             ) : null}
@@ -246,17 +265,85 @@ const ScoreBar = ({
           ) : null}
           {meta ? (
             <div className="grid grid-cols-5 gap-1 pt-1">
-              {meta.scale.map((lbl, i) => (
-                <div key={lbl} className="text-center">
-                  <div className={cn('mx-auto mb-0.5 h-1 w-full rounded-full', i < normalized ? 'bg-primary' : 'bg-border/60')} />
-                  <p className={cn('text-[9px] leading-tight', i < normalized ? 'font-medium text-foreground' : 'text-muted-foreground')}>{lbl}</p>
-                </div>
-              ))}
+              {meta.scale.map((lbl, i) => {
+                // highlight the bucket the current value falls in (max=10: 2 levels per bucket, max=5: 1)
+                const bucketMax = max === 10 ? (i + 1) * 2 : i + 1;
+                const active = value != null && Math.round(value) <= bucketMax && Math.round(value) > (max === 10 ? i * 2 : i);
+                const filled = value != null && (max === 10 ? (i + 1) * 2 : i + 1) <= Math.round(value);
+                return (
+                  <div key={lbl} className="text-center">
+                    <div className={cn('mx-auto mb-0.5 h-1 w-full rounded-full',
+                      active ? 'bg-primary ring-2 ring-primary/30' : filled ? 'bg-primary/70' : 'bg-border/60')} />
+                    <p className={cn('text-[9px] leading-tight', filled || active ? 'font-medium text-foreground' : 'text-muted-foreground')}>{lbl}</p>
+                  </div>
+                );
+              })}
             </div>
           ) : null}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+};
+
+// "Why these scores?" panel shown below the 3-up ScoreBar grid in each segment tile.
+// Always-visible (collapsed by default, expands inline on click) so reasoning is
+// available without a hover — matches the user's request that reasoning should
+// be given more clearly, not hidden behind a tooltip.
+const SegmentScoreReasoning = ({
+  segment,
+}: {
+  segment: {
+    marketTrajectoryReasoning?: string | null;
+    rightToPlayReasoning?: string | null;
+    positionSustainabilityReasoning?: string | null;
+  };
+}) => {
+  const [open, setOpen] = useState(false);
+
+  const items = [
+    { label: 'Market', reasoning: segment.marketTrajectoryReasoning },
+    { label: 'Right To Play', reasoning: segment.rightToPlayReasoning },
+    { label: 'Sustainability', reasoning: segment.positionSustainabilityReasoning },
+  ].filter((i) => !!i.reasoning);
+
+  if (items.length === 0) return null;
+
+  return (
+    <div
+      className="rounded-xl border border-border/50 bg-background/40 overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((prev) => !prev);
+        }}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-muted/40 transition"
+      >
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          Why these scores?
+        </p>
+        <span className="text-[10px] text-muted-foreground">
+          {open ? '− collapse' : '+ show reasoning'}
+        </span>
+      </button>
+      {open ? (
+        <div className="border-t border-border/40 px-3 py-3 space-y-3">
+          {items.map((item) => (
+            <div key={item.label}>
+              <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-1">
+                {item.label}
+              </p>
+              <p className="text-[11px] leading-relaxed text-foreground/90">
+                {item.reasoning}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 };
 
@@ -270,10 +357,17 @@ type SegmentScatterItem = {
   rawZ: number | null;  // unscaled sustainability for tooltip
 };
 
-const SCATTER_AXIS_TICKS = [1, 2, 3, 4, 5];
-const SCATTER_LABEL_BY_AXIS: Record<'x' | 'y', string[]> = {
+const SCATTER_AXIS_TICKS_10 = [2, 4, 6, 8, 10];
+const SCATTER_BUCKET_LABELS: Record<'x' | 'y' | 'z', string[]> = {
   x: ['Contracting', 'Declining', 'Transitioning', 'Improving', 'Accelerating'],
   y: ['Weak', 'Contested', 'Credible', 'Advantaged', 'Distinctive'],
+  z: ['Eroding', 'Fragile', 'Holding', 'Durable', 'Compounding'],
+};
+
+// Map a /10 tick to its bucket label (1-2->0, 3-4->1, etc)
+const bucketFor10 = (val: number, axis: 'x' | 'y' | 'z'): string => {
+  const idx = Math.min(4, Math.max(0, Math.floor((Math.round(val) - 1) / 2)));
+  return SCATTER_BUCKET_LABELS[axis][idx];
 };
 
 const SegmentScatterMap = ({ segments }: { segments: Array<{ title: string; marketTrajectory: number | null; rightToPlay: number | null; positionSustainability: number | null }> }) => {
@@ -283,8 +377,8 @@ const SegmentScatterMap = ({ segments }: { segments: Array<{ title: string; mark
       name: s.title,
       x: s.marketTrajectory as number,
       y: s.rightToPlay as number,
-      // scale sustainability 1-5 to bubble area (z) 200-1400 so differences are visible
-      z: 200 + ((s.positionSustainability ?? 3) - 1) * 300,
+      // scale sustainability 1-10 to bubble area (z) 200-1400 so differences are visible
+      z: 200 + ((s.positionSustainability ?? 5) - 1) * 133,
       rawZ: s.positionSustainability,
     }));
 
@@ -295,7 +389,7 @@ const SegmentScatterMap = ({ segments }: { segments: Array<{ title: string; mark
       <CardHeader className="pb-2">
         <CardTitle className="text-xl">Portfolio Scatter Map</CardTitle>
         <p className="text-xs text-muted-foreground">
-          Market Trajectory (horizontal) vs Right To Play (vertical). Bubble size = Position Sustainability.
+          Market Trajectory (horizontal) vs Right To Play (vertical), scored 1–10. Bubble size = Position Sustainability.
           Top-right quadrant = growing market the company is well-positioned in.
         </p>
       </CardHeader>
@@ -308,43 +402,44 @@ const SegmentScatterMap = ({ segments }: { segments: Array<{ title: string; mark
                 type="number"
                 dataKey="x"
                 name="Market"
-                domain={[0.5, 5.5]}
-                ticks={SCATTER_AXIS_TICKS}
-                tickFormatter={(v: number) => SCATTER_LABEL_BY_AXIS.x[v - 1] ?? String(v)}
-                tick={{ fontSize: 10 }}
+                domain={[0.5, 10.5]}
+                ticks={SCATTER_AXIS_TICKS_10}
+                tickFormatter={(v: number) => `${v} · ${bucketFor10(v, 'x')}`}
+                tick={{ fontSize: 9 }}
                 stroke="hsl(var(--muted-foreground))"
               >
-                <RechartsLabel value="Market Trajectory" offset={-25} position="insideBottom" style={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11, fontWeight: 600 }} />
+                <RechartsLabel value="Market Trajectory (1–10)" offset={-25} position="insideBottom" style={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11, fontWeight: 600 }} />
               </XAxis>
               <YAxis
                 type="number"
                 dataKey="y"
                 name="Right to Play"
-                domain={[0.5, 5.5]}
-                ticks={SCATTER_AXIS_TICKS}
-                tickFormatter={(v: number) => SCATTER_LABEL_BY_AXIS.y[v - 1] ?? String(v)}
-                tick={{ fontSize: 10 }}
+                domain={[0.5, 10.5]}
+                ticks={SCATTER_AXIS_TICKS_10}
+                tickFormatter={(v: number) => `${v} · ${bucketFor10(v, 'y')}`}
+                tick={{ fontSize: 9 }}
                 stroke="hsl(var(--muted-foreground))"
+                width={110}
               >
-                <RechartsLabel value="Right To Play" angle={-90} offset={-35} position="insideLeft" style={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11, fontWeight: 600 }} />
+                <RechartsLabel value="Right To Play (1–10)" angle={-90} offset={-35} position="insideLeft" style={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11, fontWeight: 600 }} />
               </YAxis>
               <ZAxis type="number" dataKey="z" range={[200, 1400]} name="Sustainability" />
-              <ReferenceLine x={3} stroke="hsl(var(--border))" strokeDasharray="4 4" />
-              <ReferenceLine y={3} stroke="hsl(var(--border))" strokeDasharray="4 4" />
+              <ReferenceLine x={5.5} stroke="hsl(var(--border))" strokeDasharray="4 4" />
+              <ReferenceLine y={5.5} stroke="hsl(var(--border))" strokeDasharray="4 4" />
               <RechartsTooltip
                 cursor={{ strokeDasharray: '3 3' }}
                 content={(props) => {
                   const payload = props?.payload?.[0]?.payload as SegmentScatterItem | undefined;
                   if (!payload) return null;
-                  const mtLabel = SCATTER_LABEL_BY_AXIS.x[Math.round(payload.x) - 1];
-                  const rtpLabel = SCATTER_LABEL_BY_AXIS.y[Math.round(payload.y) - 1];
-                  const psLabel = payload.rawZ != null ? ['Eroding', 'Fragile', 'Holding', 'Durable', 'Compounding'][Math.round(payload.rawZ) - 1] : '';
+                  const mtLabel = bucketFor10(payload.x, 'x');
+                  const rtpLabel = bucketFor10(payload.y, 'y');
+                  const psLabel = payload.rawZ != null ? bucketFor10(payload.rawZ, 'z') : '';
                   return (
                     <div className="rounded-xl border border-border bg-card p-3 shadow-lg text-xs space-y-1">
                       <p className="font-semibold text-sm">{payload.name}</p>
-                      <p><span className="text-muted-foreground">Market:</span> <strong>{payload.x.toFixed(1)}</strong> ({mtLabel})</p>
-                      <p><span className="text-muted-foreground">Right to Play:</span> <strong>{payload.y.toFixed(1)}</strong> ({rtpLabel})</p>
-                      <p><span className="text-muted-foreground">Sustainability:</span> <strong>{payload.rawZ?.toFixed(1) ?? '—'}</strong> ({psLabel})</p>
+                      <p><span className="text-muted-foreground">Market:</span> <strong>{payload.x.toFixed(1)}/10</strong> ({mtLabel})</p>
+                      <p><span className="text-muted-foreground">Right to Play:</span> <strong>{payload.y.toFixed(1)}/10</strong> ({rtpLabel})</p>
+                      <p><span className="text-muted-foreground">Sustainability:</span> <strong>{payload.rawZ?.toFixed(1) ?? '—'}/10</strong> ({psLabel})</p>
                     </div>
                   );
                 }}
@@ -851,6 +946,7 @@ export function MacroDashboard({ initialMode = 'dashboard', onRequestModeChange 
                 <ScoreBar label="Right To Play" value={segment.rightToPlay} reasoning={segment.rightToPlayReasoning ?? undefined} />
                 <ScoreBar label="Sustainability" value={segment.positionSustainability} reasoning={segment.positionSustainabilityReasoning ?? undefined} />
               </div>
+              <SegmentScoreReasoning segment={segment} />
             </button>
           ))}
         </CardContent>
