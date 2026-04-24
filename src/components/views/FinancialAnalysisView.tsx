@@ -29,6 +29,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
@@ -2769,16 +2770,31 @@ function WorkingCapitalPage({
     }
   };
 
-  const trajectoryChartData = useMemo(() => {
+  // 7-year NWC overview (all years with NWC data — typically FY19-FY25, no gaps)
+  const nwcOverviewData = useMemo(() => {
     if (!data.trajectory?.years) return [];
-    return data.trajectory.years.map((y, i) => ({
-      year: y.replace('FY', ''),
-      nwc_pct_revenue: data.trajectory.nwc_pct_revenue?.[i] ?? null,
-      days_wc: data.trajectory.days_wc?.[i] ?? null,
-      dio: data.trajectory.dio_disclosed?.[i] ?? data.trajectory.dio_computed?.[i] ?? null,
-      dso: data.trajectory.dso?.[i] ?? null,
-      dpo: data.trajectory.dpo?.[i] ?? null,
-    }));
+    return data.trajectory.years
+      .map((y, i) => ({
+        year: y.replace('FY', ''),
+        NWC: data.trajectory.nwc_m?.[i] ?? null,
+        NWC_pct: data.trajectory.nwc_pct_revenue?.[i] ?? null,
+      }))
+      .filter((d) => d.NWC !== null || d.NWC_pct !== null);
+  }, [data.trajectory]);
+
+  // Efficiency ratios — only show years where at least one ratio has data
+  // (trims the FY19-FY21 empty leading years that the user flagged)
+  const efficiencyChartData = useMemo(() => {
+    if (!data.trajectory?.years) return [];
+    return data.trajectory.years
+      .map((y, i) => ({
+        year: y.replace('FY', ''),
+        days_wc: data.trajectory.days_wc?.[i] ?? null,
+        dio: data.trajectory.dio_disclosed?.[i] ?? data.trajectory.dio_computed?.[i] ?? null,
+        dso: data.trajectory.dso?.[i] ?? null,
+        dpo: data.trajectory.dpo?.[i] ?? null,
+      }))
+      .filter((d) => d.days_wc !== null || d.dio !== null || d.dso !== null || d.dpo !== null);
   }, [data.trajectory]);
 
   const componentsChartData = useMemo(() => {
@@ -2890,28 +2906,64 @@ function WorkingCapitalPage({
         </Card>
       )}
 
-      {/* Multi-year trajectory chart */}
-      {trajectoryChartData.length > 0 && (
+      {/* ============ IN-DEPTH ANALYSIS (main story, before AR vs YF) ============ */}
+      <WcSectionDivider
+        title="In-Depth Analysis"
+        subtitle="Multi-year trajectory, components, cash-flow movement, patterns, and forensic signals — the story."
+        icon={<Gauge className="h-5 w-5 text-primary" />}
+      />
+
+      {/* 1. 7-year NWC overview — NWC bars + NWC/Revenue % line (dual axis) */}
+      {nwcOverviewData.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Multi-Year Efficiency Trajectory</CardTitle>
+            <CardTitle className="text-base">7-Year NWC Trajectory</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Days Working Capital, DIO, DSO, and DPO over the disclosed window.
+              NWC in absolute €m (bars) and NWC as % of revenue (line) — the long-run efficiency picture.
             </p>
           </CardHeader>
           <CardContent>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trajectoryChartData}>
+                <ComposedChart data={nwcOverviewData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="year" stroke="#6b7280" fontSize={12} />
-                  <YAxis stroke="#6b7280" fontSize={12} />
+                  <YAxis yAxisId="left" stroke="#2563eb" fontSize={12} label={{ value: 'mn EUR', angle: -90, position: 'insideLeft', fontSize: 11, fill: '#6b7280' }} />
+                  <YAxis yAxisId="right" orientation="right" stroke="#dc2626" fontSize={12} label={{ value: '% of revenue', angle: 90, position: 'insideRight', fontSize: 11, fill: '#6b7280' }} />
                   <Tooltip />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line type="monotone" dataKey="days_wc" name="Days WC" stroke="#2563eb" strokeWidth={2} dot />
-                  <Line type="monotone" dataKey="dio" name="DIO" stroke="#16a34a" strokeWidth={2} dot />
-                  <Line type="monotone" dataKey="dso" name="DSO" stroke="#f59e0b" strokeWidth={2} dot />
-                  <Line type="monotone" dataKey="dpo" name="DPO" stroke="#dc2626" strokeWidth={2} dot />
+                  <Bar yAxisId="left" dataKey="NWC" fill="#2563eb" name="NWC (€m)" />
+                  <Line yAxisId="right" type="monotone" dataKey="NWC_pct" stroke="#dc2626" strokeWidth={2} dot name="NWC % of Revenue" />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 2. Efficiency ratios (DIO/DSO/DPO/DaysWC) — only show years with data */}
+      {efficiencyChartData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Efficiency Ratios (days)</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              DIO (Aalberts-disclosed), DSO, DPO, and Days Working Capital. Only years with disclosed
+              data are shown ({efficiencyChartData[0]?.year}–{efficiencyChartData[efficiencyChartData.length - 1]?.year}).
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={efficiencyChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="year" stroke="#6b7280" fontSize={12} />
+                  <YAxis stroke="#6b7280" fontSize={12} label={{ value: 'days', angle: -90, position: 'insideLeft', fontSize: 11, fill: '#6b7280' }} />
+                  <Tooltip />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line type="monotone" dataKey="days_wc" name="Days WC" stroke="#2563eb" strokeWidth={2.5} dot />
+                  <Line type="monotone" dataKey="dio" name="DIO" stroke="#16a34a" strokeWidth={2.5} dot />
+                  <Line type="monotone" dataKey="dso" name="DSO" stroke="#f59e0b" strokeWidth={2.5} dot />
+                  <Line type="monotone" dataKey="dpo" name="DPO" stroke="#dc2626" strokeWidth={2.5} dot />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -2919,13 +2971,14 @@ function WorkingCapitalPage({
         </Card>
       )}
 
-      {/* Component balances */}
+      {/* 3. Component balances */}
       {componentsChartData.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Working Capital Components (mn EUR)</CardTitle>
+            <CardTitle className="text-base">Balance Sheet Components (mn EUR)</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Year-end balance sheet positions across the WC building blocks.
+              Year-end positions. <span className="text-emerald-700 font-medium">Green shades = operating assets</span>,{' '}
+              <span className="text-red-700 font-medium">red shades = operating liabilities</span>.
             </p>
           </CardHeader>
           <CardContent>
@@ -2938,10 +2991,10 @@ function WorkingCapitalPage({
                   <Tooltip />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Bar dataKey="Inventories" fill="#16a34a" />
-                  <Bar dataKey="Trade Receivables" fill="#2563eb" />
-                  <Bar dataKey="Other Current Assets" fill="#60a5fa" />
+                  <Bar dataKey="Trade Receivables" fill="#22c55e" />
+                  <Bar dataKey="Other Current Assets" fill="#86efac" />
                   <Bar dataKey="Trade & Other Payables" fill="#dc2626" />
-                  <Bar dataKey="Other Current Liabilities" fill="#f87171" />
+                  <Bar dataKey="Other Current Liabilities" fill="#fca5a5" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -2949,14 +3002,15 @@ function WorkingCapitalPage({
         </Card>
       )}
 
-      {/* Cash flow WC movement */}
+      {/* 4. Cash flow WC movement */}
       {data.cash_flow_movement && data.cash_flow_movement.years?.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Cash Flow Statement — WC Movement</CardTitle>
+            <CardTitle className="text-base">Cash-Flow Statement WC Movement</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Positive = cash release from WC. Negative = cash consumed by WC build. The organic
-              signal, uncontaminated by balance-sheet scope effects.
+              <span className="text-emerald-700 font-medium">Positive = cash released from WC</span> ·{' '}
+              <span className="text-red-700 font-medium">negative = cash consumed by WC build</span>.
+              This is the organic signal, uncontaminated by scope effects (divestments, acquisitions).
             </p>
           </CardHeader>
           <CardContent>
@@ -2977,7 +3031,12 @@ function WorkingCapitalPage({
                   <TableRow className="font-semibold bg-slate-50">
                     <TableCell>Total change in working capital</TableCell>
                     {(data.cash_flow_movement.total_wc_movement ?? []).map((v, i) => (
-                      <TableCell key={i} className="text-right">{fmtNum(v, 1)}</TableCell>
+                      <TableCell key={i} className={cn(
+                        'text-right',
+                        v != null && v > 0 ? 'text-emerald-700' : v != null && v < 0 ? 'text-red-700' : ''
+                      )}>
+                        {fmtNum(v, 1)}
+                      </TableCell>
                     ))}
                   </TableRow>
                 </TableBody>
@@ -2992,13 +3051,98 @@ function WorkingCapitalPage({
         </Card>
       )}
 
+      {/* 5. Multi-year patterns */}
+      {data.multi_year_patterns?.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Multi-Year Patterns</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Structural signals that single-year deltas miss.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.multi_year_patterns.map((p, i) => (
+              <div key={i} className="rounded-lg border p-4 space-y-2">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="font-medium text-sm flex-1">{p.title}</div>
+                  <span
+                    className={cn(
+                      'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+                      WC_PATTERN_SEVERITY_STYLES[p.severity] ?? WC_PATTERN_SEVERITY_STYLES.mixed
+                    )}
+                  >
+                    {p.severity.replace(/_/g, ' ')}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">{p.narrative}</p>
+                <div className="flex gap-4 text-xs text-muted-foreground">
+                  <span>Years: {p.years_covered.join(', ')}</span>
+                  {p.cumulative_impact_eur_m !== null && p.cumulative_impact_eur_m !== undefined && (
+                    <span>Impact: {fmtNum(p.cumulative_impact_eur_m, 1)} mn EUR</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 6. Quality signals */}
+      {data.quality_signals?.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Quality Signals</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Forensic signals — where is WC moving against cash generation, and what does it mean?
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.quality_signals.map((s, i) => (
+              <div key={i} className="rounded-lg border p-4 space-y-2">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="font-medium text-sm flex-1">{s.title}</div>
+                  <div className="flex gap-2">
+                    <span
+                      className={cn(
+                        'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium',
+                        WC_DIRECTION_STYLES[s.direction] ?? WC_DIRECTION_STYLES.neutral
+                      )}
+                    >
+                      {s.direction.replace(/_/g, ' ')}
+                    </span>
+                    <SeverityBadge severity={s.severity === 'none' ? 'low' : (s.severity as EqSeverity)} />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">{s.narrative}</p>
+                <div className="flex gap-4 text-xs text-muted-foreground">
+                  {s.years_affected && <span>Years: {s.years_affected.join(', ')}</span>}
+                  {s.cash_impact_eur_m !== null && s.cash_impact_eur_m !== undefined && (
+                    <span>Cash impact: {fmtNum(s.cash_impact_eur_m, 1)} mn EUR</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ============ AR ↔ YAHOO FINANCE COMPARISON (at the end) ============ */}
+      {(data.ar_vs_yf_wc_bridge?.length > 0 || data.methodology_reconciliation) && (
+        <WcSectionDivider
+          title="AR ↔ Yahoo Finance Comparison"
+          subtitle="Methodology reconciliation — how Aalberts' APM differs from Yahoo Finance's generic WC definition."
+          icon={<ShieldCheck className="h-5 w-5 text-primary" />}
+        />
+      )}
+
       {/* AR vs YF bridge */}
       {data.ar_vs_yf_wc_bridge?.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">AR ↔ Yahoo Finance — Working Capital Bridge</CardTitle>
+            <CardTitle className="text-base">Side-by-Side WC Bridge</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Side-by-side methodology comparison. AR APM reclassifies items vs YF's balance-sheet view.
+              AR APM reclassifies items vs YF's generic balance-sheet view. A 23% aggregate gap
+              exists because YF includes tax and current provisions that AR's APM strips.
             </p>
           </CardHeader>
           <CardContent>
@@ -3029,10 +3173,10 @@ function WorkingCapitalPage({
       {data.methodology_reconciliation && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Methodology Reconciliation</CardTitle>
+            <CardTitle className="text-base">Methodology Walk — line-by-line</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Line-by-line walk from the statutory balance sheet to Aalberts' APM Net Working Capital
-              and to Yahoo Finance's Working Capital. The residual gap is the interesting bit.
+              From statutory balance sheet to Aalberts' APM NWC and to Yahoo Finance's WC.
+              The residual gap's composition is the interesting bit.
             </p>
           </CardHeader>
           <CardContent className="grid gap-6 md:grid-cols-2">
@@ -3082,83 +3226,6 @@ function WorkingCapitalPage({
           </CardContent>
         </Card>
       )}
-
-      {/* Multi-year patterns */}
-      {data.multi_year_patterns?.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Multi-Year Patterns</CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">
-              Structural signals that single-year deltas miss.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {data.multi_year_patterns.map((p, i) => (
-              <div key={i} className="rounded-lg border p-4 space-y-2">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div className="font-medium text-sm flex-1">{p.title}</div>
-                  <span
-                    className={cn(
-                      'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap',
-                      WC_PATTERN_SEVERITY_STYLES[p.severity] ?? WC_PATTERN_SEVERITY_STYLES.mixed
-                    )}
-                  >
-                    {p.severity.replace(/_/g, ' ')}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">{p.narrative}</p>
-                <div className="flex gap-4 text-xs text-muted-foreground">
-                  <span>Years: {p.years_covered.join(', ')}</span>
-                  {p.cumulative_impact_eur_m !== null && p.cumulative_impact_eur_m !== undefined && (
-                    <span>Impact: {fmtNum(p.cumulative_impact_eur_m, 1)} mn EUR</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Quality signals */}
-      {data.quality_signals?.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Quality Signals</CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">
-              Forensic signals — where is WC moving against cash generation, and what does it mean?
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {data.quality_signals.map((s, i) => (
-              <div key={i} className="rounded-lg border p-4 space-y-2">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div className="font-medium text-sm flex-1">{s.title}</div>
-                  <div className="flex gap-2">
-                    <span
-                      className={cn(
-                        'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium',
-                        WC_DIRECTION_STYLES[s.direction] ?? WC_DIRECTION_STYLES.neutral
-                      )}
-                    >
-                      {s.direction.replace(/_/g, ' ')}
-                    </span>
-                    <SeverityBadge severity={s.severity === 'none' ? 'low' : (s.severity as EqSeverity)} />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">{s.narrative}</p>
-                <div className="flex gap-4 text-xs text-muted-foreground">
-                  {s.years_affected && <span>Years: {s.years_affected.join(', ')}</span>}
-                  {s.cash_impact_eur_m !== null && s.cash_impact_eur_m !== undefined && (
-                    <span>Cash impact: {fmtNum(s.cash_impact_eur_m, 1)} mn EUR</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* (Red flags moved to top — see section above Headline metrics.) */}
 
       {/* Disclosure gaps */}
       {data.disclosure_gaps?.length > 0 && (
@@ -3299,6 +3366,30 @@ function WcBridgeRowComponent({ row }: { row: WcBridgeRow }) {
         {row.severity && <SeverityBadge severity={row.severity === 'none' ? 'low' : (row.severity as EqSeverity)} />}
       </TableCell>
     </TableRow>
+  );
+}
+
+function WcSectionDivider({
+  title,
+  subtitle,
+  icon,
+}: {
+  title: string;
+  subtitle?: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div className="pt-4 pb-1 border-b border-primary/20">
+      <div className="flex items-center gap-3">
+        {icon && <div className="rounded-lg bg-primary/10 p-2">{icon}</div>}
+        <div>
+          <h3 className="text-lg font-bold tracking-tight text-foreground">{title}</h3>
+          {subtitle && (
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{subtitle}</p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
