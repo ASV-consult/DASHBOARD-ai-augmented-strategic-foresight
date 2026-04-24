@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useForesight } from '@/contexts/ForesightContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -71,6 +71,9 @@ import {
   EqHistoricalPattern,
   EqOneTimeDressing,
   EqDisclosureGap,
+  FinancialWorkingCapitalAnalysis,
+  WcBridgeRow,
+  WcHeadlineMetric,
 } from '@/types/financial';
 
 /* ============================================================
@@ -314,6 +317,7 @@ export function FinancialAnalysisView() {
   const bridge = fd.ar_vs_yf_bridge ?? [];
   const metricBridge = fd.metric_bridge;
   const earningsQuality = fd.earnings_quality;
+  const workingCapitalAnalysis = fd.working_capital_analysis;
   const segments = fd.segment_analysis ?? [];
   const guidance = fd.guidance_tracking ?? [];
   const charts = fd.financial_charts;
@@ -341,8 +345,12 @@ export function FinancialAnalysisView() {
           {earningsQuality && (
             <TabsTrigger value="earnings-quality" className="rounded-xl">Earnings Quality</TabsTrigger>
           )}
+          {workingCapitalAnalysis && (
+            <TabsTrigger value="working-capital" className="rounded-xl">Working Capital</TabsTrigger>
+          )}
           <TabsTrigger value="segments" className="rounded-xl">Segments</TabsTrigger>
           <TabsTrigger value="ratios" className="rounded-xl">Ratios &amp; Historicals</TabsTrigger>
+          <TabsTrigger value="guide" className="rounded-xl">Guide</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6 space-y-6">
@@ -369,12 +377,28 @@ export function FinancialAnalysisView() {
           </TabsContent>
         )}
 
+        {workingCapitalAnalysis && (
+          <TabsContent value="working-capital" className="mt-6 space-y-6">
+            <WorkingCapitalPage
+              data={workingCapitalAnalysis}
+              companyTicker={profile?.ticker ?? 'UNKNOWN'}
+            />
+          </TabsContent>
+        )}
+
         <TabsContent value="segments" className="mt-6 space-y-6">
           <SegmentsPage segments={segments} guidance={guidance} />
         </TabsContent>
 
         <TabsContent value="ratios" className="mt-6 space-y-6">
           <RatiosHistoricalPage ratios={ratios} historical={historical} />
+        </TabsContent>
+
+        <TabsContent value="guide" className="mt-6 space-y-6">
+          <GuidePage
+            hasEarningsQuality={Boolean(earningsQuality)}
+            hasWorkingCapital={Boolean(workingCapitalAnalysis)}
+          />
         </TabsContent>
       </Tabs>
     </div>
@@ -2684,6 +2708,980 @@ function FoldableSection({
         </CollapsibleContent>
       </Collapsible>
     </Card>
+  );
+}
+
+/* ==========================================================================
+   WORKING CAPITAL PAGE — deep WC analysis with AR-vs-YF bridge,
+   multi-year trajectory, forensic quality signals, and editable notes.
+============================================================================ */
+
+const WC_VERDICT_STYLES: Record<string, string> = {
+  improving: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  deteriorating: 'bg-red-100 text-red-800 border-red-200',
+  mixed: 'bg-amber-100 text-amber-800 border-amber-200',
+  stable: 'bg-slate-100 text-slate-700 border-slate-200',
+  limited: 'bg-slate-100 text-slate-700 border-slate-200',
+};
+
+const WC_PATTERN_SEVERITY_STYLES: Record<string, string> = {
+  positive_structural: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  positive_cyclical: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+  neutral_scope: 'bg-slate-100 text-slate-700 border-slate-200',
+  mixed: 'bg-amber-100 text-amber-800 border-amber-200',
+  negative_cyclical: 'bg-red-50 text-red-700 border-red-100',
+  negative_structural: 'bg-red-100 text-red-800 border-red-200',
+};
+
+const WC_DIRECTION_STYLES: Record<string, string> = {
+  positive_for_cash: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  negative_for_cash: 'bg-red-100 text-red-800 border-red-200',
+  neutral: 'bg-slate-100 text-slate-700 border-slate-200',
+};
+
+function WorkingCapitalPage({
+  data,
+  companyTicker,
+}: {
+  data: FinancialWorkingCapitalAnalysis;
+  companyTicker: string;
+}) {
+  const notesKey = `wc_notes_${companyTicker}`;
+  const [notes, setNotes] = useState<string>('');
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(notesKey);
+      if (stored !== null) setNotes(stored);
+      else if (data.custom_notes) setNotes(data.custom_notes);
+    } catch {
+      /* ignore */
+    }
+  }, [notesKey, data.custom_notes]);
+
+  const handleNotesChange = (value: string) => {
+    setNotes(value);
+    try {
+      localStorage.setItem(notesKey, value);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const trajectoryChartData = useMemo(() => {
+    if (!data.trajectory?.years) return [];
+    return data.trajectory.years.map((y, i) => ({
+      year: y.replace('FY', ''),
+      nwc_pct_revenue: data.trajectory.nwc_pct_revenue?.[i] ?? null,
+      days_wc: data.trajectory.days_wc?.[i] ?? null,
+      dio: data.trajectory.dio_disclosed?.[i] ?? data.trajectory.dio_computed?.[i] ?? null,
+      dso: data.trajectory.dso?.[i] ?? null,
+      dpo: data.trajectory.dpo?.[i] ?? null,
+    }));
+  }, [data.trajectory]);
+
+  const componentsChartData = useMemo(() => {
+    const c = data.components_multi_year;
+    if (!c?.years) return [];
+    return c.years.map((y, i) => ({
+      year: y.replace('FY', ''),
+      Inventories: c.inventories?.[i] ?? null,
+      'Trade Receivables': c.trade_receivables_net?.[i] ?? null,
+      'Trade & Other Payables': c.trade_and_other_payables?.[i] ?? null,
+      'Other Current Assets': c.other_current_assets?.[i] ?? null,
+      'Other Current Liabilities': c.other_current_liabilities?.[i] ?? null,
+    }));
+  }, [data.components_multi_year]);
+
+  return (
+    <div className="space-y-6">
+      {/* Verdict banner */}
+      <Card className="border-2">
+        <CardContent className="p-6 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span
+              className={cn(
+                'inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide',
+                WC_VERDICT_STYLES[data.overall_verdict] ?? WC_VERDICT_STYLES.mixed
+              )}
+            >
+              {data.overall_verdict}
+            </span>
+            <span className="text-sm text-muted-foreground">
+              Working Capital Verdict — focus year FY{data.focus_year}
+            </span>
+          </div>
+          <p className="text-lg font-medium leading-relaxed">{data.one_liner}</p>
+          {data.summary && (
+            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+              {data.summary}
+            </p>
+          )}
+          {data.methodology_note && (
+            <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+              <strong>Methodology note:</strong> {data.methodology_note}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Headline metrics */}
+      {data.headline_metrics?.length > 0 && (
+        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+          {data.headline_metrics.map((m) => (
+            <WcMetricCard key={m.key} metric={m} />
+          ))}
+        </div>
+      )}
+
+      {/* Multi-year trajectory chart */}
+      {trajectoryChartData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Multi-Year Efficiency Trajectory</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Days Working Capital, DIO, DSO, and DPO over the disclosed window.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trajectoryChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="year" stroke="#6b7280" fontSize={12} />
+                  <YAxis stroke="#6b7280" fontSize={12} />
+                  <Tooltip />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line type="monotone" dataKey="days_wc" name="Days WC" stroke="#2563eb" strokeWidth={2} dot />
+                  <Line type="monotone" dataKey="dio" name="DIO" stroke="#16a34a" strokeWidth={2} dot />
+                  <Line type="monotone" dataKey="dso" name="DSO" stroke="#f59e0b" strokeWidth={2} dot />
+                  <Line type="monotone" dataKey="dpo" name="DPO" stroke="#dc2626" strokeWidth={2} dot />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Component balances */}
+      {componentsChartData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Working Capital Components (mn EUR)</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Year-end balance sheet positions across the WC building blocks.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={componentsChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="year" stroke="#6b7280" fontSize={12} />
+                  <YAxis stroke="#6b7280" fontSize={12} />
+                  <Tooltip />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="Inventories" fill="#16a34a" />
+                  <Bar dataKey="Trade Receivables" fill="#2563eb" />
+                  <Bar dataKey="Other Current Assets" fill="#60a5fa" />
+                  <Bar dataKey="Trade & Other Payables" fill="#dc2626" />
+                  <Bar dataKey="Other Current Liabilities" fill="#f87171" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Cash flow WC movement */}
+      {data.cash_flow_movement && data.cash_flow_movement.years?.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Cash Flow Statement — WC Movement</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Positive = cash release from WC. Negative = cash consumed by WC build. The organic
+              signal, uncontaminated by balance-sheet scope effects.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Line</TableHead>
+                    {data.cash_flow_movement.years.map((y) => (
+                      <TableHead key={y} className="text-right">{y}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <WcCfRow label="Change in inventories" values={data.cash_flow_movement.change_in_inventories} />
+                  <WcCfRow label="Change in trade and other receivables" values={data.cash_flow_movement.change_in_receivables} />
+                  <WcCfRow label="Change in trade and other payables" values={data.cash_flow_movement.change_in_payables} />
+                  <TableRow className="font-semibold bg-slate-50">
+                    <TableCell>Total change in working capital</TableCell>
+                    {(data.cash_flow_movement.total_wc_movement ?? []).map((v, i) => (
+                      <TableCell key={i} className="text-right">{fmtNum(v, 1)}</TableCell>
+                    ))}
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+            {data.cash_flow_movement.narrative && (
+              <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
+                {data.cash_flow_movement.narrative}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* AR vs YF bridge */}
+      {data.ar_vs_yf_wc_bridge?.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">AR ↔ Yahoo Finance — Working Capital Bridge</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Side-by-side methodology comparison. AR APM reclassifies items vs YF's balance-sheet view.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Concept</TableHead>
+                    <TableHead className="text-right">AR</TableHead>
+                    <TableHead className="text-right">YF</TableHead>
+                    <TableHead className="text-right">Gap %</TableHead>
+                    <TableHead>Favorability</TableHead>
+                    <TableHead>Severity</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.ar_vs_yf_wc_bridge.map((row, i) => (
+                    <WcBridgeRowComponent key={i} row={row} />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Methodology reconciliation */}
+      {data.methodology_reconciliation && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Methodology Reconciliation</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Line-by-line walk from the statutory balance sheet to Aalberts' APM Net Working Capital
+              and to Yahoo Finance's Working Capital. The residual gap is the interesting bit.
+            </p>
+          </CardHeader>
+          <CardContent className="grid gap-6 md:grid-cols-2">
+            <div>
+              <h4 className="text-sm font-semibold mb-2">AR APM NWC Walk</h4>
+              <Table>
+                <TableBody>
+                  {data.methodology_reconciliation.ar_apm_nwc_walk.map((ln, i) => (
+                    <TableRow key={i}>
+                      <TableCell className={cn('text-xs', ln.line.startsWith('=') && 'font-semibold bg-slate-50')}>{ln.line}</TableCell>
+                      <TableCell className={cn('text-xs text-right', ln.line.startsWith('=') && 'font-semibold bg-slate-50')}>
+                        {typeof ln.value === 'number' ? fmtNum(ln.value, 1) : ln.value}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold mb-2">YF WC Walk</h4>
+              <Table>
+                <TableBody>
+                  {data.methodology_reconciliation.yf_wc_walk.map((ln, i) => (
+                    <TableRow key={i}>
+                      <TableCell className={cn('text-xs', ln.line.startsWith('=') && 'font-semibold bg-slate-50')}>{ln.line}</TableCell>
+                      <TableCell className={cn('text-xs text-right', ln.line.startsWith('=') && 'font-semibold bg-slate-50')}>
+                        {typeof ln.value === 'number' ? fmtNum(ln.value, 1) : ln.value}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="md:col-span-2">
+              <h4 className="text-sm font-semibold mb-2">
+                Reconciling gap: {fmtNum(data.methodology_reconciliation.reconciling_gap_mn_eur, 1)} mn EUR
+              </h4>
+              <ul className="space-y-2 text-xs">
+                {data.methodology_reconciliation.reconciling_gap_components.map((c, i) => (
+                  <li key={i}>
+                    <span className="font-medium">{c.item}</span> ({typeof c.amount === 'number' ? fmtNum(c.amount, 1) : c.amount} mn EUR):{' '}
+                    <span className="text-muted-foreground">{c.narrative}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Multi-year patterns */}
+      {data.multi_year_patterns?.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Multi-Year Patterns</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Structural signals that single-year deltas miss.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.multi_year_patterns.map((p, i) => (
+              <div key={i} className="rounded-lg border p-4 space-y-2">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="font-medium text-sm flex-1">{p.title}</div>
+                  <span
+                    className={cn(
+                      'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+                      WC_PATTERN_SEVERITY_STYLES[p.severity] ?? WC_PATTERN_SEVERITY_STYLES.mixed
+                    )}
+                  >
+                    {p.severity.replace(/_/g, ' ')}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">{p.narrative}</p>
+                <div className="flex gap-4 text-xs text-muted-foreground">
+                  <span>Years: {p.years_covered.join(', ')}</span>
+                  {p.cumulative_impact_eur_m !== null && p.cumulative_impact_eur_m !== undefined && (
+                    <span>Impact: {fmtNum(p.cumulative_impact_eur_m, 1)} mn EUR</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Quality signals */}
+      {data.quality_signals?.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Quality Signals</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Forensic signals — where is WC moving against cash generation, and what does it mean?
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.quality_signals.map((s, i) => (
+              <div key={i} className="rounded-lg border p-4 space-y-2">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="font-medium text-sm flex-1">{s.title}</div>
+                  <div className="flex gap-2">
+                    <span
+                      className={cn(
+                        'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium',
+                        WC_DIRECTION_STYLES[s.direction] ?? WC_DIRECTION_STYLES.neutral
+                      )}
+                    >
+                      {s.direction.replace(/_/g, ' ')}
+                    </span>
+                    <SeverityBadge severity={s.severity === 'none' ? 'low' : (s.severity as EqSeverity)} />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">{s.narrative}</p>
+                <div className="flex gap-4 text-xs text-muted-foreground">
+                  {s.years_affected && <span>Years: {s.years_affected.join(', ')}</span>}
+                  {s.cash_impact_eur_m !== null && s.cash_impact_eur_m !== undefined && (
+                    <span>Cash impact: {fmtNum(s.cash_impact_eur_m, 1)} mn EUR</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Red flags */}
+      {data.red_flags?.length > 0 && (
+        <Card className="border-red-200 bg-red-50/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2 text-red-900">
+              <AlertTriangle className="h-4 w-4" />
+              Red Flags
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ol className="space-y-2 list-decimal list-inside text-sm text-red-900">
+              {data.red_flags.map((rf, i) => (
+                <li key={i} className="leading-relaxed">
+                  {rf}
+                </li>
+              ))}
+            </ol>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Disclosure gaps */}
+      {data.disclosure_gaps?.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Disclosure Gaps</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {data.disclosure_gaps.map((g, i) => (
+                <li key={i} className="flex items-start gap-3 text-sm">
+                  <SeverityBadge severity={g.severity === 'none' ? 'low' : (g.severity as EqSeverity)} />
+                  <div className="flex-1">
+                    <div className="font-medium">{g.metric}</div>
+                    <div className="text-xs text-muted-foreground">
+                      <span className="italic">Expected in: {g.expected_in}. </span>
+                      {g.impact}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Personal analyst notes — editable, persisted in localStorage */}
+      <Card className="border-blue-200">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="h-4 w-4 text-blue-600" />
+            Personal Analyst Notes
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Free-form workspace for your own WC commentary. Saved automatically to this browser
+            (localStorage key: <code className="text-[10px]">{notesKey}</code>) — survives refreshes.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <textarea
+            value={notes}
+            onChange={(e) => handleNotesChange(e.target.value)}
+            placeholder="Add your own observations, questions, follow-ups, or alternative hypotheses here..."
+            rows={10}
+            className="w-full rounded-md border border-slate-200 bg-white p-3 text-sm font-mono leading-relaxed focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+          />
+          <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+            <span>{notes.length.toLocaleString()} chars</span>
+            <button
+              onClick={() => {
+                if (confirm('Clear personal notes for this company?')) {
+                  handleNotesChange('');
+                }
+              }}
+              className="text-red-600 hover:text-red-700"
+            >
+              Clear
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function WcMetricCard({ metric }: { metric: WcHeadlineMetric }) {
+  const trendColor = {
+    improving: 'text-emerald-600',
+    deteriorating: 'text-red-600',
+    stable: 'text-slate-500',
+    mixed: 'text-amber-600',
+  }[metric.trend ?? 'stable'];
+
+  const TrendIcon =
+    metric.trend === 'improving' ? TrendingUp :
+    metric.trend === 'deteriorating' ? TrendingDown : Activity;
+
+  const fmtValue = (v: number | null | undefined) => {
+    if (v === null || v === undefined || Number.isNaN(v)) return '—';
+    if (metric.unit === '%') return `${v.toFixed(1)}%`;
+    if (metric.unit === 'days') return `${v.toFixed(v === Math.round(v) ? 0 : 1)}d`;
+    if (metric.unit === 'mn EUR') return fmtNum(v, 1);
+    return fmtNum(v, 1);
+  };
+
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="text-xs font-medium text-muted-foreground">{metric.label}</div>
+          <TrendIcon className={cn('h-4 w-4', trendColor)} />
+        </div>
+        <div className="text-2xl font-semibold">{fmtValue(metric.value)}</div>
+        {metric.prior_year !== null && metric.prior_year !== undefined && (
+          <div className="text-xs text-muted-foreground">
+            vs {fmtValue(metric.prior_year)} PY
+            {metric.yoy_change_pct !== null && metric.yoy_change_pct !== undefined && (
+              <span className={cn('ml-2 font-medium', trendColor)}>
+                {fmtDelta(metric.yoy_change_pct, 1)}
+              </span>
+            )}
+          </div>
+        )}
+        {metric.commentary && (
+          <p className="text-xs text-muted-foreground leading-relaxed pt-1 border-t">
+            {metric.commentary}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function WcBridgeRowComponent({ row }: { row: WcBridgeRow }) {
+  return (
+    <TableRow>
+      <TableCell>
+        <div className="font-medium text-sm">{row.concept}</div>
+        {row.bridge_explanation && (
+          <div className="text-xs text-muted-foreground mt-1 leading-relaxed">
+            {row.bridge_explanation}
+          </div>
+        )}
+      </TableCell>
+      <TableCell className="text-right font-mono text-sm">
+        {row.ar_value === null || row.ar_value === undefined ? '—' : fmtNum(row.ar_value, 1)}
+      </TableCell>
+      <TableCell className="text-right font-mono text-sm">
+        {row.yf_value === null || row.yf_value === undefined ? '—' : fmtNum(row.yf_value, 1)}
+      </TableCell>
+      <TableCell className="text-right font-mono text-sm">
+        {row.gap_pct === null || row.gap_pct === undefined ? '—' : fmtDelta(row.gap_pct, 1)}
+      </TableCell>
+      <TableCell>
+        {row.favorability && <FavorabilityBadge favorability={row.favorability as EqFavorability} />}
+      </TableCell>
+      <TableCell>
+        {row.severity && <SeverityBadge severity={row.severity === 'none' ? 'low' : (row.severity as EqSeverity)} />}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function WcCfRow({ label, values }: { label: string; values?: (number | null)[] }) {
+  return (
+    <TableRow>
+      <TableCell className="text-xs">{label}</TableCell>
+      {(values ?? []).map((v, i) => (
+        <TableCell key={i} className="text-right text-xs">{fmtNum(v, 1)}</TableCell>
+      ))}
+    </TableRow>
+  );
+}
+
+/* ==========================================================================
+   GUIDE PAGE — how to read each tab, what the verdicts mean, where the
+   numbers come from. Pure documentation, styled to match the dashboard.
+============================================================================ */
+
+function GuidePage({
+  hasEarningsQuality,
+  hasWorkingCapital,
+}: {
+  hasEarningsQuality: boolean;
+  hasWorkingCapital: boolean;
+}) {
+  return (
+    <div className="space-y-6">
+      {/* Intro header */}
+      <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/[0.06] to-transparent">
+        <CardContent className="p-6 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-primary/10 p-3">
+              <FileText className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-semibold">How to read this dashboard</h2>
+              <p className="text-sm text-muted-foreground">
+                Full guide to every tab, metric, and colour code.
+              </p>
+            </div>
+          </div>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            This financial analysis combines <strong>annual report (AR)</strong> figures with{' '}
+            <strong>Yahoo Finance (YF)</strong> feed data, cross-checked and annotated for
+            disclosure quality. Every number has a source tag and, where methodology differs
+            between AR and YF, a bridge explains the gap. The tabs below are ordered from{' '}
+            <em>headline → detail → forensic → reference</em>.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Tab-by-tab guide */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Layers className="h-4 w-4 text-primary" />
+            Tab-by-tab guide
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <GuideTabBlock
+            icon={<Sparkles className="h-4 w-4" />}
+            name="Overview"
+            role="headline"
+            purpose="At-a-glance read of the focus year. Shows headline KPIs, the 5–7 key takeaways ranked by priority, the market snapshot (price, multiples, yield, beta), the governance score from Yahoo's ISS feed, and progress against company guidance targets."
+            keySignals={[
+              'KPI trend arrows: up = improving, down = deteriorating, flat = stable',
+              'Takeaway priority colour: red = high, amber = medium, grey = low',
+              'Guidance status: ✓ on track / ⚠ behind / ✗ off track',
+            ]}
+            whenToUse="First stop for a 60-second read. If a single KPI looks wrong, jump to Performance → Charts."
+          />
+
+          <GuideTabBlock
+            icon={<Gauge className="h-4 w-4" />}
+            name="Performance"
+            role="detail"
+            purpose="Multi-year charts (up to 9 years) for Revenue, EBITDA, Net Profit, Margin, FCF, CapEx, Net Debt, Working Capital. Each chart has an AR/YF/both toggle — compare reported figures against the independent Yahoo Finance feed. Below the charts, the 7 narrative analysis sections (Performance Overview, Margins, Cash Flow, Balance Sheet, Accounting, Segment, Guidance) break down the story."
+            keySignals={[
+              'Green bars = AR reported. Amber bars = Yahoo Finance.',
+              'Gap between the two lines → methodology difference or restatement',
+              'Flat years with no data = disclosure gap (multi-year series start varies by metric)',
+            ]}
+            whenToUse="When you want to see if a KPI change is a one-year blip or a multi-year pattern."
+          />
+
+          <GuideTabBlock
+            icon={<ShieldCheck className="h-4 w-4" />}
+            name="AR ↔ YF Bridge"
+            role="detail"
+            purpose="Every key metric reconciled side-by-side: AR value, YF value, gap %, status. Click any row for the per-metric explanation — including definition from the annual report, which variant matches YF, and the residual gap's mechanism (IFRS 16 leases, impairment treatment, APM scope, timing, etc.)."
+            keySignals={[
+              'Status badges — green "aligned" (<2% gap), amber "minor_gap" (2–10%), red "material_gap" (10–25%), dark red "significant_gap" (>25%)',
+              'Click a row to drill into the metric family and variant walk',
+              'The dialog shows AR variants (statutory / adjusted / before_exceptionals / before_ppa) and which one YF is closest to',
+            ]}
+            whenToUse="Use when YF data contradicts the AR headline — the bridge explains why they disagree."
+          />
+
+          {hasEarningsQuality && (
+            <GuideTabBlock
+              icon={<AlertTriangle className="h-4 w-4" />}
+              name="Earnings Quality"
+              role="forensic"
+              purpose="Forensic quality-of-earnings analysis. Classifies every AR-vs-YF gap on two axes: direction (does AR look better or worse than YF?) and severity. Surfaces multi-year adjustment asymmetry, recurring 'non-recurring' items, one-time dressings, and disclosure gaps. Produces an overall verdict with a one-liner summary."
+              keySignals={[
+                'Verdict colour: green "clean" / amber "mixed" / red "concerning" / grey "limited"',
+                'Favorability: red "aggressive" = AR looks better than YF (flag), green "conservative" = AR looks worse (usually no concern), amber "disclosure_gap" = missing data',
+                'Patterns ranked by cumulative €m impact across years — the headline quality signal',
+                'Red Flags are quantified (€xxxm impact where possible) — not vibes',
+              ]}
+              whenToUse="Due-diligence reading. When you suspect the APM headlines are flattering the underlying IFRS numbers."
+            />
+          )}
+
+          {hasWorkingCapital && (
+            <GuideTabBlock
+              icon={<CircleDollarSign className="h-4 w-4" />}
+              name="Working Capital"
+              role="forensic"
+              purpose="Deep working-capital analysis. 7 headline ratios (NWC, NWC%Rev, DaysWC, DIO, DSO, DPO, CCC), multi-year trajectory charts, component balances (inventories / receivables / payables split), cash-flow-statement WC movement, AR↔YF WC bridge with methodology walk, multi-year patterns, quality signals, red flags, disclosure gaps — and an editable notes area for personal commentary (auto-saved per-company to your browser)."
+              keySignals={[
+                'Trend arrow: improving = cash released, deteriorating = cash consumed',
+                'Pattern severity: green positive_structural (sustainable improvement), amber neutral_scope (distorted by M&A), red negative_structural (persistent deterioration)',
+                'Signal direction: green positive_for_cash / red negative_for_cash — quantified in €m where possible',
+                'Cash-flow WC movement table shows the ORGANIC signal (isolates scope effects from divestments)',
+                'Personal Analyst Notes field is yours — type anything, it saves to your browser',
+              ]}
+              whenToUse="When you want to understand the €m cash released/consumed by working capital — the bridge between accrual earnings and actual cash."
+            />
+          )}
+
+          <GuideTabBlock
+            icon={<Building2 className="h-4 w-4" />}
+            name="Segments"
+            role="detail"
+            purpose="Per-segment revenue, EBITA, margin, mix %, and organic growth. Revenue/EBITA mix bars show which segment is driving or dragging the group result. The 'Corporate / Eliminations' row is the reconciling line, not a real segment."
+            keySignals={[
+              'Mix % = segment contribution to group total',
+              "Organic growth strips M&A and FX — the 'real' underlying rate",
+              'Negative EBITA mix % for Corporate = unallocated costs drag group EBITA',
+            ]}
+            whenToUse="When the group margin is compressing — is it one bad segment or a broad issue?"
+          />
+
+          <GuideTabBlock
+            icon={<Activity className="h-4 w-4" />}
+            name="Ratios & Historicals"
+            role="reference"
+            purpose="Reference ratio tables (profitability, cash efficiency, leverage, DuPont) + the full historical data matrix (every line item × every year in a flat table). This is the 'data room' — useful for custom analysis or exports."
+            keySignals={[
+              'Ratios marked (AR) use annual report figures; (YF) use Yahoo Finance',
+              'The historical table rows often duplicate slightly (e.g. "Revenue" and "Total Revenue") — that is the AR using multiple labels; values should match within rounding',
+            ]}
+            whenToUse="For spot-checks, audits, or copying a specific cell into a model."
+          />
+
+          <GuideTabBlock
+            icon={<FileText className="h-4 w-4" />}
+            name="Guide"
+            role="reference"
+            purpose="This tab. Kept in-dashboard so every reader can find it without leaving the app."
+            keySignals={[]}
+            whenToUse=""
+          />
+        </CardContent>
+      </Card>
+
+      {/* Badge legend */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Info className="h-4 w-4 text-primary" />
+            Badge / colour legend
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <LegendGroup
+            title="Comparability (AR vs YF)"
+            entries={[
+              { color: 'bg-emerald-100 text-emerald-800 border-emerald-200', label: 'aligned', desc: '< 2% gap — safe to use interchangeably' },
+              { color: 'bg-amber-100 text-amber-800 border-amber-200', label: 'minor_gap', desc: '2–10% — methodology nuance, watch but not critical' },
+              { color: 'bg-orange-100 text-orange-800 border-orange-200', label: 'material_gap', desc: '10–25% — definitional divergence, understand before using' },
+              { color: 'bg-red-100 text-red-800 border-red-200', label: 'significant_gap', desc: '> 25% — APM and statutory are not comparable; pick one' },
+              { color: 'bg-slate-100 text-slate-700 border-slate-200', label: 'disclosure_gap', desc: 'Data missing on one side — cannot compute gap' },
+            ]}
+          />
+          <LegendGroup
+            title="Favorability (Earnings Quality)"
+            entries={[
+              { color: 'bg-red-100 text-red-800 border-red-200', label: 'aggressive', desc: 'AR presents metric MORE favorably than YF — the primary flag' },
+              { color: 'bg-emerald-100 text-emerald-800 border-emerald-200', label: 'conservative', desc: 'AR presents metric LESS favorably than YF — generally safe' },
+              { color: 'bg-slate-100 text-slate-600 border-slate-200', label: 'aligned', desc: 'Gap < 2%, methodologies converge' },
+              { color: 'bg-amber-100 text-amber-800 border-amber-200', label: 'disclosure_gap', desc: 'One side missing data — medium flag by default' },
+            ]}
+          />
+          <LegendGroup
+            title="Severity (all tabs)"
+            entries={[
+              { color: 'bg-red-600 text-white', label: 'HIGH', desc: 'Act on this — material to the thesis' },
+              { color: 'bg-amber-500 text-white', label: 'MEDIUM', desc: 'Watch — worth asking management about' },
+              { color: 'bg-slate-400 text-white', label: 'LOW', desc: 'Note only — minor issue' },
+              { color: 'bg-slate-200 text-slate-700', label: 'NONE', desc: 'No signal — metric is clean' },
+            ]}
+          />
+          <LegendGroup
+            title="Verdict (Earnings Quality & Working Capital)"
+            entries={[
+              { color: 'bg-emerald-100 text-emerald-800 border-emerald-200', label: 'clean / improving', desc: 'No material quality concerns; trend is positive' },
+              { color: 'bg-amber-100 text-amber-800 border-amber-200', label: 'mixed', desc: 'Some flags exist but partially offset by positives' },
+              { color: 'bg-red-100 text-red-800 border-red-200', label: 'concerning / deteriorating', desc: 'Material issues; dig before relying on headlines' },
+              { color: 'bg-slate-100 text-slate-700 border-slate-200', label: 'limited / stable', desc: 'Not enough data, or no directional signal' },
+            ]}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Methodology notes */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-primary" />
+            Methodology &amp; data provenance
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm leading-relaxed">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="font-semibold mb-1">Two sources of truth</p>
+            <p className="text-muted-foreground">
+              <strong>AR (Annual Report)</strong>: the company's own published figures, including
+              APMs (Alternative Performance Measures — "Adjusted EBIT", "EBITDA before exceptionals",
+              etc.).<br />
+              <strong>YF (Yahoo Finance)</strong>: a standardised IFRS-statutory feed, not adjusted
+              for company-specific one-offs. The independence is the value.
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="font-semibold mb-1">Why the two disagree</p>
+            <ul className="list-disc list-inside text-muted-foreground space-y-1">
+              <li><strong>APM vs statutory:</strong> company-defined "before exceptionals" ≠ IFRS number</li>
+              <li><strong>Classification:</strong> IFRS 16 leases, impairments, NCI treatment</li>
+              <li><strong>Timing:</strong> period cutoff, restated comparatives</li>
+              <li><strong>Scope:</strong> divestments, acquisitions, held-for-sale items</li>
+              <li><strong>Definition:</strong> gross vs net CapEx; OCF pre- or post-tax/interest; FCF formula</li>
+            </ul>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="font-semibold mb-1">Verification chain</p>
+            <p className="text-muted-foreground">
+              Values marked as AR-sourced have been extracted from the PDF with a page reference
+              and cross-checked against the prior-year comparative in the next year's annual report.
+              Any mismatches are flagged in the Earnings Quality and Working Capital sections.
+              YF series come from a financial data bundle created at a specific snapshot date —
+              see <code className="text-xs">run_meta.generated_at_utc</code> for that date.
+            </p>
+          </div>
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+            <p className="font-semibold mb-1 text-blue-900">Personal Analyst Notes (Working Capital tab)</p>
+            <p className="text-blue-900">
+              The notes field on the Working Capital tab saves to your <em>browser</em>{' '}
+              (<code className="text-xs">localStorage</code>) keyed by the company ticker. It
+              is not exported with the JSON and not synced to any server — it stays on this
+              machine. Clearing browser data erases it.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* How to use */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            Suggested workflow
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <WorkflowStep
+            n={1}
+            title="Overview tab — 60 seconds"
+            text="Read the hero thesis + top flag, skim the KPIs, glance at key takeaways. You should know the direction of the story before leaving this tab."
+          />
+          <WorkflowStep
+            n={2}
+            title="Performance tab — 3 minutes"
+            text="Look at the multi-year charts. Toggle between AR / YF / both. Is the trend multi-year or a one-year anomaly? Does YF agree?"
+          />
+          <WorkflowStep
+            n={3}
+            title="AR ↔ YF Bridge — 2 minutes"
+            text="Scan for red or amber status rows. Click any flagged metric to read the per-metric reconciliation."
+          />
+          {hasEarningsQuality && (
+            <WorkflowStep
+              n={4}
+              title="Earnings Quality — 5 minutes"
+              text="Start with the verdict banner. Read the red flags. Scan the bridge assessment table (aggressive rows first). Review historical patterns for multi-year asymmetry."
+            />
+          )}
+          {hasWorkingCapital && (
+            <WorkflowStep
+              n={5}
+              title="Working Capital — 5 minutes"
+              text="Read the verdict + headline metrics. Check the cash-flow WC movement table for the organic signal. Scan patterns and quality signals. Add your own notes if anything needs following up."
+            />
+          )}
+          <WorkflowStep
+            n={hasEarningsQuality && hasWorkingCapital ? 6 : hasEarningsQuality || hasWorkingCapital ? 5 : 4}
+            title="Segments + Ratios — as needed"
+            text="Drill-down tabs. Use Segments when margin is moving. Use Ratios & Historicals for a specific data point."
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function GuideTabBlock({
+  icon,
+  name,
+  role,
+  purpose,
+  keySignals,
+  whenToUse,
+}: {
+  icon: React.ReactNode;
+  name: string;
+  role: 'headline' | 'detail' | 'forensic' | 'reference';
+  purpose: string;
+  keySignals: string[];
+  whenToUse: string;
+}) {
+  const roleColor = {
+    headline: 'bg-blue-100 text-blue-800 border-blue-200',
+    detail: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    forensic: 'bg-purple-100 text-purple-800 border-purple-200',
+    reference: 'bg-slate-100 text-slate-700 border-slate-200',
+  }[role];
+  return (
+    <div className="rounded-xl border border-border/60 bg-card/40 p-4 space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="rounded-lg bg-primary/10 p-2">{icon}</div>
+        <h3 className="font-semibold text-base">{name}</h3>
+        <span
+          className={cn(
+            'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+            roleColor
+          )}
+        >
+          {role}
+        </span>
+      </div>
+      <p className="text-sm leading-relaxed text-muted-foreground">{purpose}</p>
+      {keySignals.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold mb-1 uppercase tracking-wide text-muted-foreground">
+            Key signals
+          </p>
+          <ul className="list-disc list-inside text-xs text-muted-foreground space-y-0.5">
+            {keySignals.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {whenToUse && (
+        <div className="rounded-md bg-slate-50 border border-slate-200 p-2 text-xs">
+          <span className="font-semibold text-slate-700">When to use: </span>
+          <span className="text-slate-600">{whenToUse}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LegendGroup({
+  title,
+  entries,
+}: {
+  title: string;
+  entries: { color: string; label: string; desc: string }[];
+}) {
+  return (
+    <div>
+      <p className="text-xs font-semibold mb-2 uppercase tracking-wide text-muted-foreground">
+        {title}
+      </p>
+      <div className="space-y-1.5">
+        {entries.map((e, i) => (
+          <div key={i} className="flex items-start gap-3 text-sm">
+            <span
+              className={cn(
+                'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold uppercase whitespace-nowrap shrink-0',
+                e.color
+              )}
+            >
+              {e.label}
+            </span>
+            <span className="text-muted-foreground leading-relaxed flex-1">{e.desc}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WorkflowStep({ n, title, text }: { n: number; title: string; text: string }) {
+  return (
+    <div className="flex gap-3 rounded-lg border border-border/60 bg-card/40 p-3">
+      <div className="flex items-start shrink-0">
+        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-sm">
+          {n}
+        </div>
+      </div>
+      <div className="flex-1">
+        <p className="font-semibold text-sm">{title}</p>
+        <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">{text}</p>
+      </div>
+    </div>
   );
 }
 

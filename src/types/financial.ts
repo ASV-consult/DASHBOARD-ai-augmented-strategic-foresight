@@ -646,6 +646,147 @@ export interface FinancialEarningsQuality {
   methodology_note?: string | null;
 }
 
+/* ──── Working Capital Analysis ────────────────────────────────────────
+   Deep multi-year working-capital analysis with AR-vs-YF bridge, ratio
+   decomposition, pattern surfacing, and an editable notes area for
+   personal analyst commentary. Rendered on the "Working Capital" tab. */
+
+export type WcVerdict = 'improving' | 'deteriorating' | 'mixed' | 'stable' | 'limited';
+export type WcSeverity = 'none' | 'low' | 'medium' | 'high';
+export type WcPatternSeverity =
+  | 'positive_structural'
+  | 'positive_cyclical'
+  | 'neutral_scope'
+  | 'negative_structural'
+  | 'negative_cyclical'
+  | 'mixed';
+export type WcSignalDirection = 'positive_for_cash' | 'negative_for_cash' | 'neutral';
+
+export interface WcHeadlineMetric {
+  key: string;
+  label: string;
+  value: number | null;
+  unit: string;
+  prior_year?: number | null;
+  yoy_change_pct?: number | null;
+  trend?: 'improving' | 'deteriorating' | 'stable' | 'mixed';
+  commentary?: string;
+}
+
+export interface WcTrajectory {
+  years: string[];
+  nwc_m?: (number | null)[];
+  nwc_pct_revenue?: (number | null)[];
+  days_wc?: (number | null)[];
+  dio_disclosed?: (number | null)[];
+  dio_computed?: (number | null)[];
+  dso?: (number | null)[];
+  dpo?: (number | null)[];
+  ccc?: (number | null)[];
+}
+
+export interface WcComponentsMultiYear {
+  years: string[];
+  inventories?: (number | null)[];
+  trade_receivables_net?: (number | null)[];
+  other_current_assets?: (number | null)[];
+  trade_and_other_payables?: (number | null)[];
+  other_current_liabilities?: (number | null)[];
+  trade_creditors_only?: (number | null)[];
+  investment_creditors?: (number | null)[];
+  customer_related_payables?: (number | null)[];
+}
+
+export interface WcCashFlowMovement {
+  years: string[];
+  change_in_inventories?: (number | null)[];
+  change_in_receivables?: (number | null)[];
+  change_in_payables?: (number | null)[];
+  total_wc_movement?: (number | null)[];
+  narrative?: string;
+}
+
+export interface WcBridgeRow {
+  concept: string;
+  ar_metric?: string | null;
+  ar_value?: number | null;
+  yf_metric?: string | null;
+  yf_label?: string;
+  yf_value?: number | null;
+  ar_unit?: string;
+  gap_pct?: number | null;
+  favorable_direction?: 'up' | 'down' | 'neutral';
+  favorability?: 'aggressive' | 'conservative' | 'aligned' | 'disclosure_gap';
+  severity?: WcSeverity;
+  comparability?: string;
+  definition_from_ar?: string;
+  definition_from_yf?: string;
+  bridge_explanation?: string;
+}
+
+export interface WcMethodologyWalkLine {
+  line: string;
+  value: number | string | null;
+  comment?: string;
+}
+
+export interface WcMethodologyReconciliation {
+  ar_apm_nwc_walk: WcMethodologyWalkLine[];
+  yf_wc_walk: WcMethodologyWalkLine[];
+  reconciling_gap_mn_eur: number;
+  reconciling_gap_components: {
+    item: string;
+    amount: number | string;
+    narrative: string;
+  }[];
+}
+
+export interface WcMultiYearPattern {
+  pattern_key: string;
+  title: string;
+  narrative: string;
+  years_covered: number[];
+  cumulative_impact_eur_m?: number | null;
+  severity: WcPatternSeverity;
+}
+
+export interface WcQualitySignal {
+  signal_key: string;
+  title: string;
+  narrative: string;
+  severity: WcSeverity;
+  direction: WcSignalDirection;
+  years_affected?: number[];
+  cash_impact_eur_m?: number | null;
+}
+
+export interface WcDisclosureGap {
+  metric: string;
+  expected_in: string;
+  impact: string;
+  severity: WcSeverity;
+}
+
+export interface FinancialWorkingCapitalAnalysis {
+  overall_verdict: WcVerdict;
+  one_liner: string;
+  summary: string;
+  focus_year: number;
+  headline_metrics: WcHeadlineMetric[];
+  trajectory: WcTrajectory;
+  components_multi_year?: WcComponentsMultiYear;
+  cash_flow_movement?: WcCashFlowMovement;
+  ar_vs_yf_wc_bridge: WcBridgeRow[];
+  methodology_reconciliation?: WcMethodologyReconciliation;
+  multi_year_patterns: WcMultiYearPattern[];
+  quality_signals: WcQualitySignal[];
+  red_flags: string[];
+  disclosure_gaps: WcDisclosureGap[];
+  methodology_note?: string | null;
+  /* Editable by the user in the dashboard — persisted to localStorage */
+  custom_notes?: string;
+}
+
 export interface FinancialGuidance {
   target_period?: string;
   metric?: string;
@@ -676,6 +817,7 @@ export interface FinancialAnalysisData {
   ar_vs_yf_bridge?: FinancialBridgeRow[];
   metric_bridge?: FinancialMetricBridge;
   earnings_quality?: FinancialEarningsQuality;
+  working_capital_analysis?: FinancialWorkingCapitalAnalysis;
   segment_analysis?: FinancialSegment[];
   guidance_tracking?: FinancialGuidance[];
   // Legacy optional sections
