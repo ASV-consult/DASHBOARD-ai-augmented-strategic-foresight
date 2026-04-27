@@ -12,6 +12,8 @@ import { MacroDashboard } from '@/components/views/MacroDashboard';
 import { CrowsNestStreamHome } from '@/components/views/CrowsNestStreamHome';
 import { CrowsNestDimensionView } from '@/components/views/CrowsNestDimensionView';
 import { CrowsNestProjectionView } from '@/components/views/CrowsNestProjectionView';
+import { CrowsNestMacroRadar } from '@/components/views/CrowsNestMacroRadar';
+import { CrowsNestWhatIf } from '@/components/views/CrowsNestWhatIf';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,7 +31,9 @@ import {
   ChevronRight,
   CircleDollarSign,
   Compass,
+  FlaskConical,
   GitMerge,
+  Globe,
   Layers,
   LayoutDashboard,
   PanelLeftClose,
@@ -61,7 +65,9 @@ type DashboardView =
   | 'macro-risk'
   | 'crows-nest-home'
   | 'crows-nest-dimension'
-  | 'crows-nest-projection';
+  | 'crows-nest-projection'
+  | 'crows-nest-macro'
+  | 'crows-nest-whatif';
 
 interface SidebarItemProps {
   label: string;
@@ -183,6 +189,16 @@ const viewMetaMap: Record<DashboardView, { title: string; stream: string; note: 
     title: 'Crow\'s Nest — Projection deep-dive',
     stream: 'Crow\'s Nest',
     note: 'Truth-likelihood timeline + driver breakdown + evidence cards.',
+  },
+  'crows-nest-macro': {
+    title: 'Crow\'s Nest — Macro Radar',
+    stream: 'Crow\'s Nest',
+    note: 'Active macro themes + their propagation matrix. The overcoupling layer.',
+  },
+  'crows-nest-whatif': {
+    title: 'Crow\'s Nest — What-If',
+    stream: 'Crow\'s Nest',
+    note: 'Stress-test the company\'s bets. Scenarios that override drivers or macro themes and cascade through.',
   },
 };
 
@@ -401,6 +417,8 @@ export function Dashboard() {
   const [focusAssumptionId, setFocusAssumptionId] = useState<string | null>(null);
   const [crowsNestDimensionId, setCrowsNestDimensionId] = useState<string | null>(null);
   const [crowsNestProjectionId, setCrowsNestProjectionId] = useState<string | null>(null);
+  const [crowsNestMacroThemeId, setCrowsNestMacroThemeId] = useState<string | null>(null);
+  const [crowsNestWhatIfId, setCrowsNestWhatIfId] = useState<string | null>(null);
 
   const hasWorkstreams = workstreams.length > 0 || !!data?.strategic_impact_analysis;
   const assumptionsSubtab =
@@ -1021,6 +1039,20 @@ export function Dashboard() {
           />
         );
       }
+      case 'crows-nest-macro':
+        return (
+          <CrowsNestMacroRadar
+            selectedThemeId={crowsNestMacroThemeId}
+            onSelectTheme={setCrowsNestMacroThemeId}
+          />
+        );
+      case 'crows-nest-whatif':
+        return (
+          <CrowsNestWhatIf
+            selectedScenarioId={crowsNestWhatIfId}
+            onSelectScenario={setCrowsNestWhatIfId}
+          />
+        );
       default:
         return null;
     }
@@ -1311,6 +1343,24 @@ export function Dashboard() {
                     isActive={activeView === 'crows-nest-home'}
                     onClick={() => navigate('crows-nest-home')}
                     badge={hasCrowsNestData ? 'Ready' : 'Pending'}
+                    collapsed={isSidebarCollapsed}
+                    tone="crows-nest"
+                  />
+                  <SidebarItem
+                    label="Macro Radar"
+                    icon={Globe}
+                    isActive={activeView === 'crows-nest-macro'}
+                    onClick={() => navigate('crows-nest-macro')}
+                    badge={hasCrowsNestData ? `${crowsNestData?.macro_themes?.length ?? 0}` : 'Pending'}
+                    collapsed={isSidebarCollapsed}
+                    tone="crows-nest"
+                  />
+                  <SidebarItem
+                    label="What-If"
+                    icon={FlaskConical}
+                    isActive={activeView === 'crows-nest-whatif'}
+                    onClick={() => navigate('crows-nest-whatif')}
+                    badge={hasCrowsNestData ? `${crowsNestData?.what_if_scenarios?.length ?? 0}` : 'Pending'}
                     collapsed={isSidebarCollapsed}
                     tone="crows-nest"
                   />
