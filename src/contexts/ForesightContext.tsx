@@ -3,6 +3,7 @@ import { ForesightData, Signal, Assumption, BuildingBlocks, Workstream } from '@
 import { FinancialAnalysisData } from '@/types/financial';
 import { SharePriceAnalysisData } from '@/types/share-price';
 import { MacroDashboardData } from '@/types/macro';
+import { CrowsNestData } from '@/types/crows-nest';
 import { getSignalScore } from '@/lib/signal-utils';
 
 interface ForesightContextType {
@@ -14,11 +15,14 @@ interface ForesightContextType {
   setSharePriceData: (data: SharePriceAnalysisData | null) => void;
   macroData: MacroDashboardData | null;
   setMacroData: (data: MacroDashboardData | null) => void;
+  crowsNestData: CrowsNestData | null;
+  setCrowsNestData: (data: CrowsNestData | null) => void;
   isLoaded: boolean;
   hasForesightData: boolean;
   hasFinancialData: boolean;
   hasSharePriceData: boolean;
   hasMacroData: boolean;
+  hasCrowsNestData: boolean;
   resetStreams: () => void;
   // Computed helpers
   allSignals: Signal[];
@@ -49,6 +53,7 @@ export function ForesightProvider({ children }: { children: ReactNode }) {
   const [financialData, setFinancialData] = useState<FinancialAnalysisData | null>(null);
   const [sharePriceData, setSharePriceData] = useState<SharePriceAnalysisData | null>(null);
   const [macroData, setMacroData] = useState<MacroDashboardData | null>(null);
+  const [crowsNestData, setCrowsNestData] = useState<CrowsNestData | null>(null);
   const [outlierScoreThreshold, setOutlierScoreThreshold] = useState(5);
 
   // Extract signals from the new schema
@@ -179,6 +184,7 @@ export function ForesightProvider({ children }: { children: ReactNode }) {
     setFinancialData(null);
     setSharePriceData(null);
     setMacroData(null);
+    setCrowsNestData(null);
   };
 
   const value: ForesightContextType = {
@@ -190,11 +196,19 @@ export function ForesightProvider({ children }: { children: ReactNode }) {
     setSharePriceData,
     macroData,
     setMacroData,
-    isLoaded: data !== null || financialData !== null || sharePriceData !== null || macroData !== null,
+    crowsNestData,
+    setCrowsNestData,
+    isLoaded:
+      data !== null ||
+      financialData !== null ||
+      sharePriceData !== null ||
+      macroData !== null ||
+      crowsNestData !== null,
     hasForesightData: data !== null,
     hasFinancialData: financialData !== null,
     hasSharePriceData: sharePriceData !== null,
     hasMacroData: macroData !== null,
+    hasCrowsNestData: crowsNestData !== null,
     resetStreams,
     allSignals,
     coreAssumptions,

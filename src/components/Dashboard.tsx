@@ -9,6 +9,9 @@ import { WorkstreamsView } from '@/components/views/WorkstreamsView';
 import { FinancialAnalysisView } from '@/components/views/FinancialAnalysisView';
 import { SharePriceAnalysisView } from '@/components/views/SharePriceAnalysisView';
 import { MacroDashboard } from '@/components/views/MacroDashboard';
+import { CrowsNestStreamHome } from '@/components/views/CrowsNestStreamHome';
+import { CrowsNestDimensionView } from '@/components/views/CrowsNestDimensionView';
+import { CrowsNestProjectionView } from '@/components/views/CrowsNestProjectionView';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,7 +58,10 @@ type DashboardView =
   | 'financial-fundamentals'
   | 'financial-share-price'
   | 'macro-overview'
-  | 'macro-risk';
+  | 'macro-risk'
+  | 'crows-nest-home'
+  | 'crows-nest-dimension'
+  | 'crows-nest-projection';
 
 interface SidebarItemProps {
   label: string;
@@ -64,7 +70,7 @@ interface SidebarItemProps {
   onClick: () => void;
   badge?: string;
   collapsed: boolean;
-  tone: 'executive' | 'strategic' | 'financial' | 'macro';
+  tone: 'executive' | 'strategic' | 'financial' | 'macro' | 'crows-nest';
 }
 
 const cleanText = (value?: string) => {
@@ -163,6 +169,21 @@ const viewMetaMap: Record<DashboardView, { title: string; stream: string; note: 
     stream: 'Macro Stream',
     note: 'Memo-first reading mode inside the same macro drill-down experience.',
   },
+  'crows-nest-home': {
+    title: 'Crow\'s Nest — Velocity Grid',
+    stream: 'Crow\'s Nest',
+    note: 'The 30-second read: where the company is bet, and which bets are moving against it right now.',
+  },
+  'crows-nest-dimension': {
+    title: 'Crow\'s Nest — Dimension drill-down',
+    stream: 'Crow\'s Nest',
+    note: 'Why is this bet moving the way it is? Projections, drivers, and cross-couplings.',
+  },
+  'crows-nest-projection': {
+    title: 'Crow\'s Nest — Projection deep-dive',
+    stream: 'Crow\'s Nest',
+    note: 'Truth-likelihood timeline + driver breakdown + evidence cards.',
+  },
 };
 
 function SidebarItem({ label, icon: Icon, isActive, onClick, badge, collapsed, tone }: SidebarItemProps) {
@@ -195,6 +216,13 @@ function SidebarItem({ label, icon: Icon, isActive, onClick, badge, collapsed, t
       iconActive: 'text-amber-600',
       iconInactive: 'text-muted-foreground',
       badge: 'border-amber-500/35 text-amber-600',
+    },
+    'crows-nest': {
+      active: 'border-rose-500/30 bg-rose-500/[0.06] shadow-sm',
+      inactive: 'border-border/60 bg-background/70 hover:border-rose-500/20 hover:bg-rose-500/[0.03]',
+      iconActive: 'text-rose-600',
+      iconInactive: 'text-muted-foreground',
+      badge: 'border-rose-500/35 text-rose-600',
     },
   } as const;
 
@@ -229,7 +257,7 @@ function SidebarItem({ label, icon: Icon, isActive, onClick, badge, collapsed, t
 }
 
 interface HomeStreamCardProps {
-  tone: 'strategic' | 'financial' | 'macro';
+  tone: 'strategic' | 'financial' | 'macro' | 'crows-nest';
   title: string;
   statusLabel: string;
   statusClassName: string;
@@ -279,6 +307,14 @@ function HomeStreamCard({
       highlight: 'border-amber-500/15 bg-amber-500/[0.04]',
       primaryButton: 'bg-amber-500 text-black hover:bg-amber-600',
       secondaryButton: 'border-amber-500/25 text-amber-700 hover:bg-amber-500/[0.08]',
+    },
+    'crows-nest': {
+      card: 'border-rose-500/25 bg-background/88 hover:border-rose-500/40',
+      iconWrap: 'border-rose-500/20 bg-rose-500/[0.08]',
+      icon: 'text-rose-600',
+      highlight: 'border-rose-500/15 bg-rose-500/[0.04]',
+      primaryButton: 'bg-rose-500 text-white hover:bg-rose-600',
+      secondaryButton: 'border-rose-500/25 text-rose-700 hover:bg-rose-500/[0.08]',
     },
   } as const;
 
@@ -348,9 +384,11 @@ export function Dashboard() {
     hasFinancialData,
     hasSharePriceData,
     hasMacroData,
+    hasCrowsNestData,
     financialData,
     sharePriceData,
     macroData,
+    crowsNestData,
     companyName,
     resetStreams,
   } = useForesight();
@@ -361,6 +399,8 @@ export function Dashboard() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [viewHistory, setViewHistory] = useState<DashboardView[]>([]);
   const [focusAssumptionId, setFocusAssumptionId] = useState<string | null>(null);
+  const [crowsNestDimensionId, setCrowsNestDimensionId] = useState<string | null>(null);
+  const [crowsNestProjectionId, setCrowsNestProjectionId] = useState<string | null>(null);
 
   const hasWorkstreams = workstreams.length > 0 || !!data?.strategic_impact_analysis;
   const assumptionsSubtab =
@@ -728,6 +768,39 @@ export function Dashboard() {
             secondaryActionLabel={macroReady ? 'Open Executive Reading' : 'Open Convergence Workspace'}
             onSecondaryAction={() => navigate(macroReady ? 'macro-risk' : 'convergence', false)}
           />
+
+          <HomeStreamCard
+            tone="crows-nest"
+            title="Crow's Nest"
+            statusLabel={hasCrowsNestData ? 'Loaded' : 'Awaiting upload'}
+            statusClassName={
+              hasCrowsNestData
+                ? 'border-rose-500/30 bg-rose-500/12 text-rose-700'
+                : 'border-border/60 bg-background/75 text-muted-foreground'
+            }
+            icon={Radio}
+            summary={
+              hasCrowsNestData
+                ? (crowsNestData?.headline?.verdict_sentence?.replace(/\*\*/g, '') ||
+                  'Predictive foresight layer: 8 strategic dimensions, projection-level truth-likelihood timelines, and a calibration-audited honesty gauge.')
+                : 'Upload the Crow\'s Nest bundle JSON (schema_version: crows_nest_v2) to unlock the velocity grid, dimension drill-downs, and projection deep-dives.'
+            }
+            highlights={
+              hasCrowsNestData
+                ? [
+                    { label: 'Bets tracked', value: `${crowsNestData?.headline?.raw?.dimensions_total ?? 0}` },
+                    { label: 'At risk', value: `${(crowsNestData?.headline?.raw?.dimensions_at_risk ?? 0) + (crowsNestData?.headline?.raw?.dimensions_breaking ?? 0)}` },
+                    { label: 'Brier', value: crowsNestData?.calibration?.overall_brier != null ? crowsNestData.calibration.overall_brier.toFixed(2) : '—' },
+                  ]
+                : [
+                    { label: 'Mode', value: 'Predictive' },
+                    { label: 'Entry', value: 'Velocity grid' },
+                    { label: 'Levels', value: '3-deep drill' },
+                  ]
+            }
+            primaryActionLabel="Open Velocity Grid"
+            onPrimaryAction={() => navigate('crows-nest-home', false)}
+          />
         </div>
       </div>
     );
@@ -825,6 +898,10 @@ export function Dashboard() {
       return renderNoDataCard('Macro stream is not loaded yet. Upload a macro dashboard JSON file.');
     }
 
+    if (activeView.startsWith('crows-nest-') && !hasCrowsNestData) {
+      return renderNoDataCard('Crow\'s Nest stream is not loaded yet. Upload a Crow\'s Nest bundle JSON (schema_version: crows_nest_v2).');
+    }
+
     switch (activeView) {
       case 'streams-home':
         return renderStreamsHome();
@@ -909,6 +986,41 @@ export function Dashboard() {
             onRequestModeChange={(nextMode) => navigate(nextMode === 'reading' ? 'macro-risk' : 'macro-overview', false)}
           />
         );
+      case 'crows-nest-home':
+        return (
+          <CrowsNestStreamHome
+            onSelectDimension={(dimId) => {
+              setCrowsNestDimensionId(dimId);
+              navigate('crows-nest-dimension');
+            }}
+          />
+        );
+      case 'crows-nest-dimension': {
+        if (!crowsNestDimensionId) {
+          return renderNoDataCard('Pick a dimension from the velocity grid first.');
+        }
+        return (
+          <CrowsNestDimensionView
+            dimensionId={crowsNestDimensionId}
+            onSelectProjection={(pid) => {
+              setCrowsNestProjectionId(pid);
+              navigate('crows-nest-projection');
+            }}
+            onBack={() => navigate('crows-nest-home')}
+          />
+        );
+      }
+      case 'crows-nest-projection': {
+        if (!crowsNestProjectionId) {
+          return renderNoDataCard('Pick a projection from a dimension first.');
+        }
+        return (
+          <CrowsNestProjectionView
+            projectionId={crowsNestProjectionId}
+            onBack={() => navigate('crows-nest-dimension')}
+          />
+        );
+      }
       default:
         return null;
     }
@@ -1179,6 +1291,28 @@ export function Dashboard() {
                     badge={hasMacroData ? 'Ready' : 'Pending'}
                     collapsed={isSidebarCollapsed}
                     tone="macro"
+                  />
+                </div>
+
+                <div className={cn('space-y-2 rounded-xl border p-2', isSidebarCollapsed ? 'border-rose-500/25 bg-rose-500/[0.08] p-1.5' : 'border-rose-500/20 bg-rose-500/[0.06]')}>
+                  {!isSidebarCollapsed && (
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Crow's Nest
+                      </p>
+                      <Badge variant={hasCrowsNestData ? 'default' : 'secondary'} className="text-[10px]">
+                        {hasCrowsNestData ? 'Loaded' : 'Missing'}
+                      </Badge>
+                    </div>
+                  )}
+                  <SidebarItem
+                    label="Velocity Grid"
+                    icon={Radio}
+                    isActive={activeView === 'crows-nest-home'}
+                    onClick={() => navigate('crows-nest-home')}
+                    badge={hasCrowsNestData ? 'Ready' : 'Pending'}
+                    collapsed={isSidebarCollapsed}
+                    tone="crows-nest"
                   />
                 </div>
 
