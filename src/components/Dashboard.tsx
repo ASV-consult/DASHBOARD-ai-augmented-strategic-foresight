@@ -15,6 +15,7 @@ import { CrowsNestProjectionView } from '@/components/views/CrowsNestProjectionV
 import { CrowsNestMacroRadar } from '@/components/views/CrowsNestMacroRadar';
 import { CrowsNestWhatIf } from '@/components/views/CrowsNestWhatIf';
 import { CrowsNestBetsRegister } from '@/components/views/CrowsNestBetsRegister';
+import { CrowsNestStatusQuo } from '@/components/views/CrowsNestStatusQuo';
 import { ProjectionEditor, applyOverridesToBundle } from '@/components/crows-nest/ProjectionEditor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -66,6 +67,7 @@ type DashboardView =
   | 'macro-overview'
   | 'macro-risk'
   | 'crows-nest-home'
+  | 'crows-nest-status-quo'
   | 'crows-nest-bets-register'
   | 'crows-nest-dimension'
   | 'crows-nest-projection'
@@ -182,6 +184,11 @@ const viewMetaMap: Record<DashboardView, { title: string; stream: string; note: 
     title: 'Crow\'s Nest — Velocity Grid',
     stream: 'Crow\'s Nest',
     note: 'The 30-second read: where the company is bet, and which bets are moving against it right now.',
+  },
+  'crows-nest-status-quo': {
+    title: 'Crow\'s Nest — Status Quo Outlook',
+    stream: 'Crow\'s Nest',
+    note: 'The 3-year baseline document. Under the current projection set, what does the company look like in 3 years? Everything else is a delta vs this.',
   },
   'crows-nest-bets-register': {
     title: 'Crow\'s Nest — Bets Register',
@@ -1032,6 +1039,15 @@ export function Dashboard() {
             }}
           />
         );
+      case 'crows-nest-status-quo':
+        return (
+          <CrowsNestStatusQuo
+            onSelectProjection={(pid) => {
+              setCrowsNestProjectionId(pid);
+              navigate('crows-nest-projection');
+            }}
+          />
+        );
       case 'crows-nest-bets-register':
         return (
           <CrowsNestBetsRegister
@@ -1377,6 +1393,15 @@ export function Dashboard() {
                       </Badge>
                     </div>
                   )}
+                  <SidebarItem
+                    label="Status Quo Outlook"
+                    icon={BookOpenText}
+                    isActive={activeView === 'crows-nest-status-quo'}
+                    onClick={() => navigate('crows-nest-status-quo')}
+                    badge={hasCrowsNestData ? (crowsNestData?.status_quo_outlook ? 'Ready' : 'Pending') : 'Pending'}
+                    collapsed={isSidebarCollapsed}
+                    tone="crows-nest"
+                  />
                   <SidebarItem
                     label="Bets Register"
                     icon={Layers}

@@ -282,6 +282,95 @@ export interface CrowsNestBetsRegister {
   };
 }
 
+/** Status Quo Outlook (Phase B) — the 3-year baseline document. */
+export interface StatusQuoSegmentTrajectory {
+  segment: string;
+  narrative: string;
+  anchors: {
+    revenue_eur_m_y3_low?: number | null;
+    revenue_eur_m_y3_high?: number | null;
+    ebit_eur_m_y3_low?: number | null;
+    ebit_eur_m_y3_high?: number | null;
+    ebit_margin_y3_pct?: number | null;
+    roce_pct_y3?: number | null;
+    [k: string]: number | string | null | undefined;
+  };
+  depends_on_projections: string[];
+  divergence_aware_variant?: {
+    narrative?: string;
+    shifted_anchors?: Record<string, number | null>;
+  } | null;
+}
+
+export interface StatusQuoGroupPath {
+  revenue_eur_m_y1?: number | null;
+  revenue_eur_m_y3?: number | null;
+  ebit_eur_m_y1?: number | null;
+  ebit_eur_m_y3?: number | null;
+  fcf_eur_m_y3?: number | null;
+  net_debt_y3?: number | null;
+  leverage_y3?: number | null;
+  dividend_path?: {
+    y0?: number | null;
+    y1?: number | null;
+    y2?: number | null;
+    y3?: number | null;
+  };
+}
+
+export interface StatusQuoDependency {
+  projection_id: string;
+  if_breaks: string;
+  current_truth_likelihood?: number | null;
+}
+
+export interface StatusQuoDivergenceCallout {
+  projection_id: string;
+  system_target?: number | string | null;
+  user_assertion_target?: number | string | null;
+  delta_implication: string;
+}
+
+export interface StatusQuoRisk {
+  risk: string;
+  likelihood: 'low' | 'medium' | 'high' | string;
+  mitigation: string;
+  anchor_projection_ids?: string[];
+}
+
+export interface StatusQuoValidatorIssue {
+  severity: 'blocker' | 'warning' | 'info' | string;
+  category: string;
+  description: string;
+  anchor?: string;
+}
+
+export interface StatusQuoValidatorReport {
+  passed: boolean;
+  issues: StatusQuoValidatorIssue[];
+  revisions_applied: number;
+  summary?: string;
+  blocker_count?: number;
+  warning_count?: number;
+}
+
+export interface CrowsNestStatusQuoOutlook {
+  schema_version: 'status_quo_v1';
+  company: string;
+  ticker?: string | null;
+  as_of_cycle: string;
+  horizon_years: number;
+  generated_at?: string;
+  headline: string;
+  trajectory_by_segment: StatusQuoSegmentTrajectory[];
+  group_path: StatusQuoGroupPath;
+  key_dependencies: StatusQuoDependency[];
+  divergence_callouts: StatusQuoDivergenceCallout[];
+  risks_and_mitigations: StatusQuoRisk[];
+  narrative_md: string;
+  validator_report: StatusQuoValidatorReport;
+}
+
 /** Top-level bundle that the dashboard ingests. */
 export interface CrowsNestData {
   schema_version: CrowsNestSchemaVersion;
@@ -293,6 +382,7 @@ export interface CrowsNestData {
   calibration: CrowsNestCalibration;
   what_if_scenarios: CrowsNestWhatIfScenario[];
   bets_register?: CrowsNestBetsRegister;
+  status_quo_outlook?: CrowsNestStatusQuoOutlook | null;
 }
 
 /** Type guard — used by the upload hook to dispatch payload to the right slot. */
