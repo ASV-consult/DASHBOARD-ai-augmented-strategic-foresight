@@ -88,6 +88,23 @@ export interface ProjectionDivergence {
 
 export type ResearchPriority = 'auto' | 'elevated' | 'deferred';
 
+/** Provenance — Tier 3 "based on what?" trail. */
+export interface ProjectionProvenanceArtefact {
+  stream: 'strategic' | 'financial' | 'macro' | 'convergence' | string;
+  kind: string; // 'core_assumption' | 'signal' | 'segment_view' | 'segment_kpi' | 'analysis_section' | ...
+  ref: string;
+  title: string;
+  snippet: string;
+}
+
+export interface ProjectionProvenance {
+  source_streams: string[];
+  source_artefacts: ProjectionProvenanceArtefact[];
+  primary_anchor?: string;
+  confidence: 'high' | 'medium' | 'low' | string;
+  notes?: string;
+}
+
 export interface CrowsNestProjection {
   id: string;
   claim: string; // effective claim — equals user_assertion.claim when set, else system_claim.claim
@@ -100,7 +117,16 @@ export interface CrowsNestProjection {
   research_priority?: ResearchPriority;
   company_view?: ProjectionClaim | null;
 
-  // PRE-RENDERED plain-language fields
+  // Readability layer (Tier 2 — analyst-anchored prose, replaces templated boilerplate)
+  human_title?: string;
+  claim_explainer?: string;
+  plain_verdict?: string;
+  plain_why?: string;
+
+  // Provenance layer (Tier 3 — what the projection is based on)
+  provenance?: ProjectionProvenance | null;
+
+  // Legacy plain-language fields (kept for back-compat; UI prefers human_title/plain_verdict/plain_why)
   plain_outcome_phrase: string; // "Likely to hold" | "At risk" | "Marginal" | ...
   verdict_sentence: string;
   one_line_why: string;

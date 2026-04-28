@@ -14,12 +14,103 @@ import { useForesight } from '@/contexts/ForesightContext';
 import {
   CrowsNestProjection,
   CrowsNestEvidenceCard,
+  ProjectionProvenance,
   truthLikelihoodToHex,
   plainTierToBadgeClass,
 } from '@/types/crows-nest';
 import { TruthLikelihoodChart } from '@/components/crows-nest/TruthLikelihoodChart';
-import { ChevronLeft, ChevronDown, ChevronUp, FileText, Target, Pencil, AlertCircle, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronDown, ChevronUp, FileText, Target, Pencil, AlertCircle, RotateCcw, BookText } from 'lucide-react';
 import { divergenceSeverityBadgeClass } from '@/types/crows-nest';
+
+const PROV_STREAM_LABEL: Record<string, string> = {
+  strategic: 'Strategic',
+  financial: 'Financial',
+  macro: 'Macro',
+  convergence: 'Convergence',
+};
+
+const PROV_STREAM_TONE: Record<string, string> = {
+  strategic: 'border-sky-500/40 bg-sky-500/[0.08] text-sky-700 dark:text-sky-300',
+  financial: 'border-emerald-500/40 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300',
+  macro: 'border-amber-500/40 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300',
+  convergence: 'border-violet-500/40 bg-violet-500/[0.08] text-violet-700 dark:text-violet-300',
+};
+
+const ProvenancePanel: React.FC<{ provenance: ProjectionProvenance }> = ({ provenance }) => {
+  const conf = provenance.confidence;
+  const confTone =
+    conf === 'high'
+      ? 'border-emerald-500/40 bg-emerald-500/[0.06] text-emerald-700 dark:text-emerald-300'
+      : conf === 'low'
+      ? 'border-amber-500/40 bg-amber-500/[0.06] text-amber-700 dark:text-amber-300'
+      : 'border-border/40 bg-background/50 text-muted-foreground';
+
+  // Group artefacts by stream
+  const byStream: Record<string, typeof provenance.source_artefacts> = {};
+  for (const a of provenance.source_artefacts) {
+    (byStream[a.stream] = byStream[a.stream] || []).push(a);
+  }
+
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Based on
+        </h3>
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase ${confTone}`}>
+          {conf} confidence
+        </span>
+        {provenance.source_streams.map((s) => (
+          <span
+            key={s}
+            className={`rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wide ${PROV_STREAM_TONE[s] || 'border-border/40 bg-background/60 text-muted-foreground'}`}
+          >
+            {PROV_STREAM_LABEL[s] || s}
+          </span>
+        ))}
+      </div>
+      <div className="space-y-3">
+        {Object.entries(byStream).map(([stream, arts]) => (
+          <div key={stream} className="rounded-xl border border-border/30 bg-background/40 p-4">
+            <div className="flex items-center gap-1.5 mb-2">
+              <BookText className="h-3.5 w-3.5 text-muted-foreground" />
+              <span
+                className={`rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wide ${PROV_STREAM_TONE[stream] || 'border-border/40 bg-background/60 text-muted-foreground'}`}
+              >
+                {PROV_STREAM_LABEL[stream] || stream}
+              </span>
+              <span className="text-[10px] text-muted-foreground/70">
+                {arts.length} artefact{arts.length === 1 ? '' : 's'}
+              </span>
+            </div>
+            <ul className="space-y-2">
+              {arts.map((a, i) => (
+                <li key={i} className="text-xs leading-snug">
+                  <div className="flex items-baseline gap-1.5 mb-0.5">
+                    <span className="text-muted-foreground/70 text-[9px] uppercase tracking-wide font-medium">
+                      {a.kind}
+                    </span>
+                    <span className="text-muted-foreground/50 text-[9px]">·</span>
+                    <span className="text-muted-foreground font-mono text-[10px]">{a.ref}</span>
+                  </div>
+                  <div className="font-medium text-foreground">{a.title}</div>
+                  <div className="text-muted-foreground italic mt-0.5 text-[11px] leading-relaxed">
+                    "{a.snippet}"
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        {provenance.notes ? (
+          <div className="rounded-xl border border-amber-500/40 bg-amber-500/[0.04] p-3 text-xs text-amber-700 dark:text-amber-300 italic">
+            <span className="font-medium not-italic">Note:</span> {provenance.notes}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+};
 
 interface CrowsNestProjectionViewProps {
   projectionId: string;
@@ -264,14 +355,33 @@ export const CrowsNestProjectionView: React.FC<CrowsNestProjectionViewProps> = (
                   </button>
                 ) : null}
               </div>
+              {/* Human title — primary headline */}
               <h2 className="text-xl md:text-2xl font-semibold text-foreground leading-snug">
-                {projection.claim}
+                {projection.human_title || projection.claim}
               </h2>
-              {/* The verdict — the loudest plain-language sentence on the page */}
-              <div className="text-base text-foreground leading-relaxed">
-                {inlineMd(projection.verdict_sentence)}
+              {/* Formal claim — secondary, smaller */}
+              {projection.human_title ? (
+                <div className="text-sm text-muted-foreground leading-snug font-mono">
+                  {projection.claim}
+                </div>
+              ) : null}
+              {/* Plain explainer — tells the reader what's actually being measured + why */}
+              {projection.claim_explainer ? (
+                <p className="text-sm text-foreground/85 leading-relaxed pt-1">
+                  {projection.claim_explainer}
+                </p>
+              ) : null}
+              {/* Plain verdict — analyst-anchored read (replaces templated boilerplate) */}
+              <div className="text-base text-foreground leading-relaxed pt-1">
+                {projection.plain_verdict || inlineMd(projection.verdict_sentence)}
               </div>
-              {projection.latest_evidence_summary ? (
+              {/* Plain why — what's driving the read */}
+              {projection.plain_why ? (
+                <div className="text-sm text-muted-foreground leading-relaxed italic">
+                  {projection.plain_why}
+                </div>
+              ) : null}
+              {projection.latest_evidence_summary && !projection.plain_verdict ? (
                 <div className="text-sm text-muted-foreground leading-relaxed pt-1">
                   {projection.latest_evidence_summary}
                 </div>
@@ -341,6 +451,9 @@ export const CrowsNestProjectionView: React.FC<CrowsNestProjectionViewProps> = (
           </div>
         </CardContent>
       </Card>
+
+      {/* === Provenance: what is this projection based on? === */}
+      {projection.provenance ? <ProvenancePanel provenance={projection.provenance} /> : null}
 
       {/* === Block 2: Driver breakdown === */}
       {sensitivityEntries.length > 0 ? (

@@ -24,6 +24,7 @@ import { useForesight } from '@/contexts/ForesightContext';
 import {
   CrowsNestProjection,
   CrowsNestDimension,
+  ProjectionProvenance,
   truthLikelihoodToHex,
   plainTierToBadgeClass,
   divergenceSeverityBadgeClass,
@@ -38,6 +39,7 @@ import {
   ArrowUpDown,
   Pencil,
   ArrowRight,
+  BookText,
 } from 'lucide-react';
 
 interface CrowsNestBetsRegisterProps {
@@ -377,6 +379,87 @@ interface ProjectionRowProps {
   onOpenEditor?: () => void;
 }
 
+const STREAM_LABEL: Record<string, string> = {
+  strategic: 'Strategic',
+  financial: 'Financial',
+  macro: 'Macro',
+  convergence: 'Convergence',
+};
+
+const STREAM_TONE: Record<string, string> = {
+  strategic: 'border-sky-500/40 bg-sky-500/[0.08] text-sky-700 dark:text-sky-300',
+  financial: 'border-emerald-500/40 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300',
+  macro: 'border-amber-500/40 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300',
+  convergence: 'border-violet-500/40 bg-violet-500/[0.08] text-violet-700 dark:text-violet-300',
+};
+
+const ProvenanceTooltip: React.FC<{ provenance: ProjectionProvenance }> = ({ provenance }) => {
+  const conf = provenance.confidence;
+  const confTone =
+    conf === 'high'
+      ? 'text-emerald-700 dark:text-emerald-300'
+      : conf === 'low'
+      ? 'text-amber-700 dark:text-amber-300'
+      : 'text-muted-foreground';
+
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-background/60 px-2 py-0.5 text-[10px] text-muted-foreground hover:border-border hover:bg-background cursor-help"
+          >
+            <BookText className="h-2.5 w-2.5" />
+            based on {provenance.source_streams.length} stream{provenance.source_streams.length === 1 ? '' : 's'}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-md text-xs p-0 overflow-hidden">
+          <div className="bg-card border-b border-border/40 p-2.5">
+            <div className="flex items-center justify-between mb-1">
+              <div className="font-medium text-foreground">Provenance</div>
+              <span className={`text-[10px] uppercase font-medium ${confTone}`}>
+                {conf} confidence
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {provenance.source_streams.map((s) => (
+                <span
+                  key={s}
+                  className={`rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wide ${STREAM_TONE[s] || 'border-border/40 bg-background/60 text-muted-foreground'}`}
+                >
+                  {STREAM_LABEL[s] || s}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="p-2.5 space-y-2 max-h-80 overflow-y-auto">
+            {provenance.source_artefacts.slice(0, 6).map((art, i) => (
+              <div key={i} className="text-[11px] leading-snug">
+                <div className="flex items-baseline gap-1.5 mb-0.5">
+                  <span
+                    className={`rounded border px-1 py-0 text-[8px] uppercase tracking-wide ${STREAM_TONE[art.stream] || 'border-border/40 bg-background/60 text-muted-foreground'}`}
+                  >
+                    {STREAM_LABEL[art.stream] || art.stream}
+                  </span>
+                  <span className="text-muted-foreground/70 text-[9px]">{art.kind}</span>
+                </div>
+                <div className="font-medium text-foreground">{art.title}</div>
+                <div className="text-muted-foreground italic mt-0.5">"{art.snippet}"</div>
+              </div>
+            ))}
+            {provenance.notes ? (
+              <div className="pt-1 border-t border-border/30 text-[10px] text-amber-700 dark:text-amber-300 italic">
+                Note: {provenance.notes}
+              </div>
+            ) : null}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
+
 const ProjectionRow: React.FC<ProjectionRowProps> = ({ projection, onSelect, onOpenEditor }) => {
   const tl = projection.current.truth_likelihood;
   const tlColor = truthLikelihoodToHex(tl);
@@ -393,12 +476,9 @@ const ProjectionRow: React.FC<ProjectionRowProps> = ({ projection, onSelect, onO
       onClick={onSelect}
       className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3 cursor-pointer hover:bg-rose-500/[0.04] transition"
     >
-      {/* Left: claim block */}
+      {/* Left: title + claim block */}
       <div className="min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="rounded border border-border/40 bg-background/60 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground/80">
-            {projection.id}
-          </span>
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
           <span
             className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] ${tierBadge}`}
           >
@@ -410,14 +490,42 @@ const ProjectionRow: React.FC<ProjectionRowProps> = ({ projection, onSelect, onO
               your override
             </span>
           ) : null}
+          {projection.provenance ? (
+            <ProvenanceTooltip provenance={projection.provenance} />
+          ) : null}
+          <span className="rounded border border-border/30 bg-background/40 px-1.5 py-0.5 text-[9px] font-mono text-muted-foreground/60">
+            {projection.id}
+          </span>
         </div>
 
-        <div className="text-sm text-foreground leading-snug">{sysClaim}</div>
+        {/* Human title — primary visual weight */}
+        {projection.human_title ? (
+          <div className="text-sm md:text-[15px] font-semibold text-foreground leading-snug">
+            {projection.human_title}
+          </div>
+        ) : null}
+
+        {/* Formal claim — secondary */}
+        <div className={`text-xs text-muted-foreground leading-snug ${projection.human_title ? 'mt-0.5' : ''}`}>
+          {sysClaim}
+        </div>
 
         {userClaim && userClaim !== sysClaim ? (
-          <div className="mt-1 text-sm text-rose-700 dark:text-rose-300 leading-snug">
+          <div className="mt-1 text-xs text-rose-700 dark:text-rose-300 leading-snug">
             <span className="text-[10px] uppercase tracking-wide text-rose-500/80 mr-1.5">your view:</span>
             {userClaim}
+          </div>
+        ) : null}
+
+        {/* Plain verdict + why */}
+        {projection.plain_verdict ? (
+          <div className="mt-1.5 text-xs text-foreground/75 leading-snug">
+            <span className="font-medium text-foreground/90">Read:</span> {projection.plain_verdict}
+          </div>
+        ) : null}
+        {projection.plain_why ? (
+          <div className="text-xs text-foreground/65 leading-snug italic">
+            {projection.plain_why}
           </div>
         ) : null}
 
