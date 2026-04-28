@@ -2814,6 +2814,20 @@ function WorkingCapitalPage({
 
   return (
     <div className="space-y-6">
+      {/* ============ SUB-TABS at the very top ============ */}
+      <Tabs defaultValue="aalberts" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="aalberts" className="text-xs">
+            <Gauge className="mr-1 h-3.5 w-3.5" />
+            Aalberts Deep Dive
+          </TabsTrigger>
+          <TabsTrigger value="peer" className="text-xs">
+            <Layers className="mr-1 h-3.5 w-3.5" />
+            Peer Benchmark
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="aalberts" className="mt-4 space-y-6">
       {/* Verdict banner */}
       <Card className="border-2">
         <CardContent className="p-6 space-y-3">
@@ -2908,20 +2922,6 @@ function WorkingCapitalPage({
         </Card>
       )}
 
-      {/* ============ SUB-TABS: Aalberts Deep Dive vs Peer Benchmark ============ */}
-      <Tabs defaultValue="aalberts" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
-          <TabsTrigger value="aalberts" className="text-xs">
-            <Gauge className="mr-1 h-3.5 w-3.5" />
-            Aalberts Deep Dive
-          </TabsTrigger>
-          <TabsTrigger value="peer" className="text-xs">
-            <Layers className="mr-1 h-3.5 w-3.5" />
-            Peer Benchmark
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="aalberts" className="mt-4 space-y-6">
       {/* ============ IN-DEPTH ANALYSIS (main story, before AR vs YF) ============ */}
       <WcSectionDivider
         title="In-Depth Analysis"
