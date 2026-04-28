@@ -18,11 +18,13 @@ import {
   plainTierToBadgeClass,
 } from '@/types/crows-nest';
 import { TruthLikelihoodChart } from '@/components/crows-nest/TruthLikelihoodChart';
-import { ChevronLeft, ChevronDown, ChevronUp, FileText, Target } from 'lucide-react';
+import { ChevronLeft, ChevronDown, ChevronUp, FileText, Target, Pencil, AlertCircle, RotateCcw } from 'lucide-react';
+import { divergenceSeverityBadgeClass } from '@/types/crows-nest';
 
 interface CrowsNestProjectionViewProps {
   projectionId: string;
   onBack: () => void;
+  onOpenEditor?: (projectionId: string) => void;
 }
 
 const inlineMd = (text: string): React.ReactElement => {
@@ -166,6 +168,7 @@ const EvidenceCardBlock: React.FC<{
 export const CrowsNestProjectionView: React.FC<CrowsNestProjectionViewProps> = ({
   projectionId,
   onBack,
+  onOpenEditor,
 }) => {
   const { crowsNestData } = useForesight();
   if (!crowsNestData) return null;
@@ -244,6 +247,22 @@ export const CrowsNestProjectionView: React.FC<CrowsNestProjectionViewProps> = (
                 <span className="text-xs text-muted-foreground">
                   resolves {projection.resolution_date}
                 </span>
+                {projection.user_assertion ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/[0.08] px-2 py-0.5 text-[10px] text-rose-700 dark:text-rose-300">
+                    <Pencil className="h-2.5 w-2.5" />
+                    your override
+                  </span>
+                ) : null}
+                {onOpenEditor ? (
+                  <button
+                    onClick={() => onOpenEditor(projection.id)}
+                    className="ml-auto inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-background/60 px-2.5 py-0.5 text-[11px] text-rose-700 dark:text-rose-300 hover:bg-rose-500/[0.08] transition"
+                    title="Override or edit this projection"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    {projection.user_assertion ? 'edit override' : 'override'}
+                  </button>
+                ) : null}
               </div>
               <h2 className="text-xl md:text-2xl font-semibold text-foreground leading-snug">
                 {projection.claim}
@@ -270,6 +289,48 @@ export const CrowsNestProjectionView: React.FC<CrowsNestProjectionViewProps> = (
               </div>
             </div>
           </div>
+
+          {/* === Divergence callout — only when system_claim and user_assertion differ === */}
+          {projection.divergence ? (
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.06] p-4">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-rose-500 mt-0.5 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${divergenceSeverityBadgeClass(projection.divergence.severity)}`}>
+                      Divergence: {projection.divergence.severity}
+                    </span>
+                    <span className="text-xs text-foreground">{projection.divergence.summary}</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    {projection.system_claim ? (
+                      <div className="rounded-lg border border-border/40 bg-background/60 p-3">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">System view</div>
+                        <div className="text-xs text-foreground leading-snug">{projection.system_claim.claim}</div>
+                        {projection.system_claim.rationale ? (
+                          <div className="text-[11px] italic text-muted-foreground mt-1.5 leading-relaxed">{projection.system_claim.rationale}</div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {projection.user_assertion ? (
+                      <div className="rounded-lg border border-rose-500/30 bg-rose-500/[0.04] p-3">
+                        <div className="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300 font-semibold mb-1">Your assertion</div>
+                        <div className="text-xs text-foreground leading-snug">{projection.user_assertion.claim}</div>
+                        {projection.user_assertion.rationale ? (
+                          <div className="text-[11px] italic text-foreground/80 mt-1.5 leading-relaxed">{projection.user_assertion.rationale}</div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                  {projection.research_priority === 'elevated' ? (
+                    <div className="text-[11px] text-rose-700 dark:text-rose-300 italic pt-1">
+                      ↑ This projection has been auto-elevated in the research queue. The next research cycle will run in <strong>confirm_assertion</strong> mode to investigate which view holds up.
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {/* The chart */}
           <div className="pt-4 border-t border-rose-500/10">

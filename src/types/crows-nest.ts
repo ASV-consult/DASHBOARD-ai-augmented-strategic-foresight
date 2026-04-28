@@ -64,10 +64,41 @@ export interface CrowsNestForecastPoint {
   ci_high: number;
 }
 
+/** Bets-register types — system view, optional user override, computed divergence. */
+export interface ProjectionClaim {
+  claim: string;
+  target_value?: number | string | null;
+  target_metric?: string | null;
+  resolution_date: string;
+  as_of?: string;
+  rationale?: string;
+}
+
+export interface UserAssertion extends ProjectionClaim {
+  set_by: string;
+  set_at: string;
+}
+
+export interface ProjectionDivergence {
+  delta: number | string | null;
+  severity: 'minor' | 'moderate' | 'material';
+  last_evaluated: string;
+  summary: string;
+}
+
+export type ResearchPriority = 'auto' | 'elevated' | 'deferred';
+
 export interface CrowsNestProjection {
   id: string;
-  claim: string;
+  claim: string; // effective claim — equals user_assertion.claim when set, else system_claim.claim
   resolution_date: string; // YYYY-MM-DD
+
+  // Bets-register layer (Phase A)
+  system_claim?: ProjectionClaim | null;
+  user_assertion?: UserAssertion | null;
+  divergence?: ProjectionDivergence | null;
+  research_priority?: ResearchPriority;
+  company_view?: ProjectionClaim | null;
 
   // PRE-RENDERED plain-language fields
   plain_outcome_phrase: string; // "Likely to hold" | "At risk" | "Marginal" | ...
@@ -221,6 +252,36 @@ export interface CrowsNestWhatIfScenario {
   markdown: string;
 }
 
+/** Bets-register top-level slice (Phase A). */
+export interface CrowsNestBetsRegister {
+  divergent_projections: Array<{
+    projection_id: string;
+    dimension_id: string;
+    system_claim: ProjectionClaim | null;
+    user_assertion: UserAssertion | null;
+    divergence: ProjectionDivergence | null;
+    research_priority: ResearchPriority;
+  }>;
+  research_queue_top20: Array<{
+    projection_id: string;
+    dimension_id: string;
+    claim: string;
+    research_priority: ResearchPriority;
+    divergence_severity: 'minor' | 'moderate' | 'material' | null;
+    truth_likelihood: number;
+    tl_distance_from_neutral: number;
+    conviction_tier: string;
+    resolution_date: string;
+    user_overridden: boolean;
+  }>;
+  totals: {
+    all_projections: number;
+    with_user_assertion: number;
+    divergent_material: number;
+    elevated_priority: number;
+  };
+}
+
 /** Top-level bundle that the dashboard ingests. */
 export interface CrowsNestData {
   schema_version: CrowsNestSchemaVersion;
@@ -231,6 +292,7 @@ export interface CrowsNestData {
   evidence_cards: Record<string, CrowsNestEvidenceCard>;
   calibration: CrowsNestCalibration;
   what_if_scenarios: CrowsNestWhatIfScenario[];
+  bets_register?: CrowsNestBetsRegister;
 }
 
 /** Type guard — used by the upload hook to dispatch payload to the right slot. */
@@ -275,6 +337,23 @@ export function plainTierToBadgeClass(tier: string): string {
     return 'border-orange-600/40 bg-orange-600/[0.08] text-orange-700 dark:text-orange-300';
   if (tier === 'breaking') return 'border-red-500/40 bg-red-500/[0.08] text-red-700 dark:text-red-300';
   return 'border-slate-400/40 bg-slate-400/[0.08] text-slate-700 dark:text-slate-300';
+}
+
+/** Divergence-severity → tailwind classes for the badge. */
+export function divergenceSeverityBadgeClass(severity: 'minor' | 'moderate' | 'material' | null | undefined): string {
+  if (severity === 'material') return 'border-rose-500/50 bg-rose-500/[0.10] text-rose-700 dark:text-rose-300 font-medium';
+  if (severity === 'moderate') return 'border-amber-500/50 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300';
+  if (severity === 'minor') return 'border-slate-400/40 bg-slate-400/[0.06] text-slate-700 dark:text-slate-300';
+  return 'border-border/40 bg-background/50 text-muted-foreground';
+}
+
+/** Research priority → label + tailwind. */
+export function researchPriorityBadge(priority: ResearchPriority | undefined): { label: string; className: string } {
+  if (priority === 'elevated')
+    return { label: 'Elevated', className: 'border-rose-500/50 bg-rose-500/[0.10] text-rose-700 dark:text-rose-300' };
+  if (priority === 'deferred')
+    return { label: 'Deferred', className: 'border-slate-400/40 bg-slate-400/[0.06] text-slate-600 dark:text-slate-400' };
+  return { label: 'Auto', className: 'border-border/40 bg-background/50 text-muted-foreground' };
 }
 
 /** Trend marker — derived from the most recent two history points. */
