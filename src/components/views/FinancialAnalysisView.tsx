@@ -57,6 +57,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import ReactMarkdown from 'react-markdown';
 import {
   FinancialAnalysisSection,
   FinancialBridgeRow,
@@ -2907,6 +2908,20 @@ function WorkingCapitalPage({
         </Card>
       )}
 
+      {/* ============ SUB-TABS: Aalberts Deep Dive vs Peer Benchmark ============ */}
+      <Tabs defaultValue="aalberts" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="aalberts" className="text-xs">
+            <Gauge className="mr-1 h-3.5 w-3.5" />
+            Aalberts Deep Dive
+          </TabsTrigger>
+          <TabsTrigger value="peer" className="text-xs">
+            <Layers className="mr-1 h-3.5 w-3.5" />
+            Peer Benchmark
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="aalberts" className="mt-4 space-y-6">
       {/* ============ IN-DEPTH ANALYSIS (main story, before AR vs YF) ============ */}
       <WcSectionDivider
         title="In-Depth Analysis"
@@ -3253,8 +3268,23 @@ function WorkingCapitalPage({
         </Card>
       )}
 
-      {/* Peer benchmark — Aalberts (AR + YF) vs listed peers, Ontex-style stacked bar */}
-      {data.peer_benchmark && <WcPeerBenchmarkCard peer={data.peer_benchmark} />}
+        </TabsContent>
+
+        <TabsContent value="peer" className="mt-4 space-y-6">
+          {data.peer_benchmark ? (
+            <WcPeerBenchmarkCard peer={data.peer_benchmark} />
+          ) : (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                No peer benchmark data in this run. Re-generate via{' '}
+                <code className="text-xs">peer_wc_benchmark.py</code> →{' '}
+                <code className="text-xs">peer_wc_chart.py</code> →{' '}
+                <code className="text-xs">_build_financial_analyse.py</code> and re-upload the JSON.
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* Personal analyst notes — editable, persisted in localStorage */}
       <Card className="border-blue-200">
@@ -3540,16 +3570,19 @@ function WcPeerBenchmarkCard({ peer }: { peer: WcPeerBenchmark }) {
         </Card>
       )}
 
-      {/* Read-across narrative */}
+      {/* Read-across narrative — markdown formatted (paragraphs + **bold**) */}
       {peer.narrative && (
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">Read-across narrative</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed">
-              {peer.narrative}
-            </p>
+            <div className="prose prose-sm max-w-none text-sm leading-relaxed text-foreground
+                            [&_p]:mb-3 [&_p:last-child]:mb-0
+                            [&_strong]:font-semibold [&_strong]:text-foreground
+                            [&_p]:text-muted-foreground">
+              <ReactMarkdown>{peer.narrative}</ReactMarkdown>
+            </div>
           </CardContent>
         </Card>
       )}
