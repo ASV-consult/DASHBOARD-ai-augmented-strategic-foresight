@@ -303,6 +303,7 @@ export interface StatusQuoSegmentTrajectory {
 }
 
 export interface StatusQuoGroupPath {
+  // Single-value forms
   revenue_eur_m_y1?: number | null;
   revenue_eur_m_y3?: number | null;
   ebit_eur_m_y1?: number | null;
@@ -310,12 +311,33 @@ export interface StatusQuoGroupPath {
   fcf_eur_m_y3?: number | null;
   net_debt_y3?: number | null;
   leverage_y3?: number | null;
+  // Band forms (preferred — synthesizers may emit low/high/mid)
+  revenue_ex_metal_eur_m_y1?: number | null;
+  revenue_ex_metal_eur_m_y3?: number | null;
+  ebit_eur_m_y3_low?: number | null;
+  ebit_eur_m_y3_high?: number | null;
+  ebit_eur_m_y3_mid?: number | null;
+  ebitda_eur_m_y3_low?: number | null;
+  ebitda_eur_m_y3_high?: number | null;
+  fcf_eur_m_y3_low?: number | null;
+  fcf_eur_m_y3_high?: number | null;
+  fcf_eur_m_y3_mid?: number | null;
+  cumulative_fcf_3yr_eur_m_low?: number | null;
+  cumulative_fcf_3yr_eur_m_high?: number | null;
+  net_debt_y3_low?: number | null;
+  net_debt_y3_high?: number | null;
+  net_debt_y3_mid?: number | null;
+  leverage_y3_low?: number | null;
+  leverage_y3_high?: number | null;
+  leverage_y3_mid?: number | null;
   dividend_path?: {
     y0?: number | null;
     y1?: number | null;
     y2?: number | null;
     y3?: number | null;
   };
+  dividend_path_basis?: string | null;
+  [k: string]: unknown;
 }
 
 export interface StatusQuoDependency {

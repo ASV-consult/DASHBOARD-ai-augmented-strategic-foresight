@@ -215,6 +215,28 @@ const HeadlineCard: React.FC<{ outlook: CrowsNestStatusQuoOutlook }> = ({ outloo
 
 const GroupPathStrip: React.FC<{ outlook: CrowsNestStatusQuoOutlook }> = ({ outlook }) => {
   const gp = outlook.group_path || {};
+
+  // Pick the EUR-formatted band, prefer low/high; fall back to single value, then mid.
+  const fmtBand = (
+    low: number | null | undefined,
+    high: number | null | undefined,
+    single: number | null | undefined,
+    mid: number | null | undefined,
+    fmt: (v: number | null | undefined) => string,
+  ): string => {
+    if (low != null && high != null && low !== high) {
+      return `${fmt(low)}—${fmt(high)}`;
+    }
+    if (single != null) return fmt(single);
+    if (mid != null) return fmt(mid);
+    if (low != null) return fmt(low);
+    if (high != null) return fmt(high);
+    return '—';
+  };
+
+  const fmtLeverage = (v: number | null | undefined): string =>
+    v != null ? `${v.toFixed(1)}x` : '—';
+
   const cells: Array<{ label: string; y1: string; y3: string; tone: string }> = [
     {
       label: 'Revenue',
@@ -225,25 +247,25 @@ const GroupPathStrip: React.FC<{ outlook: CrowsNestStatusQuoOutlook }> = ({ outl
     {
       label: 'EBIT',
       y1: fmtEUR(gp.ebit_eur_m_y1),
-      y3: fmtEUR(gp.ebit_eur_m_y3),
+      y3: fmtBand(gp.ebit_eur_m_y3_low, gp.ebit_eur_m_y3_high, gp.ebit_eur_m_y3, gp.ebit_eur_m_y3_mid, fmtEUR),
       tone: 'border-rose-500/30',
     },
     {
       label: 'FCF (Y3)',
       y1: '',
-      y3: fmtEUR(gp.fcf_eur_m_y3),
+      y3: fmtBand(gp.fcf_eur_m_y3_low, gp.fcf_eur_m_y3_high, gp.fcf_eur_m_y3, gp.fcf_eur_m_y3_mid, fmtEUR),
       tone: 'border-border/40',
     },
     {
       label: 'Net debt (Y3)',
       y1: '',
-      y3: fmtEUR(gp.net_debt_y3),
+      y3: fmtBand(gp.net_debt_y3_low, gp.net_debt_y3_high, gp.net_debt_y3, gp.net_debt_y3_mid, fmtEUR),
       tone: 'border-border/40',
     },
     {
       label: 'Leverage (Y3)',
       y1: '',
-      y3: gp.leverage_y3 != null ? `${gp.leverage_y3.toFixed(1)}x` : '—',
+      y3: fmtBand(gp.leverage_y3_low, gp.leverage_y3_high, gp.leverage_y3, gp.leverage_y3_mid, fmtLeverage),
       tone: 'border-border/40',
     },
   ];
