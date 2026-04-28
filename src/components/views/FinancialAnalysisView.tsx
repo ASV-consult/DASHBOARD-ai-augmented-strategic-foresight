@@ -76,6 +76,7 @@ import {
   WcBridgeRow,
   WcHeadlineMetric,
   WcTopInsight,
+  WcPeerBenchmark,
 } from '@/types/financial';
 
 /* ============================================================
@@ -3252,6 +3253,9 @@ function WorkingCapitalPage({
         </Card>
       )}
 
+      {/* Peer benchmark — Aalberts (AR + YF) vs listed peers, Ontex-style stacked bar */}
+      {data.peer_benchmark && <WcPeerBenchmarkCard peer={data.peer_benchmark} />}
+
       {/* Personal analyst notes — editable, persisted in localStorage */}
       <Card className="border-blue-200">
         <CardHeader>
@@ -3432,6 +3436,220 @@ function WcCfRow({ label, values }: { label: string; values?: (number | null)[] 
         <TableCell key={i} className="text-right text-xs">{fmtNum(v, 1)}</TableCell>
       ))}
     </TableRow>
+  );
+}
+
+/* ==========================================================================
+   PEER BENCHMARK — Ontex-style stacked-bar comparing Aalberts (AR + YF)
+   against listed peers (e.g. Geberit, IMI). Inline SVG ships from the
+   Python pipeline (output/Aalberts/Final Analysis/peer_wc_chart.py).
+============================================================================ */
+
+function WcPeerBenchmarkCard({ peer }: { peer: WcPeerBenchmark }) {
+  return (
+    <div className="space-y-4">
+      {/* Section header */}
+      <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50/40 to-transparent">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Layers className="h-4 w-4 text-amber-600" />
+            Peer Benchmark — {peer.focus_year ?? 'FY2025'}
+          </CardTitle>
+          {peer.chart_caption && (
+            <p className="text-xs text-muted-foreground mt-1">{peer.chart_caption}</p>
+          )}
+        </CardHeader>
+        {peer.chart_svg && (
+          <CardContent>
+            <div
+              className="overflow-x-auto rounded-md border border-slate-200 bg-white p-2"
+              // The SVG is produced by our own Python pipeline; safe static markup.
+              dangerouslySetInnerHTML={{ __html: peer.chart_svg }}
+            />
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Ratios (focus year) */}
+      {peer.ratios_table && peer.ratios_table.rows.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">
+              FY{peer.focus_year?.replace('FY', '') ?? '2025'} ratios — apples-to-apples on Yahoo Finance basis
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {peer.ratios_table.columns.map((c) => (
+                    <th key={c} className="px-2 py-2 text-left font-semibold">{c}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {peer.ratios_table.rows.map((row, ri) => (
+                  <tr key={ri} className="border-b last:border-b-0 hover:bg-slate-50/50">
+                    {row.map((cell, ci) => (
+                      <td key={ci} className="px-2 py-2 text-foreground">
+                        {cell == null ? '—' : String(cell)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Trend table */}
+      {peer.trend_table_twc_pct_revenue && peer.trend_table_twc_pct_revenue.rows.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Trade NWC / Revenue % — 4-year trend</CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {peer.trend_table_twc_pct_revenue.columns.map((c) => (
+                    <th key={c} className="px-2 py-2 text-left font-semibold">{c}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {peer.trend_table_twc_pct_revenue.rows.map((row, ri) => (
+                  <tr key={ri} className="border-b last:border-b-0 hover:bg-slate-50/50">
+                    {row.map((cell, ci) => (
+                      <td key={ci} className="px-2 py-2 text-foreground">
+                        {cell == null ? '—' : String(cell)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Read-across narrative */}
+      {peer.narrative && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Read-across narrative</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed">
+              {peer.narrative}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Methodology callout */}
+      {peer.methodology_callout && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-slate-600" />
+              {peer.methodology_callout.header ?? 'Methodology'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {peer.methodology_callout.formulas_used && (
+              <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                  Formulas
+                </p>
+                <ul className="space-y-1 text-xs">
+                  {Object.entries(peer.methodology_callout.formulas_used).map(([k, v]) => (
+                    <li key={k}>
+                      <span className="font-semibold text-slate-700">{k}:</span>{' '}
+                      <span className="text-muted-foreground">{v}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {peer.methodology_callout.distortions && peer.methodology_callout.distortions.length > 0 && (
+              <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                  Distortions to watch
+                </p>
+                <ul className="list-disc pl-4 space-y-1 text-xs text-muted-foreground">
+                  {peer.methodology_callout.distortions.map((d, i) => (
+                    <li key={i}>{d}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {peer.methodology_callout.why_two_aalberts_bars && (
+              <div className="rounded-md border border-amber-300 bg-amber-50/60 p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 mb-1">
+                  Why two Aalberts bars
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {peer.methodology_callout.why_two_aalberts_bars}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Business mix overlay */}
+      {peer.business_mix && Object.keys(peer.business_mix).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-slate-600" />
+              Business Mix Overlay
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Read the chart in light of segmental composition: peers with different mixes will have
+              structurally different working-capital profiles, not just operationally different ones.
+            </p>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-2">
+            {Object.entries(peer.business_mix).map(([key, mix]) => (
+              <div key={key} className="rounded-md border border-slate-200 bg-white p-3">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <h4 className="text-sm font-semibold capitalize">{key}</h4>
+                  {mix.revenue_total_local !== undefined && mix.currency && (
+                    <Badge variant="outline" className="text-[10px]">
+                      {mix.currency} {mix.revenue_total_local.toLocaleString()} mn
+                    </Badge>
+                  )}
+                </div>
+                {mix.segments && (
+                  <ul className="space-y-1 text-xs mb-2">
+                    {Object.entries(mix.segments).map(([seg, pct]) => (
+                      <li key={seg} className="flex justify-between gap-2">
+                        <span className="text-muted-foreground truncate">{seg}</span>
+                        <span className="font-medium tabular-nums">{pct}%</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {mix.comparable_segment_for_chart && (
+                  <p className="text-[11px] italic text-muted-foreground">
+                    {mix.comparable_segment_for_chart}
+                  </p>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {peer.data_source && (
+        <p className="text-[10px] text-muted-foreground italic">
+          Data source: <code>{peer.data_source}</code>
+        </p>
+      )}
+    </div>
   );
 }
 

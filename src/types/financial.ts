@@ -774,6 +774,41 @@ export interface WcTopInsight {
   quantified_impact?: string;    // e.g. "+€266m cash released" or "-€94m/year"
 }
 
+/* Peer benchmark sub-block — Ontex-style working-capital comparison vs listed peers.
+   Produced by output/Aalberts/Final Analysis/peer_wc_benchmark.py + peer_wc_chart.py.
+   Inline SVG comes from the Python pipeline; methodology/business-mix structures
+   are intentionally loose so they survive future schema additions without TS churn. */
+export interface WcPeerBenchmarkBusinessMix {
+  revenue_total_local?: number;
+  currency?: string;
+  segments?: Record<string, number>;
+  comparable_segment_for_chart?: string;
+}
+
+export interface WcPeerBenchmarkTable {
+  columns: string[];
+  rows: Array<Array<string | number | null>>;
+}
+
+export interface WcPeerBenchmarkMethodology {
+  header?: string;
+  formulas_used?: Record<string, string>;
+  distortions?: string[];
+  why_two_aalberts_bars?: string;
+}
+
+export interface WcPeerBenchmark {
+  focus_year?: string;
+  narrative?: string;
+  methodology_callout?: WcPeerBenchmarkMethodology;
+  business_mix?: Record<string, WcPeerBenchmarkBusinessMix>;
+  ratios_table?: WcPeerBenchmarkTable;
+  trend_table_twc_pct_revenue?: WcPeerBenchmarkTable;
+  chart_svg?: string | null;
+  chart_caption?: string;
+  data_source?: string;
+}
+
 export interface FinancialWorkingCapitalAnalysis {
   overall_verdict: WcVerdict;
   one_liner: string;
@@ -792,6 +827,7 @@ export interface FinancialWorkingCapitalAnalysis {
   red_flags: string[];
   disclosure_gaps: WcDisclosureGap[];
   methodology_note?: string | null;
+  peer_benchmark?: WcPeerBenchmark | null;
   /* Editable by the user in the dashboard — persisted to localStorage */
   custom_notes?: string;
 }
