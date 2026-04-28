@@ -3459,15 +3459,21 @@ function WcPeerBenchmarkCard({ peer }: { peer: WcPeerBenchmark }) {
             <p className="text-xs text-muted-foreground mt-1">{peer.chart_caption}</p>
           )}
         </CardHeader>
-        {peer.chart_svg && (
-          <CardContent>
+        <CardContent>
+          {peer.chart_svg ? (
             <div
               className="overflow-x-auto rounded-md border border-slate-200 bg-white p-2"
               // The SVG is produced by our own Python pipeline; safe static markup.
               dangerouslySetInnerHTML={{ __html: peer.chart_svg }}
             />
-          </CardContent>
-        )}
+          ) : (
+            <div className="rounded-md border border-dashed border-slate-300 bg-slate-50/40 p-6 text-center text-xs text-muted-foreground">
+              Chart SVG not present in this run. Re-generate via{' '}
+              <code className="text-[11px]">peer_wc_chart.py</code> and re-upload the JSON to render
+              the stacked-bar visual; ratio + trend tables and narrative below remain available.
+            </div>
+          )}
+        </CardContent>
       </Card>
 
       {/* Ratios (focus year) */}
