@@ -14,6 +14,8 @@ import { CrowsNestDimensionView } from '@/components/views/CrowsNestDimensionVie
 import { CrowsNestProjectionView } from '@/components/views/CrowsNestProjectionView';
 import { CrowsNestMacroRadar } from '@/components/views/CrowsNestMacroRadar';
 import { CrowsNestWhatIf } from '@/components/views/CrowsNestWhatIf';
+import { CrowsNestBetsRegister } from '@/components/views/CrowsNestBetsRegister';
+import { ProjectionEditor, applyOverridesToBundle } from '@/components/crows-nest/ProjectionEditor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -64,6 +66,7 @@ type DashboardView =
   | 'macro-overview'
   | 'macro-risk'
   | 'crows-nest-home'
+  | 'crows-nest-bets-register'
   | 'crows-nest-dimension'
   | 'crows-nest-projection'
   | 'crows-nest-macro'
@@ -179,6 +182,11 @@ const viewMetaMap: Record<DashboardView, { title: string; stream: string; note: 
     title: 'Crow\'s Nest — Velocity Grid',
     stream: 'Crow\'s Nest',
     note: 'The 30-second read: where the company is bet, and which bets are moving against it right now.',
+  },
+  'crows-nest-bets-register': {
+    title: 'Crow\'s Nest — Bets Register',
+    stream: 'Crow\'s Nest',
+    note: 'The full projection set with system claims, your assertions, divergence flags, and research priority.',
   },
   'crows-nest-dimension': {
     title: 'Crow\'s Nest — Dimension drill-down',
@@ -419,6 +427,17 @@ export function Dashboard() {
   const [crowsNestProjectionId, setCrowsNestProjectionId] = useState<string | null>(null);
   const [crowsNestMacroThemeId, setCrowsNestMacroThemeId] = useState<string | null>(null);
   const [crowsNestWhatIfId, setCrowsNestWhatIfId] = useState<string | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorProjectionId, setEditorProjectionId] = useState<string | null>(null);
+  const [overrideTick, setOverrideTick] = useState(0); // increment after save to force re-render
+
+  // Apply persisted localStorage overrides to the loaded bundle in-place on every load + save tick.
+  useMemo(() => {
+    if (crowsNestData?.meta?.company) {
+      applyOverridesToBundle(crowsNestData, crowsNestData.meta.company);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crowsNestData, overrideTick]);
 
   const hasWorkstreams = workstreams.length > 0 || !!data?.strategic_impact_analysis;
   const assumptionsSubtab =
@@ -1013,6 +1032,23 @@ export function Dashboard() {
             }}
           />
         );
+      case 'crows-nest-bets-register':
+        return (
+          <CrowsNestBetsRegister
+            onSelectProjection={(pid) => {
+              setCrowsNestProjectionId(pid);
+              navigate('crows-nest-projection');
+            }}
+            onSelectDimension={(did) => {
+              setCrowsNestDimensionId(did);
+              navigate('crows-nest-dimension');
+            }}
+            onOpenEditor={(pid) => {
+              setEditorProjectionId(pid);
+              setEditorOpen(true);
+            }}
+          />
+        );
       case 'crows-nest-dimension': {
         if (!crowsNestDimensionId) {
           return renderNoDataCard('Pick a dimension from the velocity grid first.');
@@ -1036,6 +1072,10 @@ export function Dashboard() {
           <CrowsNestProjectionView
             projectionId={crowsNestProjectionId}
             onBack={() => navigate('crows-nest-dimension')}
+            onOpenEditor={(pid) => {
+              setEditorProjectionId(pid);
+              setEditorOpen(true);
+            }}
           />
         );
       }
@@ -1338,6 +1378,15 @@ export function Dashboard() {
                     </div>
                   )}
                   <SidebarItem
+                    label="Bets Register"
+                    icon={Layers}
+                    isActive={activeView === 'crows-nest-bets-register'}
+                    onClick={() => navigate('crows-nest-bets-register')}
+                    badge={hasCrowsNestData ? `${crowsNestData?.bets_register?.totals?.with_user_assertion ?? 0}/${crowsNestData?.bets_register?.totals?.all_projections ?? 0}` : 'Pending'}
+                    collapsed={isSidebarCollapsed}
+                    tone="crows-nest"
+                  />
+                  <SidebarItem
                     label="Velocity Grid"
                     icon={Radio}
                     isActive={activeView === 'crows-nest-home'}
@@ -1483,6 +1532,22 @@ export function Dashboard() {
           ) : null}
         </section>
       </main>
+
+      {/* Crow's Nest projection editor — mounted globally so any view can trigger it */}
+      <ProjectionEditor
+        projection={
+          editorProjectionId && crowsNestData
+            ? crowsNestData.dimensions.flatMap((d) => d.projections).find((p) => p.id === editorProjectionId) || null
+            : null
+        }
+        company={crowsNestData?.meta?.company || ''}
+        open={editorOpen}
+        onOpenChange={setEditorOpen}
+        onSaved={() => {
+          // Force re-application of overrides + re-render
+          setOverrideTick((t) => t + 1);
+        }}
+      />
     </div>
   );
 }
