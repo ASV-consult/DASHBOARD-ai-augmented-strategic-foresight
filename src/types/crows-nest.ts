@@ -529,6 +529,18 @@ export interface CrowsNestExecutivePaper {
   memo_md?: string | null;
 }
 
+/** Cycle History (Phase I) — chronological book of cycle-ledger entries. */
+export interface CycleHistoryEntry {
+  cycle_date: string;
+  mode: string;
+  ts?: string;
+  n_projections_moved: number;
+  n_themes_moved: number;
+  projection_deltas: Array<{ id: string; before?: number; after?: number }>;
+  themes_touched: Array<{ id: string; before?: number; after?: number }>;
+  summary?: string;
+}
+
 /** Open Sweep (Phase H) — proposed bets inbox + per-projection evidence tally. */
 export interface SweepProposalDraft {
   human_title?: string;
@@ -593,6 +605,7 @@ export interface CrowsNestData {
   status_quo_outlook?: CrowsNestStatusQuoOutlook | null;
   executive_papers?: CrowsNestExecutivePaper[];
   open_sweep?: OpenSweepBundle;
+  cycle_history?: CycleHistoryEntry[];
 }
 
 /** Type guard — used by the upload hook to dispatch payload to the right slot. */

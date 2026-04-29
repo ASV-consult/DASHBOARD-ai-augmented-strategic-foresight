@@ -18,6 +18,7 @@ import { CrowsNestBetsRegister } from '@/components/views/CrowsNestBetsRegister'
 import { CrowsNestStatusQuo } from '@/components/views/CrowsNestStatusQuo';
 import { CrowsNestExecutivePapers } from '@/components/views/CrowsNestExecutivePapers';
 import { CrowsNestOpenSweep } from '@/components/views/CrowsNestOpenSweep';
+import { CrowsNestCycleHistory } from '@/components/views/CrowsNestCycleHistory';
 import { ProjectionEditor, applyOverridesToBundle } from '@/components/crows-nest/ProjectionEditor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +41,7 @@ import {
   FlaskConical,
   GitMerge,
   Globe,
+  History,
   Layers,
   LayoutDashboard,
   PanelLeftClose,
@@ -78,6 +80,7 @@ type DashboardView =
   | 'crows-nest-projection'
   | 'crows-nest-macro'
   | 'crows-nest-open-sweep'
+  | 'crows-nest-cycle-history'
   | 'crows-nest-whatif';
 
 interface SidebarItemProps {
@@ -225,6 +228,11 @@ const viewMetaMap: Record<DashboardView, { title: string; stream: string; note: 
     title: 'Crow\'s Nest — Open Sweep',
     stream: 'Crow\'s Nest',
     note: 'The "what we don\'t know" engine. Daily ingestion → monthly classification → reasoned cluster-promotion proposes new bets and macro themes for you to accept, adapt, or reject.',
+  },
+  'crows-nest-cycle-history': {
+    title: 'Crow\'s Nest — Cycle History',
+    stream: 'Crow\'s Nest',
+    note: 'Chronological book of every cycle that landed evidence. The trust layer: a verifiable record of what changed, in what order, and why.',
   },
   'crows-nest-whatif': {
     title: 'Crow\'s Nest — What-If',
@@ -1136,6 +1144,18 @@ export function Dashboard() {
             }}
           />
         );
+      case 'crows-nest-cycle-history':
+        return (
+          <CrowsNestCycleHistory
+            onSelectProjection={(pid) => {
+              setCrowsNestProjectionId(pid);
+              navigate('crows-nest-projection');
+            }}
+            onOpenExecutivePaper={() => {
+              navigate('crows-nest-executive-papers');
+            }}
+          />
+        );
       case 'crows-nest-whatif':
         return (
           <CrowsNestWhatIf
@@ -1478,6 +1498,15 @@ export function Dashboard() {
                     isActive={activeView === 'crows-nest-open-sweep'}
                     onClick={() => navigate('crows-nest-open-sweep')}
                     badge={hasCrowsNestData ? `${crowsNestData?.open_sweep?.inbox?.proposals?.length ?? 0}` : 'Pending'}
+                    collapsed={isSidebarCollapsed}
+                    tone="crows-nest"
+                  />
+                  <SidebarItem
+                    label="Cycle History"
+                    icon={History}
+                    isActive={activeView === 'crows-nest-cycle-history'}
+                    onClick={() => navigate('crows-nest-cycle-history')}
+                    badge={hasCrowsNestData ? `${crowsNestData?.cycle_history?.length ?? 0}` : 'Pending'}
                     collapsed={isSidebarCollapsed}
                     tone="crows-nest"
                   />
