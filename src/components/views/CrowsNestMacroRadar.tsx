@@ -140,6 +140,31 @@ const ThemeCard: React.FC<{ theme: CrowsNestMacroTheme; onClick: () => void }> =
             </p>
           ) : null}
 
+          {/* Tier-6 prior + theme TL chip (Phase G) */}
+          {typeof theme.prior === 'number' || typeof theme.theme_truth_likelihood === 'number' ? (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              {theme.prior_class ? (
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] ${
+                  theme.prior_class === 'currently_observable_persistence'
+                    ? 'border-emerald-500/40 bg-emerald-500/[0.06] text-emerald-700 dark:text-emerald-300'
+                    : 'border-sky-500/40 bg-sky-500/[0.06] text-sky-700 dark:text-sky-300'
+                }`}>
+                  {theme.prior_class === 'currently_observable_persistence' ? 'persistence' : 'forward'}
+                </span>
+              ) : null}
+              {typeof theme.prior === 'number' ? (
+                <span className="rounded-full border border-rose-500/40 bg-rose-500/[0.06] px-2 py-0.5 text-[10px] text-rose-700 dark:text-rose-300 tabular-nums">
+                  prior {Math.round(theme.prior * 100)}%
+                </span>
+              ) : null}
+              {typeof theme.current_state.theme_truth_likelihood === 'number' ? (
+                <span className="rounded-full border border-border/40 bg-background/60 px-2 py-0.5 text-[10px] tabular-nums text-foreground">
+                  TL {Math.round(theme.current_state.theme_truth_likelihood * 100)}%
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+
           {/* Scenario bar */}
           {Object.keys(theme.scenario_probabilities || {}).length > 0 ? (
             <div className="pt-2">
@@ -198,8 +223,143 @@ const ThemeDetail: React.FC<{ theme: CrowsNestMacroTheme; onBack: () => void }> 
               {theme.current_state.headline ? (
                 <p className="text-base text-foreground leading-relaxed">{theme.current_state.headline}</p>
               ) : null}
+
+              {/* Tier-6 chips (Phase G) */}
+              {typeof theme.prior === 'number' || typeof theme.current_state.theme_truth_likelihood === 'number' ? (
+                <div className="flex flex-wrap items-center gap-2 pt-2">
+                  {theme.prior_class ? (
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                      theme.prior_class === 'currently_observable_persistence'
+                        ? 'border-emerald-500/40 bg-emerald-500/[0.06] text-emerald-700 dark:text-emerald-300'
+                        : 'border-sky-500/40 bg-sky-500/[0.06] text-sky-700 dark:text-sky-300'
+                    }`}>
+                      {theme.prior_class === 'currently_observable_persistence' ? 'Persistence (Class B)' : 'Forward-looking (Class A)'}
+                    </span>
+                  ) : null}
+                  {typeof theme.prior === 'number' ? (
+                    <span className="rounded-full border border-rose-500/40 bg-rose-500/[0.06] px-2.5 py-0.5 text-[10px] text-rose-700 dark:text-rose-300 tabular-nums font-medium">
+                      prior {Math.round(theme.prior * 100)}%
+                    </span>
+                  ) : null}
+                  {typeof theme.current_state.theme_truth_likelihood === 'number' ? (
+                    <span className="rounded-full border border-border/40 bg-background/60 px-2.5 py-0.5 text-[10px] tabular-nums">
+                      theme TL {Math.round(theme.current_state.theme_truth_likelihood * 100)}%
+                      {theme.current_state.theme_tier ? ` · ${theme.current_state.theme_tier}` : ''}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
+
+          {/* Tier-6 baseline research note (Phase G) */}
+          {theme.baseline_research_note ? (
+            <div className="pt-3 border-t border-rose-500/10 space-y-2">
+              {theme.prior_rationale ? (
+                <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.03] p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300 font-semibold mb-1">
+                    Why this prior
+                  </div>
+                  <p className="text-sm text-foreground/90 leading-relaxed font-serif">{theme.prior_rationale}</p>
+                </div>
+              ) : null}
+              {theme.baseline_research_note.summary ? (
+                <div className="rounded-xl border border-border/40 bg-background/40 p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5">
+                    Backstory
+                  </div>
+                  <p className="text-sm text-foreground/85 leading-relaxed font-serif">{theme.baseline_research_note.summary}</p>
+                </div>
+              ) : null}
+              {theme.baseline_research_note.key_evidence?.length ? (
+                <div className="rounded-xl border border-border/40 bg-background/40 p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">
+                    Key evidence ({theme.baseline_research_note.key_evidence.length})
+                  </div>
+                  <ul className="space-y-2">
+                    {theme.baseline_research_note.key_evidence.map((e, i) => (
+                      <li key={i} className="text-xs leading-snug">
+                        <div className="flex items-baseline gap-1.5 mb-0.5 flex-wrap">
+                          <span className="rounded border border-border/40 bg-muted/30 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">
+                            {e.source_type}
+                          </span>
+                          <span className="text-muted-foreground/70 text-[10px] font-mono">{e.ref}</span>
+                        </div>
+                        <div className="text-foreground italic">"{e.snippet}"</div>
+                        {e.implication ? (
+                          <div className="text-muted-foreground mt-0.5 text-[11px]">→ {e.implication}</div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {(theme.baseline_research_note.what_would_move_it_up?.length || theme.baseline_research_note.what_would_move_it_down?.length) ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {theme.baseline_research_note.what_would_move_it_up?.length ? (
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.04] p-3">
+                      <div className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300 font-semibold mb-1.5">
+                        What would move it up ↑
+                      </div>
+                      <ul className="space-y-1">
+                        {theme.baseline_research_note.what_would_move_it_up.map((t, i) => (
+                          <li key={i} className="text-xs text-foreground/85 list-disc list-inside">{t}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {theme.baseline_research_note.what_would_move_it_down?.length ? (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-3">
+                      <div className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-300 font-semibold mb-1.5">
+                        What would move it down ↓
+                      </div>
+                      <ul className="space-y-1">
+                        {theme.baseline_research_note.what_would_move_it_down.map((t, i) => (
+                          <li key={i} className="text-xs text-foreground/85 list-disc list-inside">{t}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* Tier-6 forward projection (Phase G) */}
+          {theme.forward_projection ? (
+            <div className="pt-3 border-t border-rose-500/10 space-y-2">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+                Forward projection
+                {theme.forward_projection.resolution_horizon ? ` · ${theme.forward_projection.resolution_horizon}` : ''}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.04] p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300 font-semibold mb-1">
+                    Central path · {theme.forward_projection.central_path?.direction || '—'}
+                  </div>
+                  <p className="text-sm text-foreground/85 font-serif">{theme.forward_projection.central_path?.narrative || '—'}</p>
+                  {theme.forward_projection.central_path?.expected_tl_at_resolution ? (
+                    <div className="mt-2 text-xs text-muted-foreground tabular-nums">
+                      Expected TL: low {Math.round(theme.forward_projection.central_path.expected_tl_at_resolution.low * 100)}% · mid {Math.round(theme.forward_projection.central_path.expected_tl_at_resolution.mid * 100)}% · high {Math.round(theme.forward_projection.central_path.expected_tl_at_resolution.high * 100)}%
+                    </div>
+                  ) : null}
+                </div>
+                {theme.forward_projection.alternate_scenario ? (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-3">
+                    <div className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-300 font-semibold mb-1">
+                      Alternate · {theme.forward_projection.alternate_scenario.name}
+                    </div>
+                    <p className="text-sm text-foreground/85 font-serif">{theme.forward_projection.alternate_scenario.narrative}</p>
+                    {typeof theme.forward_projection.alternate_scenario.tl_at_resolution === 'number' ? (
+                      <div className="mt-2 text-xs text-amber-700 dark:text-amber-300 tabular-nums">
+                        TL → {Math.round(theme.forward_projection.alternate_scenario.tl_at_resolution * 100)}%
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           {Object.keys(theme.scenario_probabilities || {}).length > 0 ? (
             <div className="pt-3 border-t border-rose-500/10 space-y-2">

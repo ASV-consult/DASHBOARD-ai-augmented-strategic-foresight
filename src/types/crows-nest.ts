@@ -256,6 +256,8 @@ export interface CrowsNestMacroTheme {
   current_state: {
     trajectory: 'rising' | 'holding' | 'falling' | 'two-sided' | string;
     headline: string;
+    theme_truth_likelihood?: number;
+    theme_tier?: string;
   };
   scenario_probabilities: Record<string, number>;
   indicators: Array<{
@@ -280,6 +282,15 @@ export interface CrowsNestMacroTheme {
     what_is_actually_happening: string;
     current_assessed_state: string;
   };
+
+  // Tier-6 parity (Phase G)
+  prior_class?: 'forward_looking' | 'currently_observable_persistence' | string | null;
+  prior?: number;
+  prior_rationale?: string;
+  theme_truth_likelihood?: number;
+  theme_tier?: string;
+  baseline_research_note?: BaselineResearchNote | null;
+  forward_projection?: ProjectionForwardCone | null;
 }
 
 /** A single evidence card. */
