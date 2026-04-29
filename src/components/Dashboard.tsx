@@ -16,6 +16,7 @@ import { CrowsNestMacroRadar } from '@/components/views/CrowsNestMacroRadar';
 import { CrowsNestWhatIf } from '@/components/views/CrowsNestWhatIf';
 import { CrowsNestBetsRegister } from '@/components/views/CrowsNestBetsRegister';
 import { CrowsNestStatusQuo } from '@/components/views/CrowsNestStatusQuo';
+import { CrowsNestExecutivePapers } from '@/components/views/CrowsNestExecutivePapers';
 import { ProjectionEditor, applyOverridesToBundle } from '@/components/crows-nest/ProjectionEditor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +35,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   Compass,
+  FileText,
   FlaskConical,
   GitMerge,
   Globe,
@@ -68,6 +70,7 @@ type DashboardView =
   | 'macro-risk'
   | 'crows-nest-home'
   | 'crows-nest-status-quo'
+  | 'crows-nest-executive-papers'
   | 'crows-nest-bets-register'
   | 'crows-nest-dimension'
   | 'crows-nest-projection'
@@ -189,6 +192,11 @@ const viewMetaMap: Record<DashboardView, { title: string; stream: string; note: 
     title: 'Crow\'s Nest — Status Quo Outlook',
     stream: 'Crow\'s Nest',
     note: 'The 3-year baseline document. Under the current projection set, what does the company look like in 3 years? Everything else is a delta vs this.',
+  },
+  'crows-nest-executive-papers': {
+    title: 'Crow\'s Nest — Executive Papers',
+    stream: 'Crow\'s Nest',
+    note: 'Per-cycle CFO read. Every cycle that produces ≥1 mover ≥3pp generates a 4-section paper (Status / Implication / Effect / Mitigation) per mover plus a group-level cascade synthesis.',
   },
   'crows-nest-bets-register': {
     title: 'Crow\'s Nest — Bets Register',
@@ -1048,6 +1056,15 @@ export function Dashboard() {
             }}
           />
         );
+      case 'crows-nest-executive-papers':
+        return (
+          <CrowsNestExecutivePapers
+            onSelectProjection={(pid) => {
+              setCrowsNestProjectionId(pid);
+              navigate('crows-nest-projection');
+            }}
+          />
+        );
       case 'crows-nest-bets-register':
         return (
           <CrowsNestBetsRegister
@@ -1399,6 +1416,15 @@ export function Dashboard() {
                     isActive={activeView === 'crows-nest-status-quo'}
                     onClick={() => navigate('crows-nest-status-quo')}
                     badge={hasCrowsNestData ? (crowsNestData?.status_quo_outlook ? 'Ready' : 'Pending') : 'Pending'}
+                    collapsed={isSidebarCollapsed}
+                    tone="crows-nest"
+                  />
+                  <SidebarItem
+                    label="Executive Papers"
+                    icon={FileText}
+                    isActive={activeView === 'crows-nest-executive-papers'}
+                    onClick={() => navigate('crows-nest-executive-papers')}
+                    badge={hasCrowsNestData ? `${crowsNestData?.executive_papers?.length ?? 0}` : 'Pending'}
                     collapsed={isSidebarCollapsed}
                     tone="crows-nest"
                   />

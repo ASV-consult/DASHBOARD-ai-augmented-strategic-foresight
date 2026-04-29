@@ -489,6 +489,46 @@ export interface CrowsNestStatusQuoOutlook {
   validator_report: StatusQuoValidatorReport;
 }
 
+/** Executive Paper (Phase E) — per-cycle CFO read. */
+export interface ExecutivePaperMover {
+  kind: 'projection' | 'macro_theme' | string;
+  id: string;
+  human_title?: string;
+  tl_before?: number;
+  tl_after?: number;
+  tl_delta?: number;
+  tier_after?: string;
+  status?: string;
+  implication?: string;
+  effect?: string;
+  mitigation?: string;
+  next_cycle_focus?: string;
+}
+
+export interface ExecutivePaperGroupSynthesis {
+  cycle_date?: string;
+  n_movers?: number;
+  headline?: string;
+  cascade_summary?: {
+    group_y3_ebit_delta_eur_m?: string;
+    group_y3_leverage_delta_x?: string;
+    dividend_path_at_risk?: string;
+    [k: string]: unknown;
+  };
+  verdict?: string;
+  next_cycle_pivot?: string;
+}
+
+export interface CrowsNestExecutivePaper {
+  schema_version?: string;
+  cycle_date: string;
+  generated_at?: string;
+  n_movers: number;
+  movers: ExecutivePaperMover[];
+  group_synthesis?: ExecutivePaperGroupSynthesis | null;
+  memo_md?: string | null;
+}
+
 /** Top-level bundle that the dashboard ingests. */
 export interface CrowsNestData {
   schema_version: CrowsNestSchemaVersion;
@@ -501,6 +541,7 @@ export interface CrowsNestData {
   what_if_scenarios: CrowsNestWhatIfScenario[];
   bets_register?: CrowsNestBetsRegister;
   status_quo_outlook?: CrowsNestStatusQuoOutlook | null;
+  executive_papers?: CrowsNestExecutivePaper[];
 }
 
 /** Type guard — used by the upload hook to dispatch payload to the right slot. */
