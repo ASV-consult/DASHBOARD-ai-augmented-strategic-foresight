@@ -146,13 +146,25 @@ export interface CrowsNestProjection {
 }
 
 /** Compressed driver summary for the L2 mini-grid (4-8 per dimension, not all 156). */
+export interface CrowsNestDriverIndicator {
+  name?: string;
+  source?: string;
+  cadence?: string;
+  threshold_negative?: string;
+  threshold_positive?: string;
+}
+
 export interface CrowsNestDriverSummary {
   id: string;
   name: string;
   category: 'macro' | 'industry' | 'company' | 'policy' | 'technology' | 'social' | string;
+  // Tier 5 readability fields
+  definition?: string;
+  indicators?: CrowsNestDriverIndicator[];
   current_state: {
     score: number; // -1..+1
     velocity: number;
+    headline?: string;
   };
   cross_dimensions: string[]; // dimensions OTHER than this one that the driver also touches
   history: Array<{ cycle_date: string; score: number }>;

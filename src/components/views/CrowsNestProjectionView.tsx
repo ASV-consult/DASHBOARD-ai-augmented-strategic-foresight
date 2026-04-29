@@ -138,35 +138,116 @@ const blockMd = (text: string): React.ReactElement => {
   return <ReactMarkdown components={components}>{text}</ReactMarkdown>;
 };
 
+interface DriverSummary {
+  id: string;
+  name?: string;
+  category?: string;
+  definition?: string;
+  indicators?: Array<{ name?: string; source?: string; cadence?: string; threshold_negative?: string; threshold_positive?: string }>;
+  current_state?: { score?: number; velocity?: number; headline?: string };
+}
+
 const DriverRow: React.FC<{
   driverId: string;
   weight: number;
   direction: 'positive' | 'negative';
-}> = ({ driverId, weight, direction }) => {
+  driver?: DriverSummary;
+}> = ({ driverId, weight, direction, driver }) => {
+  const [expanded, setExpanded] = useState(false);
+  const name = driver?.name || driverId;
+  const category = driver?.category;
+  const definition = driver?.definition;
+  const headline = driver?.current_state?.headline;
+  const indicators = driver?.indicators || [];
+  const score = driver?.current_state?.score ?? 0;
+  const scoreTone =
+    score > 0.2 ? 'text-emerald-600' : score < -0.2 ? 'text-rose-600' : 'text-muted-foreground';
+  const hasDetail = Boolean(definition || headline || indicators.length);
+
   return (
-    <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-lg border border-border/30 bg-background/50 p-3">
-      <div className="text-xs text-foreground line-clamp-1">{driverId}</div>
-      <div className="flex items-center gap-2">
-        <div className="w-24 h-1.5 rounded-full bg-muted/30 overflow-hidden">
-          <div
-            className="h-full bg-rose-500/70"
-            style={{ width: `${weight * 100}%` }}
-            aria-hidden="true"
-          />
-        </div>
-        <span className="text-[10px] tabular-nums text-muted-foreground w-10 text-right">
-          {Math.round(weight * 100)}%
-        </span>
-      </div>
-      <span
-        className={`text-[10px] uppercase tracking-wide rounded-full border px-2 py-0.5 ${
-          direction === 'positive'
-            ? 'border-emerald-500/40 text-emerald-600 dark:text-emerald-300'
-            : 'border-amber-500/40 text-amber-600 dark:text-amber-300'
-        }`}
+    <div className="rounded-lg border border-border/30 bg-background/50 overflow-hidden">
+      <button
+        onClick={() => hasDetail && setExpanded(!expanded)}
+        className={`w-full grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 p-3 text-left ${hasDetail ? 'cursor-pointer hover:bg-muted/20' : 'cursor-default'} transition`}
       >
-        {direction === 'positive' ? 'supports bet' : 'against bet'}
-      </span>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <div className="text-sm text-foreground font-medium line-clamp-1">{name}</div>
+            {category ? (
+              <span className="text-[9px] uppercase tracking-wide rounded border border-border/40 bg-muted/40 px-1.5 py-0.5 text-muted-foreground">
+                {category}
+              </span>
+            ) : null}
+          </div>
+          {headline ? (
+            <div className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{headline}</div>
+          ) : (
+            <div className="text-[10px] font-mono text-muted-foreground/60 mt-0.5">{driverId}</div>
+          )}
+        </div>
+        <span className={`text-[10px] tabular-nums font-medium ${scoreTone}`}>
+          {score >= 0 ? '+' : ''}
+          {score.toFixed(1)}
+        </span>
+        <div className="flex items-center gap-2">
+          <div className="w-20 h-1.5 rounded-full bg-muted/30 overflow-hidden">
+            <div className="h-full bg-rose-500/70" style={{ width: `${weight * 100}%` }} aria-hidden="true" />
+          </div>
+          <span className="text-[10px] tabular-nums text-muted-foreground w-9 text-right">
+            {Math.round(weight * 100)}%
+          </span>
+        </div>
+        <span
+          className={`text-[10px] uppercase tracking-wide rounded-full border px-2 py-0.5 ${
+            direction === 'positive'
+              ? 'border-emerald-500/40 text-emerald-600 dark:text-emerald-300'
+              : 'border-amber-500/40 text-amber-600 dark:text-amber-300'
+          }`}
+        >
+          {direction === 'positive' ? 'supports' : 'against'}
+        </span>
+      </button>
+
+      {hasDetail && expanded ? (
+        <div className="border-t border-border/30 bg-muted/10 p-3 space-y-2">
+          {definition ? (
+            <p className="text-xs text-foreground/85 leading-relaxed">{definition}</p>
+          ) : null}
+          {indicators.length > 0 ? (
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80 font-semibold mb-1">
+                Monitored indicators
+              </div>
+              <ul className="space-y-1">
+                {indicators.map((ind, i) => (
+                  <li key={i} className="text-[11px] leading-snug">
+                    <span className="font-medium text-foreground">{ind.name}</span>
+                    {ind.source ? (
+                      <span className="text-muted-foreground"> · {ind.source}</span>
+                    ) : null}
+                    {ind.cadence ? (
+                      <span className="text-muted-foreground/70"> · {ind.cadence}</span>
+                    ) : null}
+                    {ind.threshold_negative ? (
+                      <div className="text-amber-700 dark:text-amber-300 italic mt-0.5">
+                        Bearish trip: {ind.threshold_negative}
+                      </div>
+                    ) : null}
+                    {ind.threshold_positive ? (
+                      <div className="text-emerald-700 dark:text-emerald-300 italic mt-0.5">
+                        Bullish trip: {ind.threshold_positive}
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <div className="text-[9px] font-mono text-muted-foreground/50 pt-1 border-t border-border/20">
+            {driverId}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -267,14 +348,20 @@ export const CrowsNestProjectionView: React.FC<CrowsNestProjectionViewProps> = (
   // Find projection across all dimensions
   let projection: CrowsNestProjection | undefined;
   let parentDimensionName: string | undefined;
+  let driverSummaryByIdLocal: Record<string, DriverSummary> = {};
   for (const dim of crowsNestData.dimensions) {
     const found = dim.projections.find((p) => p.id === projectionId);
     if (found) {
       projection = found;
       parentDimensionName = dim.name;
+      // Index this dimension's driver_summaries for the Driver section
+      for (const ds of dim.driver_summaries || []) {
+        driverSummaryByIdLocal[ds.id] = ds as DriverSummary;
+      }
       break;
     }
   }
+  const driverSummaryById = driverSummaryByIdLocal;
 
   if (!projection) {
     return (
@@ -473,6 +560,7 @@ export const CrowsNestProjectionView: React.FC<CrowsNestProjectionViewProps> = (
                 driverId={driverId}
                 weight={sens.weight ?? 0}
                 direction={sens.direction || 'negative'}
+                driver={driverSummaryById[driverId]}
               />
             ))}
           </div>
