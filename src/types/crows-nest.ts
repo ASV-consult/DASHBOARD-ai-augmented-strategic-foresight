@@ -105,6 +105,44 @@ export interface ProjectionProvenance {
   notes?: string;
 }
 
+/** Tier 6 — Baseline research note (the "why this prior" backstory). */
+export interface BaselineEvidence {
+  source_type: 'strategic' | 'financial' | 'macro' | 'convergence' | 'external_research' | string;
+  ref: string;
+  snippet: string;
+  implication: string;
+}
+
+export interface BaselineResearchNote {
+  summary: string;
+  key_evidence: BaselineEvidence[];
+  what_would_move_it_up: string[];
+  what_would_move_it_down: string[];
+}
+
+/** Tier 6 — Forward projection: central path + alternate scenario. */
+export interface ProjectionForwardScenario {
+  name?: string;
+  narrative: string;
+  tl_at_resolution?: number;
+}
+
+export interface ProjectionForwardCone {
+  central_path: {
+    direction: 'rising' | 'falling' | 'holding' | 'widening_band' | string;
+    expected_tl_at_resolution: { low: number; mid: number; high: number };
+    narrative: string;
+  };
+  alternate_scenario?: ProjectionForwardScenario | null;
+}
+
+export interface PivotEventMeta {
+  expected_date?: string;
+  kind?: string;
+  headline?: string;
+  watch_indicators?: string[];
+}
+
 export interface CrowsNestProjection {
   id: string;
   claim: string; // effective claim — equals user_assertion.claim when set, else system_claim.claim
@@ -125,6 +163,15 @@ export interface CrowsNestProjection {
 
   // Provenance layer (Tier 3 — what the projection is based on)
   provenance?: ProjectionProvenance | null;
+
+  // Re-anchor layer (Tier 6 — Class A/B priors + baseline research + forward projection)
+  prior?: number;
+  prior_class?: 'forward_looking' | 'currently_observable_persistence' | string | null;
+  prior_rationale?: string;
+  baseline_research_note?: BaselineResearchNote | null;
+  forward_projection?: ProjectionForwardCone | null;
+  pivot_event?: boolean;
+  pivot_event_meta?: PivotEventMeta | null;
 
   // Legacy plain-language fields (kept for back-compat; UI prefers human_title/plain_verdict/plain_why)
   plain_outcome_phrase: string; // "Likely to hold" | "At risk" | "Marginal" | ...

@@ -15,6 +15,8 @@ import {
   CrowsNestProjection,
   CrowsNestEvidenceCard,
   ProjectionProvenance,
+  BaselineResearchNote,
+  ProjectionForwardCone,
   truthLikelihoodToHex,
   plainTierToBadgeClass,
 } from '@/types/crows-nest';
@@ -34,6 +36,237 @@ const PROV_STREAM_TONE: Record<string, string> = {
   financial: 'border-emerald-500/40 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300',
   macro: 'border-amber-500/40 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300',
   convergence: 'border-violet-500/40 bg-violet-500/[0.08] text-violet-700 dark:text-violet-300',
+};
+
+// =============================================================================
+// Baseline Research Panel — "Why this prior" backstory, evidence-cited
+// =============================================================================
+const SOURCE_TONE: Record<string, string> = {
+  strategic: 'border-sky-500/40 bg-sky-500/[0.08] text-sky-700 dark:text-sky-300',
+  financial: 'border-emerald-500/40 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300',
+  macro: 'border-amber-500/40 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300',
+  convergence: 'border-violet-500/40 bg-violet-500/[0.08] text-violet-700 dark:text-violet-300',
+  external_research: 'border-slate-500/40 bg-slate-500/[0.08] text-slate-700 dark:text-slate-300',
+};
+
+const SOURCE_LABEL: Record<string, string> = {
+  strategic: 'Strategic',
+  financial: 'Financial',
+  macro: 'Macro',
+  convergence: 'Convergence',
+  external_research: 'External',
+};
+
+interface BaselineResearchPanelProps {
+  projection: CrowsNestProjection;
+  note: BaselineResearchNote;
+}
+
+const BaselineResearchPanel: React.FC<BaselineResearchPanelProps> = ({ projection, note }) => {
+  const priorClass = projection.prior_class === 'currently_observable_persistence'
+    ? 'Persistence (Class B)'
+    : projection.prior_class === 'forward_looking'
+      ? 'Forward-looking event (Class A)'
+      : 'Unclassified';
+  const priorClassTone = projection.prior_class === 'currently_observable_persistence'
+    ? 'border-emerald-500/40 bg-emerald-500/[0.06] text-emerald-700 dark:text-emerald-300'
+    : 'border-sky-500/40 bg-sky-500/[0.06] text-sky-700 dark:text-sky-300';
+
+  const prior = projection.prior ?? projection.current.truth_likelihood;
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Baseline research
+        </h3>
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${priorClassTone}`}>
+          {priorClass}
+        </span>
+        <span className="rounded-full border border-rose-500/40 bg-rose-500/[0.06] px-2 py-0.5 text-[10px] text-rose-700 dark:text-rose-300 tabular-nums">
+          prior {Math.round(prior * 100)}%
+        </span>
+      </div>
+
+      {/* Why this prior */}
+      {projection.prior_rationale ? (
+        <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.03] p-4 mb-3">
+          <div className="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300 font-semibold mb-1">
+            Why this prior
+          </div>
+          <p className="text-sm text-foreground/90 leading-relaxed font-serif">{projection.prior_rationale}</p>
+        </div>
+      ) : null}
+
+      {/* Summary paragraph */}
+      {note.summary ? (
+        <div className="rounded-xl border border-border/40 bg-background/40 p-4 mb-3">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5">
+            Backstory
+          </div>
+          <p className="text-sm text-foreground/85 leading-relaxed font-serif">{note.summary}</p>
+        </div>
+      ) : null}
+
+      {/* Key evidence */}
+      {note.key_evidence && note.key_evidence.length > 0 ? (
+        <div className="rounded-xl border border-border/40 bg-background/40 p-4 mb-3">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">
+            Key evidence ({note.key_evidence.length})
+          </div>
+          <ul className="space-y-2.5">
+            {note.key_evidence.map((e, i) => (
+              <li key={i} className="text-xs leading-snug">
+                <div className="flex items-baseline gap-1.5 mb-0.5 flex-wrap">
+                  <span
+                    className={`rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wide ${SOURCE_TONE[e.source_type] || 'border-border/40 bg-background/60 text-muted-foreground'}`}
+                  >
+                    {SOURCE_LABEL[e.source_type] || e.source_type}
+                  </span>
+                  <span className="text-muted-foreground/70 text-[10px] font-mono">{e.ref}</span>
+                </div>
+                <div className="text-foreground italic">"{e.snippet}"</div>
+                {e.implication ? (
+                  <div className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
+                    → {e.implication}
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {/* What would move it */}
+      {(note.what_would_move_it_up?.length || note.what_would_move_it_down?.length) ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {note.what_would_move_it_up?.length ? (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.04] p-4">
+              <div className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300 font-semibold mb-2">
+                What would move it up ↑
+              </div>
+              <ul className="space-y-1.5">
+                {note.what_would_move_it_up.map((t, i) => (
+                  <li key={i} className="text-xs text-foreground/85 leading-snug list-disc list-inside">
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {note.what_would_move_it_down?.length ? (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4">
+              <div className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-300 font-semibold mb-2">
+                What would move it down ↓
+              </div>
+              <ul className="space-y-1.5">
+                {note.what_would_move_it_down.map((t, i) => (
+                  <li key={i} className="text-xs text-foreground/85 leading-snug list-disc list-inside">
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+// =============================================================================
+// Forward Projection Panel — central path + alternate scenario narratives
+// =============================================================================
+interface ForwardProjectionPanelProps {
+  projection: CrowsNestProjection;
+  forward: ProjectionForwardCone;
+}
+
+const ForwardProjectionPanel: React.FC<ForwardProjectionPanelProps> = ({ projection, forward }) => {
+  const cp = forward.central_path;
+  const alt = forward.alternate_scenario;
+  const expected = cp?.expected_tl_at_resolution;
+
+  const directionTone = cp.direction === 'rising'
+    ? 'text-emerald-700 dark:text-emerald-300'
+    : cp.direction === 'falling'
+      ? 'text-rose-700 dark:text-rose-300'
+      : cp.direction === 'widening_band'
+        ? 'text-amber-700 dark:text-amber-300'
+        : 'text-muted-foreground';
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center gap-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Forward projection
+        </h3>
+        <span className="text-[10px] text-muted-foreground/70">
+          where the analyst expects this to land by {projection.resolution_date}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Central path */}
+        <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.04] p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300 font-semibold">
+              Central path
+            </div>
+            <span className={`text-[10px] uppercase font-medium ${directionTone}`}>
+              {cp.direction}
+            </span>
+          </div>
+          <p className="text-sm text-foreground/85 leading-relaxed font-serif mb-3">
+            {cp.narrative || '—'}
+          </p>
+          {expected ? (
+            <div className="rounded-lg border border-border/30 bg-background/50 p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                Expected TL at resolution
+              </div>
+              <div className="flex items-center gap-2 tabular-nums">
+                <span className="text-sm text-foreground/70">
+                  low {Math.round(expected.low * 100)}%
+                </span>
+                <span className="text-base font-semibold text-foreground">
+                  · mid {Math.round(expected.mid * 100)}%
+                </span>
+                <span className="text-sm text-foreground/70">
+                  · high {Math.round(expected.high * 100)}%
+                </span>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Alternate scenario */}
+        {alt ? (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-300 font-semibold">
+                Alternate scenario
+              </div>
+              {typeof alt.tl_at_resolution === 'number' ? (
+                <span className="text-[10px] tabular-nums text-amber-700 dark:text-amber-300">
+                  TL → {Math.round(alt.tl_at_resolution * 100)}%
+                </span>
+              ) : null}
+            </div>
+            {alt.name ? (
+              <div className="text-xs font-medium text-foreground mb-1.5">{alt.name}</div>
+            ) : null}
+            <p className="text-sm text-foreground/85 leading-relaxed font-serif">
+              {alt.narrative || '—'}
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-border/30 bg-muted/10 p-4 flex items-center justify-center text-xs text-muted-foreground italic">
+            No alternate scenario recorded.
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 const ProvenancePanel: React.FC<{ provenance: ProjectionProvenance }> = ({ provenance }) => {
@@ -538,6 +771,22 @@ export const CrowsNestProjectionView: React.FC<CrowsNestProjectionViewProps> = (
           </div>
         </CardContent>
       </Card>
+
+      {/* === Baseline research (Tier 6) — why this prior, anchored to evidence === */}
+      {projection.baseline_research_note ? (
+        <BaselineResearchPanel
+          projection={projection}
+          note={projection.baseline_research_note}
+        />
+      ) : null}
+
+      {/* === Forward projection (Tier 6) — central path + alternate scenario === */}
+      {projection.forward_projection ? (
+        <ForwardProjectionPanel
+          projection={projection}
+          forward={projection.forward_projection}
+        />
+      ) : null}
 
       {/* === Provenance: what is this projection based on? === */}
       {projection.provenance ? <ProvenancePanel provenance={projection.provenance} /> : null}
