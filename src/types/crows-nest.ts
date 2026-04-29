@@ -529,6 +529,56 @@ export interface CrowsNestExecutivePaper {
   memo_md?: string | null;
 }
 
+/** Open Sweep (Phase H) — proposed bets inbox + per-projection evidence tally. */
+export interface SweepProposalDraft {
+  human_title?: string;
+  claim?: string;
+  parent_dimension_id?: string;
+  pillar?: string;
+  definition?: string;
+  candidate_drivers?: string[];
+  prior_class?: string;
+  prior?: number;
+  prior_rationale?: string;
+  target_value?: number | string | null;
+  target_metric?: string;
+  resolution_date?: string;
+  what_would_move_it_up?: string[];
+  what_would_move_it_down?: string[];
+}
+
+export interface SweepProposal {
+  proposal_id: string;
+  cycle_date?: string;
+  proposed_at?: string;
+  status?: 'pending' | 'accepted' | 'adapted' | 'rejected' | string;
+  kind: 'projection_candidate' | 'theme_candidate' | 'adapt_existing' | 'keep_clustered_no_promotion_yet' | string;
+  cluster_label?: string;
+  coherence_assessment?: string;
+  novelty_assessment?: string;
+  load_bearing_assessment?: string;
+  rationale_summary?: string;
+  supporting_evidence_ids?: string[];
+  supporting_evidence_count?: number;
+  draft?: SweepProposalDraft;
+  existing_id?: string;
+  adaptation_proposed?: string;
+  next_review_in_cycles?: number;
+  promotion_signal_needed?: string;
+}
+
+export interface SweepEvidenceItem {
+  evidence_id?: string;
+  title?: string;
+  directional_lean?: 'supportive' | 'against' | 'mixed' | string;
+  routed_at?: string;
+}
+
+export interface OpenSweepBundle {
+  inbox: { proposals: SweepProposal[]; last_updated?: string };
+  evidence_per_projection: Record<string, SweepEvidenceItem[]>;
+}
+
 /** Top-level bundle that the dashboard ingests. */
 export interface CrowsNestData {
   schema_version: CrowsNestSchemaVersion;
@@ -542,6 +592,7 @@ export interface CrowsNestData {
   bets_register?: CrowsNestBetsRegister;
   status_quo_outlook?: CrowsNestStatusQuoOutlook | null;
   executive_papers?: CrowsNestExecutivePaper[];
+  open_sweep?: OpenSweepBundle;
 }
 
 /** Type guard — used by the upload hook to dispatch payload to the right slot. */

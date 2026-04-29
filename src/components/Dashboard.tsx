@@ -17,6 +17,7 @@ import { CrowsNestWhatIf } from '@/components/views/CrowsNestWhatIf';
 import { CrowsNestBetsRegister } from '@/components/views/CrowsNestBetsRegister';
 import { CrowsNestStatusQuo } from '@/components/views/CrowsNestStatusQuo';
 import { CrowsNestExecutivePapers } from '@/components/views/CrowsNestExecutivePapers';
+import { CrowsNestOpenSweep } from '@/components/views/CrowsNestOpenSweep';
 import { ProjectionEditor, applyOverridesToBundle } from '@/components/crows-nest/ProjectionEditor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -46,6 +47,7 @@ import {
   Radio,
   ShieldAlert,
   Target,
+  Telescope,
   TrendingUp,
   Upload,
   Workflow,
@@ -75,6 +77,7 @@ type DashboardView =
   | 'crows-nest-dimension'
   | 'crows-nest-projection'
   | 'crows-nest-macro'
+  | 'crows-nest-open-sweep'
   | 'crows-nest-whatif';
 
 interface SidebarItemProps {
@@ -217,6 +220,11 @@ const viewMetaMap: Record<DashboardView, { title: string; stream: string; note: 
     title: 'Crow\'s Nest — Macro Radar',
     stream: 'Crow\'s Nest',
     note: 'Active macro themes + their propagation matrix. The overcoupling layer.',
+  },
+  'crows-nest-open-sweep': {
+    title: 'Crow\'s Nest — Open Sweep',
+    stream: 'Crow\'s Nest',
+    note: 'The "what we don\'t know" engine. Daily ingestion → monthly classification → reasoned cluster-promotion proposes new bets and macro themes for you to accept, adapt, or reject.',
   },
   'crows-nest-whatif': {
     title: 'Crow\'s Nest — What-If',
@@ -1119,6 +1127,15 @@ export function Dashboard() {
             onSelectTheme={setCrowsNestMacroThemeId}
           />
         );
+      case 'crows-nest-open-sweep':
+        return (
+          <CrowsNestOpenSweep
+            onSelectProjection={(pid) => {
+              setCrowsNestProjectionId(pid);
+              navigate('crows-nest-projection');
+            }}
+          />
+        );
       case 'crows-nest-whatif':
         return (
           <CrowsNestWhatIf
@@ -1452,6 +1469,15 @@ export function Dashboard() {
                     isActive={activeView === 'crows-nest-macro'}
                     onClick={() => navigate('crows-nest-macro')}
                     badge={hasCrowsNestData ? `${crowsNestData?.macro_themes?.length ?? 0}` : 'Pending'}
+                    collapsed={isSidebarCollapsed}
+                    tone="crows-nest"
+                  />
+                  <SidebarItem
+                    label="Open Sweep"
+                    icon={Telescope}
+                    isActive={activeView === 'crows-nest-open-sweep'}
+                    onClick={() => navigate('crows-nest-open-sweep')}
+                    badge={hasCrowsNestData ? `${crowsNestData?.open_sweep?.inbox?.proposals?.length ?? 0}` : 'Pending'}
                     collapsed={isSidebarCollapsed}
                     tone="crows-nest"
                   />
