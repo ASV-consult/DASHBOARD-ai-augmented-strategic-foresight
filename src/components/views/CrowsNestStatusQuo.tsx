@@ -237,40 +237,99 @@ const GroupPathStrip: React.FC<{ outlook: CrowsNestStatusQuoOutlook }> = ({ outl
   const fmtLeverage = (v: number | null | undefined): string =>
     v != null ? `${v.toFixed(1)}x` : '—';
 
+  // Tolerant accessor — synthesizers may emit any of:
+  //   ebit_eur_m_y3_low, ebit_adjusted_eur_m_y3_low, etc.
+  const num = (k: string): number | null | undefined =>
+    (gp[k] as number | null | undefined) ?? null;
+  const firstNum = (...keys: string[]): number | null | undefined => {
+    for (const k of keys) {
+      const v = num(k);
+      if (v !== null && v !== undefined) return v;
+    }
+    return null;
+  };
+
   const cells: Array<{ label: string; y1: string; y3: string; tone: string }> = [
     {
       label: 'Revenue',
-      y1: fmtEUR(gp.revenue_eur_m_y1),
-      y3: fmtEUR(gp.revenue_eur_m_y3),
+      y1: fmtEUR(firstNum('revenue_eur_m_y1', 'revenue_eur_m_y1_mid')),
+      y3: fmtBand(
+        firstNum('revenue_eur_m_y3_low'),
+        firstNum('revenue_eur_m_y3_high'),
+        firstNum('revenue_eur_m_y3'),
+        firstNum('revenue_eur_m_y3_mid'),
+        fmtEUR,
+      ),
       tone: 'border-border/40',
     },
     {
       label: 'EBIT',
-      y1: fmtEUR(gp.ebit_eur_m_y1),
-      y3: fmtBand(gp.ebit_eur_m_y3_low, gp.ebit_eur_m_y3_high, gp.ebit_eur_m_y3, gp.ebit_eur_m_y3_mid, fmtEUR),
+      y1: fmtEUR(firstNum('ebit_eur_m_y1', 'ebit_adjusted_eur_m_y1_mid', 'ebit_adjusted_eur_m_y1')),
+      y3: fmtBand(
+        firstNum('ebit_eur_m_y3_low', 'ebit_adjusted_eur_m_y3_low'),
+        firstNum('ebit_eur_m_y3_high', 'ebit_adjusted_eur_m_y3_high'),
+        firstNum('ebit_eur_m_y3', 'ebit_adjusted_eur_m_y3'),
+        firstNum('ebit_eur_m_y3_mid', 'ebit_adjusted_eur_m_y3_mid'),
+        fmtEUR,
+      ),
       tone: 'border-rose-500/30',
     },
     {
       label: 'FCF (Y3)',
       y1: '',
-      y3: fmtBand(gp.fcf_eur_m_y3_low, gp.fcf_eur_m_y3_high, gp.fcf_eur_m_y3, gp.fcf_eur_m_y3_mid, fmtEUR),
+      y3: fmtBand(
+        firstNum('fcf_eur_m_y3_low'),
+        firstNum('fcf_eur_m_y3_high'),
+        firstNum('fcf_eur_m_y3'),
+        firstNum('fcf_eur_m_y3_mid'),
+        fmtEUR,
+      ),
       tone: 'border-border/40',
     },
     {
       label: 'Net debt (Y3)',
       y1: '',
-      y3: fmtBand(gp.net_debt_y3_low, gp.net_debt_y3_high, gp.net_debt_y3, gp.net_debt_y3_mid, fmtEUR),
+      y3: fmtBand(
+        firstNum('net_debt_y3_low', 'net_debt_eur_m_y3_low'),
+        firstNum('net_debt_y3_high', 'net_debt_eur_m_y3_high'),
+        firstNum('net_debt_y3', 'net_debt_eur_m_y3'),
+        firstNum('net_debt_y3_mid', 'net_debt_eur_m_y3_mid'),
+        fmtEUR,
+      ),
       tone: 'border-border/40',
     },
     {
       label: 'Leverage (Y3)',
       y1: '',
-      y3: fmtBand(gp.leverage_y3_low, gp.leverage_y3_high, gp.leverage_y3, gp.leverage_y3_mid, fmtLeverage),
+      y3: fmtBand(
+        firstNum('leverage_y3_low'),
+        firstNum('leverage_y3_high'),
+        firstNum('leverage_y3'),
+        firstNum('leverage_y3_mid'),
+        fmtLeverage,
+      ),
       tone: 'border-border/40',
     },
   ];
 
-  const dp = gp.dividend_path;
+  // Synthesizers may emit dividend under either dividend_path or dividend_path_eur_per_share
+  const dpRaw = (gp.dividend_path || gp.dividend_path_eur_per_share) as Record<string, unknown> | undefined;
+  const dpVal = (key: string, ...alt: string[]): number | null => {
+    if (!dpRaw) return null;
+    for (const k of [key, ...alt]) {
+      const v = dpRaw[k];
+      if (typeof v === 'number') return v;
+    }
+    return null;
+  };
+  const dp = dpRaw
+    ? {
+        y0: dpVal('y0', 'y0_2025'),
+        y1: dpVal('y1', 'y1_2026'),
+        y2: dpVal('y2', 'y2_2027'),
+        y3: dpVal('y3', 'y3_2028_mid', 'y3_2028'),
+      }
+    : null;
 
   return (
     <Card className="rounded-2xl border-border/40">
