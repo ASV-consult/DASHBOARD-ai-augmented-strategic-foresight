@@ -1064,12 +1064,36 @@ export function Dashboard() {
       return renderNoDataCard('Macro stream is not loaded yet. Upload a macro dashboard JSON file.');
     }
 
+    // Crow's Nest empty-state guard.
+    // v3: the existing v1 views are now v2-aware (read v2 data when crowsNestV2Data is loaded).
+    // The new placeholder views (Outside-In + Course Correction empties) render
+    // EmptySectionView regardless of bundle state. So:
+    //   - For v3 placeholder views: never block (the placeholder IS the content).
+    //   - For v2-only views (Position Map): require v2.
+    //   - For everything else under crows-nest-: require v1 OR v2.
+    const isV3Placeholder =
+      activeView === 'crows-nest-outside-steeple' ||
+      activeView === 'crows-nest-outside-watching' ||
+      activeView === 'crows-nest-outside-bet-candidates' ||
+      activeView === 'crows-nest-outside-coverage-gaps' ||
+      activeView === 'crows-nest-course-predictive' ||
+      activeView === 'crows-nest-course-recommendations' ||
+      activeView === 'crows-nest-course-decisions' ||
+      activeView === 'crows-nest-position-financials' ||
+      activeView === 'crows-nest-position-share-price';
+
     if (activeView.startsWith('crows-nest-v2-') && !hasCrowsNestV2Data) {
       return renderNoDataCard('Crow\'s Nest v2 bundle is not loaded yet. Upload a JSON file with schema_version: "crows_nest_v2_dashboard_bundle".');
     }
 
-    if (activeView.startsWith('crows-nest-') && !activeView.startsWith('crows-nest-v2-') && !hasCrowsNestData) {
-      return renderNoDataCard('Crow\'s Nest stream is not loaded yet. Upload a Crow\'s Nest bundle JSON (schema_version: crows_nest_v2).');
+    if (
+      activeView.startsWith('crows-nest-') &&
+      !activeView.startsWith('crows-nest-v2-') &&
+      !isV3Placeholder &&
+      !hasCrowsNestData &&
+      !hasCrowsNestV2Data
+    ) {
+      return renderNoDataCard('Crow\'s Nest stream is not loaded yet. Upload a v2 bundle (schema_version: "crows_nest_v2_dashboard_bundle") or a v1 bundle (schema_version: "crows_nest_v2").');
     }
 
     switch (activeView) {
