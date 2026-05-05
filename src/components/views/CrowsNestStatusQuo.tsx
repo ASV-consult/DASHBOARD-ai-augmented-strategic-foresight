@@ -19,7 +19,9 @@
  *   └───────────────────────────────────────────────────────────┘
  */
 import React, { useMemo, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useForesight } from '@/contexts/ForesightContext';
@@ -32,6 +34,14 @@ import {
   truthLikelihoodToHex,
 } from '@/types/crows-nest';
 import {
+  StatusQuoOutlookV2,
+  StatusQuoBetAnchoredOutlook,
+  StatusQuoJointDistributionRisk,
+  StatusQuoCalendaredGate,
+  tierBadgeClass,
+  trajectorySymbol,
+} from '@/types/crows-nest-v2';
+import {
   BookOpen,
   AlertTriangle,
   Compass,
@@ -42,6 +52,7 @@ import {
   Calendar,
   ArrowRight,
   Info,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface Props {
@@ -65,10 +76,17 @@ const fmtDividend = (v: number | null | undefined): string => {
 };
 
 export const CrowsNestStatusQuo: React.FC<Props> = ({ onSelectProjection }) => {
-  const { crowsNestData } = useForesight();
+  const { crowsNestData, crowsNestV2Data } = useForesight();
   const sq = crowsNestData?.status_quo_outlook;
+  const sqV2 = crowsNestV2Data?.status_quo_outlook_v2;
 
   const [tab, setTab] = useState<'memo' | 'segments' | 'dependencies' | 'risks'>('memo');
+
+  // v2-aware: render the v2 bet-anchored outlook when present, preserving the
+  // memo-style typography of the v1 view.
+  if (sqV2) {
+    return <StatusQuoOutlookV2View outlook={sqV2} company={crowsNestV2Data?.company} />;
+  }
 
   if (!sq) {
     return (
@@ -747,3 +765,226 @@ const RiskCard: React.FC<{
     </Card>
   );
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v2-aware rendering branch
+// ─────────────────────────────────────────────────────────────────────────────
+
+const StatusQuoOutlookV2View: React.FC<{
+  outlook: StatusQuoOutlookV2;
+  company?: string;
+}> = ({ outlook, company }) => {
+  const companyName = (outlook.company || company || '').trim();
+  const headerTitle = companyName
+    ? `Status Quo Outlook — ${companyName.charAt(0).toUpperCase() + companyName.slice(1)}`
+    : 'Status Quo Outlook';
+
+  return (
+    <div className="space-y-5">
+      {/* Headline card */}
+      <Card className="rounded-3xl border-rose-500/30 bg-rose-500/[0.04] shadow-sm">
+        <CardContent className="p-6 md:p-8 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="mt-1 rounded-full bg-rose-500/10 p-2">
+              <Compass className="h-5 w-5 text-rose-500" />
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl md:text-2xl font-semibold text-foreground leading-snug">
+                  {headerTitle}
+                </h2>
+                <span className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-background/60 px-2 py-0.5 text-[10px] text-muted-foreground">
+                  <Calendar className="h-3 w-3" />
+                  cycle {outlook.as_of_cycle}
+                </span>
+                {outlook.horizon_years ? (
+                  <span className="rounded-full border border-border/40 bg-background/60 px-2 py-0.5 text-[10px] text-muted-foreground">
+                    {outlook.horizon_years}-year horizon
+                  </span>
+                ) : null}
+                {outlook.structure_version ? (
+                  <span className="rounded-full border border-border/40 bg-background/60 px-2 py-0.5 text-[10px] text-muted-foreground">
+                    {outlook.structure_version}
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-sm md:text-base text-foreground/90 leading-relaxed font-serif">
+                {outlook.headline}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Bet-anchored outlook */}
+      {outlook.bet_anchored_outlook?.length ? (
+        <div>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Target className="h-3 w-3" />
+            Bet-anchored outlook ({outlook.bet_anchored_outlook.length})
+          </h3>
+          <div className="space-y-3">
+            {outlook.bet_anchored_outlook.map((b) => (
+              <BetAnchoredOutlookCard key={b.bet_id} bet={b} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Joint distribution risks */}
+      {outlook.joint_distribution_risks?.length ? (
+        <div>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <ShieldAlert className="h-3 w-3" />
+            Joint distribution risks ({outlook.joint_distribution_risks.length})
+          </h3>
+          <div className="space-y-2">
+            {outlook.joint_distribution_risks.map((r, i) => (
+              <JointRiskCard key={i} risk={r} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Calendared gates */}
+      {outlook.calendared_gates_FY2026_FY2028?.length ? (
+        <div>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Calendar className="h-3 w-3" />
+            Calendared gates FY2026–FY2028 ({outlook.calendared_gates_FY2026_FY2028.length})
+          </h3>
+          <ul className="space-y-1.5 rounded-xl border border-border/40 bg-background/40 overflow-hidden">
+            {outlook.calendared_gates_FY2026_FY2028.map((g, i) => (
+              <CalendaredGateRow key={i} gate={g} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {/* Factual corrections */}
+      {outlook.factual_corrections_carried_forward?.length ? (
+        <div>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Info className="h-3 w-3" />
+            Factual corrections carried forward ({outlook.factual_corrections_carried_forward.length})
+          </h3>
+          <Card className="rounded-2xl border-border/40">
+            <CardContent className="p-5">
+              <ul className="space-y-1.5 list-disc list-outside pl-5 text-sm text-foreground/85 leading-relaxed">
+                {outlook.factual_corrections_carried_forward.map((fc, i) => (
+                  <li key={i}>
+                    {typeof fc === 'string' ? fc : fc?.text || fc?.note || JSON.stringify(fc)}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
+      {/* Narrative markdown — preserves the memo-style typography */}
+      {outlook.narrative_md ? (
+        <Card className="rounded-2xl border-border/40">
+          <CardContent className="p-6 md:p-8">
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+              <BookOpen className="h-3 w-3" />
+              Narrative
+            </h3>
+            <div className="prose prose-sm md:prose-base max-w-none font-serif text-foreground/90 leading-relaxed">
+              <ReactMarkdown>{outlook.narrative_md}</ReactMarkdown>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+};
+
+const BetAnchoredOutlookCard: React.FC<{ bet: StatusQuoBetAnchoredOutlook }> = ({ bet }) => {
+  const traj = trajectorySymbol(bet.trajectory);
+  const tlPct = Math.round((bet.tl ?? 0) * 100);
+  const priorPct = Math.round((bet.prior ?? 0) * 100);
+  return (
+    <Card className="rounded-2xl border-border/40">
+      <CardContent className="p-5 space-y-3">
+        <div className="flex items-start gap-3 flex-wrap">
+          <Badge variant="outline" className="rounded-full text-[10px] font-mono">
+            {bet.bet_id}
+          </Badge>
+          <h4 className="flex-1 text-base font-semibold text-foreground leading-snug">{bet.label}</h4>
+          {bet.tier ? (
+            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] ${tierBadgeClass(bet.tier)}`}>
+              {bet.tier}
+            </span>
+          ) : null}
+          <span className="rounded-full border border-rose-500/40 bg-rose-500/[0.06] px-2 py-0.5 text-[10px] text-rose-700 dark:text-rose-300 tabular-nums font-medium inline-flex items-center gap-1">
+            TL {tlPct}%
+            <span className={traj.color}>{traj.symbol}</span>
+          </span>
+          <span className="rounded-full border border-border/40 bg-background/60 px-2 py-0.5 text-[10px] tabular-nums">
+            prior {priorPct}%
+          </span>
+        </div>
+
+        {bet.narrative_60_100_words ? (
+          <p className="text-sm text-foreground/90 leading-relaxed font-serif whitespace-pre-wrap">
+            {bet.narrative_60_100_words}
+          </p>
+        ) : null}
+
+        {bet.what_breaks_30_words ? (
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.04] p-3">
+            <div className="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300 font-semibold mb-1 flex items-center gap-1">
+              <ShieldAlert className="h-3 w-3" />
+              What breaks
+            </div>
+            <p className="text-xs text-foreground/85 leading-relaxed font-serif">
+              {bet.what_breaks_30_words}
+            </p>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+};
+
+const JointRiskCard: React.FC<{ risk: StatusQuoJointDistributionRisk }> = ({ risk }) => {
+  const pPct = Math.round((risk.probability_estimate ?? 0) * 100);
+  const tone =
+    pPct >= 15
+      ? 'border-rose-500/30 bg-rose-500/[0.04]'
+      : pPct >= 5
+      ? 'border-amber-500/30 bg-amber-500/[0.04]'
+      : 'border-border/40 bg-background/40';
+  return (
+    <div className={`rounded-xl border ${tone} p-3 space-y-1.5`}>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium text-foreground leading-snug font-serif flex-1">
+          {risk.scenario}
+        </p>
+        <Badge variant="outline" className="rounded-full text-[10px] tabular-nums shrink-0">
+          p={pPct}%
+        </Badge>
+      </div>
+      {risk.impact_one_sentence ? (
+        <p className="text-xs text-foreground/80 leading-relaxed">{risk.impact_one_sentence}</p>
+      ) : null}
+    </div>
+  );
+};
+
+const CalendaredGateRow: React.FC<{ gate: StatusQuoCalendaredGate }> = ({ gate }) => (
+  <li className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-3 py-2 border-b border-border/30 last:border-0">
+    <Badge variant="outline" className="rounded-full text-[10px] font-mono">
+      {gate.date}
+    </Badge>
+    <span className="text-xs text-foreground leading-snug">{gate.gate}</span>
+    <div className="flex items-center gap-1 flex-wrap justify-end">
+      {(gate.affects_bets || []).map((b) => (
+        <Badge key={b} variant="outline" className="rounded-full text-[10px] font-mono">
+          {b}
+        </Badge>
+      ))}
+    </div>
+  </li>
+);

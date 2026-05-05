@@ -19,6 +19,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useForesight } from '@/contexts/ForesightContext';
 import {
@@ -31,6 +32,14 @@ import {
   researchPriorityBadge,
 } from '@/types/crows-nest';
 import {
+  StrategicBet,
+  ProjectionV2,
+  tierBadgeClass,
+  trajectorySymbol,
+  v2TruthLikelihood,
+  v2Tier,
+} from '@/types/crows-nest-v2';
+import {
   ChevronRight,
   ChevronDown,
   Layers,
@@ -40,6 +49,10 @@ import {
   Pencil,
   ArrowRight,
   BookText,
+  Target,
+  Calendar,
+  Compass,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface CrowsNestBetsRegisterProps {
@@ -67,7 +80,7 @@ export const CrowsNestBetsRegister: React.FC<CrowsNestBetsRegisterProps> = ({
   onSelectDimension,
   onOpenEditor,
 }) => {
-  const { crowsNestData } = useForesight();
+  const { crowsNestData, crowsNestV2Data } = useForesight();
   const [sortKey, setSortKey] = useState<SortKey>('priority');
   const [sortAsc, setSortAsc] = useState(false);
   const [filter, setFilter] = useState<FilterMode>('all');
@@ -89,6 +102,18 @@ export const CrowsNestBetsRegister: React.FC<CrowsNestBetsRegisterProps> = ({
     }
     return out;
   }, [crowsNestData]);
+
+  // v2-aware: when a v2 bundle is loaded, render the 7 v2 bets grouped by bet
+  // through the same dimension-grouped visual idiom as v1. Hooks above run
+  // unconditionally so the order is stable across loaded/unloaded transitions.
+  if (crowsNestV2Data) {
+    return (
+      <CrowsNestBetsRegisterV2
+        data={crowsNestV2Data}
+        onSelectProjection={onSelectProjection}
+      />
+    );
+  }
 
   const passesFilter = (p: CrowsNestProjection): boolean => {
     if (filter === 'all') return true;
@@ -596,5 +621,456 @@ const ProjectionRow: React.FC<ProjectionRowProps> = ({ projection, onSelect, onO
         </div>
       </div>
     </li>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v2-aware rendering branch
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface BetsRegisterV2Props {
+  data: import('@/types/crows-nest-v2').CrowsNestV2Data;
+  onSelectProjection: (projectionId: string) => void;
+}
+
+const CrowsNestBetsRegisterV2: React.FC<BetsRegisterV2Props> = ({ data, onSelectProjection }) => {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [sortKey, setSortKey] = useState<'bet_id' | 'tl' | 'prior' | 'segment' | 'tier'>('bet_id');
+  const [sortAsc, setSortAsc] = useState(true);
+
+  const bets = data.bets ?? [];
+  const projectionsByBet = useMemo(() => {
+    const idx: Record<string, ProjectionV2[]> = {};
+    for (const p of data.projections ?? []) {
+      for (const link of p.propagates_to_bets ?? []) {
+        if (!link.bet_id) continue;
+        (idx[link.bet_id] = idx[link.bet_id] || []).push(p);
+      }
+    }
+    return idx;
+  }, [data.projections]);
+
+  const tierRank: Record<string, number> = {
+    Vulnerable: 1,
+    Erosion: 2,
+    Contested: 3,
+    'Stationary-with-Calendared-Test': 4,
+    Stationary: 5,
+    Resilient: 6,
+    Confirmed: 7,
+  };
+
+  const sortedBets = useMemo(() => {
+    const arr = [...bets];
+    arr.sort((a, b) => {
+      const dir = sortAsc ? 1 : -1;
+      switch (sortKey) {
+        case 'bet_id':
+          return a.id.localeCompare(b.id) * dir;
+        case 'tl': {
+          const av = v2TruthLikelihood(a.current_state) ?? 0;
+          const bv = v2TruthLikelihood(b.current_state) ?? 0;
+          return (av - bv) * dir;
+        }
+        case 'prior':
+          return ((a.prior ?? 0) - (b.prior ?? 0)) * dir;
+        case 'segment':
+          return (a.segment || '').localeCompare(b.segment || '') * dir;
+        case 'tier': {
+          const ar = tierRank[v2Tier(a.current_state) || ''] ?? 99;
+          const br = tierRank[v2Tier(b.current_state) || ''] ?? 99;
+          return (ar - br) * dir;
+        }
+      }
+    });
+    return arr;
+  }, [bets, sortKey, sortAsc]);
+
+  const toggleSort = (key: typeof sortKey) => {
+    if (sortKey === key) setSortAsc(!sortAsc);
+    else {
+      setSortKey(key);
+      setSortAsc(key === 'bet_id');
+    }
+  };
+
+  const toggleExpanded = (id: string) => setExpanded((p) => ({ ...p, [id]: !p[id] }));
+
+  return (
+    <div className="space-y-5">
+      {/* Hero verdict + counts */}
+      <Card className="rounded-3xl border-rose-500/30 bg-rose-500/[0.04] shadow-sm">
+        <CardContent className="p-6 md:p-8 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="mt-1 rounded-full bg-rose-500/10 p-2">
+              <Target className="h-5 w-5 text-rose-500" />
+            </div>
+            <div className="flex-1 space-y-1.5">
+              <h2 className="text-xl md:text-2xl font-semibold text-foreground leading-snug">
+                Bets register — the {bets.length} load-bearing forecasts
+              </h2>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Each bet is a single, dated, falsifiable forecast about{' '}
+                <strong className="text-foreground">{data.company}</strong>. Macro-driver priors feed
+                in via weighted dependencies; indicators under those drivers provide the granular
+                evidence channels. Click a bet to expand its thesis, gates, theme dependencies,
+                scenarios and falsification criteria.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-rose-500/10">
+            <div className="rounded-lg border border-border/40 bg-background/50 p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Bets</div>
+              <div className="text-lg font-semibold text-foreground tabular-nums">{bets.length}</div>
+            </div>
+            <div className="rounded-lg border border-border/40 bg-background/50 p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Macro drivers</div>
+              <div className="text-lg font-semibold text-foreground tabular-nums">
+                {data.themes.length}
+              </div>
+            </div>
+            <div className="rounded-lg border border-border/40 bg-background/50 p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Indicators</div>
+              <div className="text-lg font-semibold text-foreground tabular-nums">
+                {data.projections.length}
+              </div>
+            </div>
+            <div className="rounded-lg border border-border/40 bg-background/50 p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">As of</div>
+              <div className="text-sm font-medium text-foreground tabular-nums">{data.as_of}</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Sort bar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs uppercase tracking-wide text-muted-foreground">Sort by:</span>
+        {(['bet_id', 'tl', 'prior', 'segment', 'tier'] as const).map((k) => (
+          <button
+            key={k}
+            onClick={() => toggleSort(k)}
+            className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs transition ${
+              sortKey === k
+                ? 'border-rose-500/50 bg-rose-500/[0.10] text-rose-700 dark:text-rose-300 font-medium'
+                : 'border-border/40 bg-background/60 text-muted-foreground hover:border-rose-500/30'
+            }`}
+          >
+            {k === 'bet_id'
+              ? 'Bet ID'
+              : k === 'tl'
+              ? 'Truth-likelihood'
+              : k.charAt(0).toUpperCase() + k.slice(1)}
+            <ArrowUpDown className={`h-3 w-3 ${sortKey === k ? 'opacity-100' : 'opacity-40'} ${sortKey === k && !sortAsc ? 'rotate-180' : ''}`} />
+          </button>
+        ))}
+      </div>
+
+      {/* Bet cards */}
+      <div className="space-y-3">
+        {sortedBets.map((bet) => (
+          <BetCardV2
+            key={bet.id}
+            bet={bet}
+            indicators={projectionsByBet[bet.id] || []}
+            expanded={!!expanded[bet.id]}
+            onToggle={() => toggleExpanded(bet.id)}
+            onSelectProjection={onSelectProjection}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+interface BetCardV2Props {
+  bet: StrategicBet;
+  indicators: ProjectionV2[];
+  expanded: boolean;
+  onToggle: () => void;
+  onSelectProjection: (id: string) => void;
+}
+
+const BetCardV2: React.FC<BetCardV2Props> = ({
+  bet,
+  indicators,
+  expanded,
+  onToggle,
+  onSelectProjection,
+}) => {
+  const tl = v2TruthLikelihood(bet.current_state);
+  const tier = v2Tier(bet.current_state);
+  const traj = trajectorySymbol(bet.current_state.trajectory);
+  const tlPct = tl !== null ? Math.round(tl * 100) : null;
+  const priorPct = Math.round((bet.prior ?? 0) * 100);
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border/40 bg-card/40">
+      {/* Bet header — mirrors v1 dimension header */}
+      <div
+        className="flex flex-wrap items-center gap-3 border-b border-border/30 bg-muted/20 px-4 py-3 cursor-pointer hover:bg-rose-500/[0.04] transition"
+        onClick={onToggle}
+      >
+        <button
+          className="flex items-center text-muted-foreground hover:text-foreground"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
+          title={expanded ? 'Collapse' : 'Expand'}
+        >
+          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </button>
+
+        <span className="rounded-md border border-rose-500/30 bg-rose-500/[0.06] px-2 py-0.5 text-xs font-mono font-semibold text-rose-700 dark:text-rose-300">
+          {bet.id}
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm md:text-base font-semibold text-foreground">{bet.label}</h3>
+            {tier ? (
+              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] ${tierBadgeClass(tier)}`}>
+                {tier}
+              </span>
+            ) : null}
+            <Badge variant="outline" className="rounded-full text-[10px]">
+              {bet.segment}
+            </Badge>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">
+            Resolves {bet.resolution_date}
+          </p>
+        </div>
+
+        {/* TL / prior strip */}
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <span className="rounded-full border border-border/40 bg-background/60 px-2 py-0.5 tabular-nums inline-flex items-center gap-1">
+            TL <strong className="text-foreground">{tlPct !== null ? `${tlPct}%` : '—'}</strong>
+            <span className={traj.color} title={traj.label}>
+              {traj.symbol}
+            </span>
+          </span>
+          <span className="rounded-full border border-border/40 bg-background/60 px-2 py-0.5 tabular-nums">
+            prior {priorPct}%
+          </span>
+          {indicators.length > 0 ? (
+            <span className="rounded-full border border-border/40 bg-background/60 px-2 py-0.5 tabular-nums">
+              {indicators.length} indicator{indicators.length === 1 ? '' : 's'}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Expanded body */}
+      {expanded ? (
+        <div className="space-y-4 p-4 md:p-5 text-sm">
+          {/* Thesis cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3">
+              <div className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300 font-semibold mb-1 flex items-center gap-1">
+                <Compass className="h-3 w-3" />
+                Resolves TRUE
+              </div>
+              <p className="text-xs text-foreground/85 leading-relaxed whitespace-pre-wrap">
+                {bet.thesis_resolves_true}
+              </p>
+            </div>
+            <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.04] p-3">
+              <div className="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300 font-semibold mb-1 flex items-center gap-1">
+                <ShieldAlert className="h-3 w-3" />
+                Resolves FALSE
+              </div>
+              <p className="text-xs text-foreground/85 leading-relaxed whitespace-pre-wrap">
+                {bet.thesis_resolves_false}
+              </p>
+            </div>
+          </div>
+
+          {/* Prior rationale */}
+          {bet.prior_rationale ? (
+            <div className="rounded-xl border border-border/40 bg-background/40 p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">
+                Prior rationale
+              </div>
+              <p className="text-xs text-foreground/85 leading-relaxed whitespace-pre-wrap">
+                {bet.prior_rationale}
+              </p>
+            </div>
+          ) : null}
+
+          {/* Intermediate gates */}
+          {bet.intermediate_gates && bet.intermediate_gates.length > 0 ? (
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5 flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                Intermediate gates ({bet.intermediate_gates.length})
+              </div>
+              <ul className="space-y-1.5">
+                {bet.intermediate_gates.map((g, i) => (
+                  <li key={i} className="rounded-lg border border-border/40 bg-background/40 p-2.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-medium text-foreground">{g.name}</span>
+                      <Badge variant="outline" className="rounded-full text-[10px] font-mono">
+                        {g.date}
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
+                      {g.what_resolves}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {/* Theme dependencies */}
+          {bet.theme_dependencies && bet.theme_dependencies.length > 0 ? (
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5 flex items-center gap-1">
+                <Layers className="h-3 w-3" />
+                Macro driver dependencies ({bet.theme_dependencies.length})
+              </div>
+              <ul className="space-y-1.5">
+                {bet.theme_dependencies.map((td, i) => (
+                  <li key={i} className="rounded-lg border border-border/40 bg-background/40 p-2.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="rounded-full text-[10px] font-mono">
+                        {td.theme_id}
+                      </Badge>
+                      {td.theme_label ? (
+                        <span className="text-xs font-medium text-foreground">{td.theme_label}</span>
+                      ) : null}
+                      <Badge variant="outline" className="rounded-full text-[10px]">
+                        weight {td.weight.toFixed(2)}
+                      </Badge>
+                      {td.role ? (
+                        <Badge variant="outline" className="rounded-full text-[10px]">
+                          {td.role}
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {/* Scenarios */}
+          {bet.scenarios && bet.scenarios.length > 0 ? (
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5 flex items-center gap-1">
+                <Compass className="h-3 w-3" />
+                Scenarios ({bet.scenarios.length})
+              </div>
+              <ul className="space-y-1.5">
+                {bet.scenarios.map((s, i) => (
+                  <li key={i} className="rounded-lg border border-border/40 bg-background/40 p-2.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-medium text-foreground">{s.name}</span>
+                      <Badge variant="outline" className="rounded-full text-[10px]">
+                        p={Math.round((s.probability || 0) * 100)}%
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
+                      {s.narrative}
+                    </p>
+                    {s.what_makes_this_path_break ? (
+                      <p className="text-[11px] text-rose-700 dark:text-rose-300 leading-relaxed mt-1">
+                        <span className="uppercase tracking-wide text-[9px]">Breaks if: </span>
+                        {s.what_makes_this_path_break}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {/* Falsification criteria */}
+          {bet.falsification_criteria && bet.falsification_criteria.length > 0 ? (
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.04] p-3">
+              <div className="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300 font-semibold mb-1.5 flex items-center gap-1">
+                <ShieldAlert className="h-3 w-3" />
+                Falsification criteria ({bet.falsification_criteria.length})
+              </div>
+              <ul className="list-disc list-outside pl-5 space-y-1 text-[11px] text-foreground/85 leading-relaxed">
+                {bet.falsification_criteria.map((fc, i) => (
+                  <li key={i}>{fc}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {/* Indicators routed to this bet */}
+          {indicators.length > 0 ? (
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5 flex items-center gap-1">
+                <Target className="h-3 w-3" />
+                Indicators feeding this bet ({indicators.length})
+              </div>
+              <ul className="divide-y divide-border/30 rounded-lg border border-border/40 bg-background/40 overflow-hidden">
+                {indicators.map((ind) => {
+                  const indTl = v2TruthLikelihood(ind.current_state);
+                  const indTier = v2Tier(ind.current_state);
+                  const indTraj = trajectorySymbol(ind.current_state.trajectory);
+                  const link = ind.propagates_to_bets?.find((b) => b.bet_id === bet.id);
+                  return (
+                    <li
+                      key={ind.id}
+                      onClick={() => onSelectProjection(ind.id)}
+                      className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-3 py-2 cursor-pointer hover:bg-rose-500/[0.04] transition"
+                    >
+                      <span className="rounded border border-rose-500/30 bg-rose-500/[0.06] px-1.5 py-0.5 text-[10px] font-mono text-rose-700 dark:text-rose-300">
+                        {ind.id}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-xs font-medium text-foreground line-clamp-1">{ind.topic}</div>
+                        <div className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">
+                          {ind.measurable?.metric || ''}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                        {indTier ? (
+                          <span className={`rounded-full border px-1.5 py-0.5 ${tierBadgeClass(indTier)}`}>
+                            {indTier}
+                          </span>
+                        ) : null}
+                        <span className="tabular-nums">
+                          TL {indTl !== null ? `${Math.round(indTl * 100)}%` : '—'}
+                        </span>
+                        <span className={indTraj.color} title={indTraj.label}>
+                          {indTraj.symbol}
+                        </span>
+                        {link?.weight !== undefined ? (
+                          <span className="tabular-nums" title="Propagation weight">
+                            w{link.weight.toFixed(2)}
+                          </span>
+                        ) : null}
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+
+          {/* Breakage shape */}
+          {bet.breakage_shape ? (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-3">
+              <div className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-300 font-semibold mb-1 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                Breakage shape
+              </div>
+              <p className="text-xs text-foreground/85 leading-relaxed whitespace-pre-wrap">
+                {bet.breakage_shape}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 };

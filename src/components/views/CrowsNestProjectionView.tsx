@@ -10,6 +10,7 @@ import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { useForesight } from '@/contexts/ForesightContext';
 import {
   CrowsNestProjection,
@@ -20,8 +21,16 @@ import {
   truthLikelihoodToHex,
   plainTierToBadgeClass,
 } from '@/types/crows-nest';
+import {
+  CrowsNestV2Data,
+  ProjectionV2,
+  tierBadgeClass,
+  trajectorySymbol,
+  v2TruthLikelihood,
+  v2Tier,
+} from '@/types/crows-nest-v2';
 import { TruthLikelihoodChart } from '@/components/crows-nest/TruthLikelihoodChart';
-import { ChevronLeft, ChevronDown, ChevronUp, FileText, Target, Pencil, AlertCircle, RotateCcw, BookText } from 'lucide-react';
+import { ChevronLeft, ChevronDown, ChevronUp, FileText, Target, Pencil, AlertCircle, RotateCcw, BookText, Network } from 'lucide-react';
 import { divergenceSeverityBadgeClass } from '@/types/crows-nest';
 
 const PROV_STREAM_LABEL: Record<string, string> = {
@@ -575,7 +584,23 @@ export const CrowsNestProjectionView: React.FC<CrowsNestProjectionViewProps> = (
   onBack,
   onOpenEditor,
 }) => {
-  const { crowsNestData } = useForesight();
+  const { crowsNestData, crowsNestV2Data } = useForesight();
+
+  // v2-aware: when only v2 data is loaded (or v2 has the projection), render
+  // the v2 indicator detail. v1 fallback uses the legacy view.
+  if (crowsNestV2Data) {
+    const v2Match = crowsNestV2Data.projections?.find((p) => p.id === projectionId);
+    if (v2Match || !crowsNestData) {
+      return (
+        <ProjectionViewV2
+          data={crowsNestV2Data}
+          projectionId={projectionId}
+          onBack={onBack}
+        />
+      );
+    }
+  }
+
   if (!crowsNestData) return null;
 
   // Find projection across all dimensions
@@ -838,6 +863,259 @@ export const CrowsNestProjectionView: React.FC<CrowsNestProjectionViewProps> = (
           No evidence cards on file for this projection yet.
         </div>
       )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v2-aware rendering branch
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ProjectionViewV2Props {
+  data: CrowsNestV2Data;
+  projectionId: string;
+  onBack: () => void;
+}
+
+const ProjectionViewV2: React.FC<ProjectionViewV2Props> = ({ data, projectionId, onBack }) => {
+  const ind: ProjectionV2 | undefined = data.projections?.find((p) => p.id === projectionId);
+  if (!ind) {
+    return (
+      <Card className="rounded-3xl border-rose-500/30 bg-rose-500/[0.04]">
+        <CardContent className="p-8">
+          <p className="text-sm text-muted-foreground">Indicator not found in v2 bundle.</p>
+          <button onClick={onBack} className="mt-3 text-xs text-rose-500 hover:underline">
+            ← Back
+          </button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const tl = v2TruthLikelihood(ind.current_state);
+  const tier = v2Tier(ind.current_state);
+  const traj = trajectorySymbol(ind.current_state.trajectory);
+  const tlPct = tl !== null ? Math.round(tl * 100) : null;
+  const priorPct = Math.round((ind.prior ?? 0) * 100);
+  const color = tl !== null ? truthLikelihoodToHex(tl) : '#94a3b8';
+
+  const parentTheme = data.themes?.find((t) => t.id === ind.theme_id);
+
+  return (
+    <div className="space-y-5">
+      <button
+        onClick={onBack}
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-rose-500 transition"
+      >
+        <ChevronLeft className="h-3 w-3" />
+        back to {parentTheme?.title || 'macro driver'}
+      </button>
+
+      {/* Hero card */}
+      <Card className="rounded-3xl border-rose-500/30 bg-rose-500/[0.04] shadow-sm">
+        <CardContent className="p-6 md:p-8 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-1 rounded-full bg-rose-500/10 p-2">
+              <Target className="h-5 w-5 text-rose-500" />
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="rounded-full text-[10px] font-mono">
+                  {ind.id}
+                </Badge>
+                {parentTheme ? (
+                  <Badge variant="outline" className="rounded-full text-[10px] font-mono">
+                    under {parentTheme.id}
+                  </Badge>
+                ) : null}
+                {tier ? (
+                  <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] ${tierBadgeClass(tier)}`}>
+                    {tier}
+                  </span>
+                ) : null}
+                <span className={`text-xs font-semibold ${traj.color} flex items-center gap-1`}>
+                  <span>{traj.symbol}</span>
+                  <span>{traj.label}</span>
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  resolves {ind.resolution_date}
+                </span>
+              </div>
+              <h2 className="text-xl md:text-2xl font-semibold text-foreground leading-snug">
+                {ind.topic}
+              </h2>
+              <p className="text-sm text-foreground/85 leading-relaxed">{ind.claim_under_test}</p>
+            </div>
+            <div className="text-right shrink-0">
+              <div className="text-3xl font-semibold tabular-nums" style={{ color }}>
+                {tlPct !== null ? `${tlPct}%` : '—'}
+              </div>
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                truth-likelihood
+              </div>
+              <div className="text-[10px] tabular-nums text-muted-foreground/70 mt-1">
+                prior {priorPct}%
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Measurable */}
+      {ind.measurable ? (
+        <Card className="rounded-2xl border-border/40">
+          <CardContent className="p-5 space-y-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              How this resolves
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="rounded-lg border border-border/40 bg-background/50 p-3">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                  Metric
+                </div>
+                <div className="text-xs text-foreground leading-snug">
+                  {ind.measurable.metric || '—'}
+                </div>
+              </div>
+              <div className="rounded-lg border border-border/40 bg-background/50 p-3">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                  Source · cadence
+                </div>
+                <div className="text-xs text-foreground leading-snug">
+                  {ind.measurable.data_source || '—'}
+                  {ind.measurable.frequency ? <> · {ind.measurable.frequency}</> : null}
+                </div>
+              </div>
+              {ind.measurable.current_value_or_range ? (
+                <div className="rounded-lg border border-border/40 bg-background/50 p-3 md:col-span-2">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                    Current value / range
+                  </div>
+                  <div className="text-xs text-foreground leading-snug">
+                    {ind.measurable.current_value_or_range}
+                  </div>
+                </div>
+              ) : null}
+              {ind.measurable.threshold_for_resolution_true ? (
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.04] p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300 font-semibold mb-1">
+                    Resolves TRUE if
+                  </div>
+                  <div className="text-xs text-foreground/85 leading-snug">
+                    {ind.measurable.threshold_for_resolution_true}
+                  </div>
+                </div>
+              ) : null}
+              {ind.measurable.threshold_for_resolution_false ? (
+                <div className="rounded-lg border border-rose-500/30 bg-rose-500/[0.04] p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300 font-semibold mb-1">
+                    Resolves FALSE if
+                  </div>
+                  <div className="text-xs text-foreground/85 leading-snug">
+                    {ind.measurable.threshold_for_resolution_false}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Prior rationale */}
+      {ind.prior_rationale ? (
+        <Card className="rounded-2xl border-border/40">
+          <CardContent className="p-5 space-y-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Why this prior
+              {ind.prior_class ? (
+                <Badge variant="outline" className="ml-2 rounded-full text-[10px] font-mono">
+                  {ind.prior_class}
+                </Badge>
+              ) : null}
+            </h3>
+            <p className="text-sm text-foreground/85 leading-relaxed font-serif whitespace-pre-wrap">
+              {ind.prior_rationale}
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Propagation to bets */}
+      {ind.propagates_to_bets?.length ? (
+        <div>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Network className="h-3 w-3" />
+            Propagates into bets ({ind.propagates_to_bets.length})
+          </h3>
+          <div className="overflow-hidden rounded-xl border border-border/40">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/30 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">Bet</th>
+                  <th className="px-3 py-2 text-left font-semibold">Channel</th>
+                  <th className="px-3 py-2 text-right font-semibold">Weight</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ind.propagates_to_bets.map((p, i) => {
+                  const bet = data.bets?.find((b) => b.id === p.bet_id);
+                  return (
+                    <tr key={i} className="border-t border-border/30 align-top">
+                      <td className="px-3 py-2 text-xs">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="outline" className="rounded-full text-[10px] font-mono">
+                            {p.bet_id}
+                          </Badge>
+                          {bet ? <span className="text-foreground">{bet.label}</span> : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground line-clamp-2 max-w-md">
+                        {p.channel || '—'}
+                      </td>
+                      <td className="px-3 py-2 text-xs font-medium tabular-nums text-right text-foreground">
+                        {(p.weight ?? 0).toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Candidate sources */}
+      {ind.candidate_sources?.length ? (
+        <Card className="rounded-2xl border-border/40">
+          <CardContent className="p-5 space-y-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Candidate sources
+            </h3>
+            <ul className="list-disc list-outside pl-5 space-y-1 text-sm text-muted-foreground leading-relaxed">
+              {ind.candidate_sources.map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Open research questions */}
+      {ind.open_research_questions?.length ? (
+        <Card className="rounded-2xl border-amber-500/30 bg-amber-500/[0.04]">
+          <CardContent className="p-5 space-y-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+              <AlertCircle className="h-3 w-3" />
+              Open research questions
+            </h3>
+            <ul className="list-disc list-outside pl-5 space-y-1 text-sm text-foreground/85 leading-relaxed">
+              {ind.open_research_questions.map((q, i) => (
+                <li key={i}>{q}</li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 };

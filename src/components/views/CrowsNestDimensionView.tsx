@@ -10,6 +10,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useForesight } from '@/contexts/ForesightContext';
 import {
@@ -20,7 +21,17 @@ import {
   plainTierToBadgeClass,
   trendMarker,
 } from '@/types/crows-nest';
-import { ChevronLeft, ChevronRight, ArrowDown, ArrowUp, Minus, Target, AlertTriangle } from 'lucide-react';
+import {
+  CrowsNestV2Data,
+  MacroThemeV2,
+  ProjectionV2,
+  pillarBadgeClass,
+  tierBadgeClass,
+  trajectorySymbol,
+  v2TruthLikelihood,
+  v2Tier,
+} from '@/types/crows-nest-v2';
+import { ChevronLeft, ChevronRight, ArrowDown, ArrowUp, Minus, Target, AlertTriangle, Globe } from 'lucide-react';
 
 interface CrowsNestDimensionViewProps {
   dimensionId: string;
@@ -198,7 +209,22 @@ export const CrowsNestDimensionView: React.FC<CrowsNestDimensionViewProps> = ({
   onSelectProjection,
   onBack,
 }) => {
-  const { crowsNestData } = useForesight();
+  const { crowsNestData, crowsNestV2Data } = useForesight();
+
+  // v2-aware: when v2 loaded, treat themes (T1-T6) as the dimensions and the
+  // projections under each theme as their children indicators. Preserves the
+  // drill-through navigation pattern.
+  if (crowsNestV2Data) {
+    return (
+      <DimensionViewV2
+        data={crowsNestV2Data}
+        dimensionId={dimensionId}
+        onSelectProjection={onSelectProjection}
+        onBack={onBack}
+      />
+    );
+  }
+
   if (!crowsNestData) return null;
 
   const dim: CrowsNestDimension | undefined = crowsNestData.dimensions.find(
@@ -321,5 +347,204 @@ export const CrowsNestDimensionView: React.FC<CrowsNestDimensionViewProps> = ({
         </div>
       ) : null}
     </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v2-aware rendering branch — themes (T1-T6) act as "dimensions"
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DimensionViewV2Props {
+  data: CrowsNestV2Data;
+  dimensionId: string;
+  onSelectProjection: (projectionId: string) => void;
+  onBack: () => void;
+}
+
+const DimensionViewV2: React.FC<DimensionViewV2Props> = ({
+  data,
+  dimensionId,
+  onSelectProjection,
+  onBack,
+}) => {
+  const theme: MacroThemeV2 | undefined = data.themes.find((t) => t.id === dimensionId);
+
+  if (!theme) {
+    return (
+      <Card className="rounded-3xl border-rose-500/30 bg-rose-500/[0.04]">
+        <CardContent className="p-8">
+          <p className="text-sm text-muted-foreground">Macro driver not found.</p>
+          <button onClick={onBack} className="mt-3 text-xs text-rose-500 hover:underline">
+            ← Back
+          </button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const indicators: ProjectionV2[] = (data.projections ?? []).filter(
+    (p) => p.theme_id === dimensionId,
+  );
+  // Sort by current TL ascending — most-concerning first
+  const sorted = [...indicators].sort(
+    (a, b) =>
+      (v2TruthLikelihood(a.current_state) ?? 0) - (v2TruthLikelihood(b.current_state) ?? 0),
+  );
+
+  const traj = trajectorySymbol(theme.current_state.trajectory);
+  const tl = v2TruthLikelihood(theme.current_state);
+  const tier = v2Tier(theme.current_state);
+  const tlPct = tl !== null ? Math.round(tl * 100) : null;
+  const priorPct = Math.round((theme.prior ?? 0) * 100);
+
+  return (
+    <div className="space-y-5">
+      <button
+        onClick={onBack}
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-rose-500 transition"
+      >
+        <ChevronLeft className="h-3 w-3" />
+        back
+      </button>
+
+      {/* Hero */}
+      <Card className="rounded-3xl border-rose-500/30 bg-rose-500/[0.04] shadow-sm">
+        <CardContent className="p-6 md:p-8 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="mt-1 rounded-full bg-rose-500/10 p-2">
+              <Globe className="h-5 w-5 text-rose-500" />
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="rounded-full text-[10px] font-mono">
+                  {theme.id}
+                </Badge>
+                <span
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${pillarBadgeClass(theme.pillar)}`}
+                >
+                  {theme.pillar}
+                </span>
+                {tier ? (
+                  <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] ${tierBadgeClass(tier)}`}>
+                    {tier}
+                  </span>
+                ) : null}
+                <span className={`text-xs font-semibold ${traj.color} flex items-center gap-1`}>
+                  <span>{traj.symbol}</span>
+                  <span>{traj.label}</span>
+                </span>
+              </div>
+              <h2 className="text-2xl font-semibold text-foreground leading-tight">{theme.title}</h2>
+              {theme.thesis ? (
+                <p className="text-sm text-foreground leading-relaxed">{theme.thesis}</p>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                {tlPct !== null ? (
+                  <span className="rounded-full border border-rose-500/40 bg-rose-500/[0.06] px-2 py-0.5 text-[10px] text-rose-700 dark:text-rose-300 tabular-nums font-medium">
+                    TL {tlPct}%
+                  </span>
+                ) : null}
+                <span className="rounded-full border border-border/40 bg-background/60 px-2 py-0.5 text-[10px] tabular-nums">
+                  prior {priorPct}%
+                </span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Indicators list */}
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            The {indicators.length} indicator{indicators.length === 1 ? '' : 's'} under this driver
+          </h3>
+          <span className="text-xs text-muted-foreground/70">sorted: most-concerning first</span>
+        </div>
+        {sorted.length === 0 ? (
+          <Card className="rounded-2xl border-border/40">
+            <CardContent className="p-5">
+              <p className="text-sm text-muted-foreground italic">
+                No indicators currently linked to this macro driver.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {sorted.map((ind) => (
+              <IndicatorRowV2
+                key={ind.id}
+                indicator={ind}
+                onClick={() => onSelectProjection(ind.id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const IndicatorRowV2: React.FC<{ indicator: ProjectionV2; onClick: () => void }> = ({
+  indicator,
+  onClick,
+}) => {
+  const tl = v2TruthLikelihood(indicator.current_state);
+  const color = tl !== null ? truthLikelihoodToHex(tl) : '#94a3b8';
+  const tier = v2Tier(indicator.current_state);
+  const traj = trajectorySymbol(indicator.current_state.trajectory);
+  const tlPct = tl !== null ? Math.round(tl * 100) : null;
+
+  return (
+    <button
+      onClick={onClick}
+      className="group flex w-full items-center gap-4 rounded-xl border border-border/40 bg-background/60 p-4 text-left transition hover:border-rose-500/40 hover:bg-rose-500/[0.04]"
+    >
+      <div className="flex w-32 shrink-0 flex-col gap-1">
+        <Badge variant="outline" className="rounded-full text-[10px] font-mono w-fit">
+          {indicator.id}
+        </Badge>
+        {tier ? (
+          <span className={`inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${tierBadgeClass(tier)}`}>
+            {tier}
+          </span>
+        ) : null}
+        <span className={`text-xs font-semibold ${traj.color} flex items-center gap-1`}>
+          <span>{traj.symbol}</span>
+          <span className="text-[10px] uppercase">{traj.label}</span>
+        </span>
+      </div>
+
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="text-sm font-medium text-foreground line-clamp-1">{indicator.topic}</div>
+        <div className="text-xs text-muted-foreground line-clamp-2">{indicator.claim_under_test}</div>
+        <div className="text-[11px] text-muted-foreground/80">
+          Resolves {indicator.resolution_date}
+          {indicator.measurable?.metric ? <> · {indicator.measurable.metric}</> : null}
+        </div>
+      </div>
+
+      <div className="w-40 shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 h-3 rounded-full bg-muted/30 overflow-hidden">
+            {tlPct !== null ? (
+              <div
+                className="absolute top-0 bottom-0 w-1 rounded-full"
+                style={{ left: `calc(${tlPct}% - 2px)`, backgroundColor: color }}
+                aria-hidden="true"
+              />
+            ) : null}
+          </div>
+          <span className="text-xs font-medium tabular-nums text-foreground">
+            {tlPct !== null ? `${tlPct}%` : '—'}
+          </span>
+        </div>
+        <div className="mt-1 text-[9px] uppercase tracking-wide text-muted-foreground/70 text-right">
+          truth-likelihood
+        </div>
+      </div>
+
+      <ChevronRight className="h-4 w-4 text-muted-foreground/40 transition group-hover:text-rose-500" />
+    </button>
   );
 };

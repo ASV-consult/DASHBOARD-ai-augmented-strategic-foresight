@@ -8,14 +8,24 @@
  * Per the clarity directive: verdict above each block, plain-language pillar names,
  * and the scenario probabilities are visualised as one stacked horizontal bar.
  */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useForesight } from '@/contexts/ForesightContext';
 import { CrowsNestMacroTheme } from '@/types/crows-nest';
-import { ChevronLeft, ChevronRight, Globe, Radio } from 'lucide-react';
+import {
+  MacroThemeV2,
+  CrowsNestV2Data,
+  pillarBadgeClass,
+  tierBadgeClass,
+  trajectorySymbol,
+  v2TruthLikelihood,
+  v2Tier,
+} from '@/types/crows-nest-v2';
+import { ChevronLeft, ChevronRight, Globe, Radio, Compass, Network, Zap, Layers } from 'lucide-react';
 
 interface CrowsNestMacroRadarProps {
   selectedThemeId: string | null;
@@ -490,7 +500,20 @@ export const CrowsNestMacroRadar: React.FC<CrowsNestMacroRadarProps> = ({
   selectedThemeId,
   onSelectTheme,
 }) => {
-  const { crowsNestData } = useForesight();
+  const { crowsNestData, crowsNestV2Data } = useForesight();
+
+  // v2-aware: when a v2 bundle is loaded, render the v2 macro drivers (T1-T6)
+  // through the same radar visual idiom as v1.
+  if (crowsNestV2Data) {
+    return (
+      <CrowsNestMacroRadarV2
+        data={crowsNestV2Data}
+        selectedThemeId={selectedThemeId}
+        onSelectTheme={onSelectTheme}
+      />
+    );
+  }
+
   if (!crowsNestData) return null;
 
   const themes = crowsNestData.macro_themes || [];
@@ -556,6 +579,460 @@ export const CrowsNestMacroRadar: React.FC<CrowsNestMacroRadarProps> = ({
       <div className="space-y-3">
         {themes.map((t) => (
           <ThemeCard key={t.id} theme={t} onClick={() => onSelectTheme(t.id)} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v2-aware rendering branch
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface MacroRadarV2Props {
+  data: CrowsNestV2Data;
+  selectedThemeId: string | null;
+  onSelectTheme: (themeId: string | null) => void;
+}
+
+const PILLAR_LABEL_V2: Record<string, string> = {
+  Social: 'Social',
+  Technology: 'Technology',
+  Economic: 'Economic',
+  Environmental: 'Environmental / Resources',
+  Political_Legal: 'Political / Legal',
+  Ethical: 'Ethical / ESG',
+};
+
+const ScenarioBarV2: React.FC<{ scenarios: Record<string, number> }> = ({ scenarios }) => {
+  const entries = Object.entries(scenarios).sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((s, [, p]) => s + p, 0) || 1;
+  const colors = ['#f43f5e', '#f59e0b', '#10b981', '#6366f1', '#94a3b8'];
+  return (
+    <div className="space-y-1.5">
+      <div className="flex h-6 w-full overflow-hidden rounded-full border border-border/40 bg-muted/20">
+        {entries.map(([name, prob], idx) => {
+          const widthPct = (prob / total) * 100;
+          if (widthPct < 1) return null;
+          return (
+            <TooltipProvider key={name} delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    className="flex items-center justify-center text-[9px] font-medium text-white"
+                    style={{ width: `${widthPct}%`, backgroundColor: colors[idx] || '#94a3b8' }}
+                  >
+                    {widthPct >= 12 ? `${Math.round(prob * 100)}%` : ''}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  <div className="font-medium">{name.replace(/_/g, ' ')}</div>
+                  <div className="text-muted-foreground">{Math.round(prob * 100)}% probability</div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+        {entries.map(([name, prob], idx) => (
+          <span key={name} className="flex items-center gap-1">
+            <span className="block h-2 w-2 rounded-sm" style={{ backgroundColor: colors[idx] || '#94a3b8' }} />
+            <span>
+              {name.replace(/_/g, ' ')}{' '}
+              <span className="text-muted-foreground/70">{Math.round(prob * 100)}%</span>
+            </span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ThemeCardV2: React.FC<{ theme: MacroThemeV2; onClick: () => void }> = ({ theme, onClick }) => {
+  const tl = v2TruthLikelihood(theme.current_state);
+  const tier = v2Tier(theme.current_state);
+  const traj = trajectorySymbol(theme.current_state.trajectory);
+  const tlPct = tl !== null ? Math.round(tl * 100) : null;
+  const priorPct = Math.round((theme.prior ?? 0) * 100);
+  const propagationCount = theme.propagation_to_bets_seed?.length || 0;
+  const scenarios =
+    theme.scenarios && typeof theme.scenarios === 'object' && !Array.isArray(theme.scenarios)
+      ? (theme.scenarios as Record<string, number>)
+      : null;
+
+  return (
+    <button
+      onClick={onClick}
+      className="group w-full rounded-2xl border border-rose-500/20 bg-card/50 p-5 text-left transition hover:border-rose-500/40 hover:bg-rose-500/[0.04]"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="rounded-full text-[10px] font-mono">
+              {theme.id}
+            </Badge>
+            <span
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${pillarBadgeClass(theme.pillar)}`}
+            >
+              {PILLAR_LABEL_V2[theme.pillar] || theme.pillar}
+            </span>
+            {tier ? (
+              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] ${tierBadgeClass(tier)}`}>
+                {tier}
+              </span>
+            ) : null}
+            <span className={`text-xs font-semibold ${traj.color} flex items-center gap-1`}>
+              <span>{traj.symbol}</span>
+              <span>{traj.label}</span>
+            </span>
+          </div>
+
+          <h3 className="text-lg font-semibold text-foreground leading-tight">{theme.title}</h3>
+          {theme.thesis ? (
+            <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">{theme.thesis}</p>
+          ) : null}
+
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            {tlPct !== null ? (
+              <span className="rounded-full border border-rose-500/40 bg-rose-500/[0.06] px-2 py-0.5 text-[10px] text-rose-700 dark:text-rose-300 tabular-nums font-medium">
+                TL {tlPct}%
+              </span>
+            ) : null}
+            <span className="rounded-full border border-border/40 bg-background/60 px-2 py-0.5 text-[10px] tabular-nums">
+              prior {priorPct}%
+            </span>
+            {theme.prior_class ? (
+              <span className="rounded-full border border-border/40 bg-background/60 px-2 py-0.5 text-[10px] text-muted-foreground">
+                {theme.prior_class.replace(/_/g, ' ')}
+              </span>
+            ) : null}
+          </div>
+
+          {scenarios && Object.keys(scenarios).length > 0 ? (
+            <div className="pt-2">
+              <ScenarioBarV2 scenarios={scenarios} />
+            </div>
+          ) : null}
+
+          <div className="pt-2 text-xs text-muted-foreground flex flex-wrap items-center gap-2">
+            <span>
+              <strong className="text-foreground">{propagationCount}</strong> bet
+              {propagationCount === 1 ? '' : 's'} affected
+            </span>
+            {theme.named_watch_metrics?.length ? (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span>
+                  <strong className="text-foreground">{theme.named_watch_metrics.length}</strong> watch metric
+                  {theme.named_watch_metrics.length === 1 ? '' : 's'}
+                </span>
+              </>
+            ) : null}
+          </div>
+        </div>
+        <ChevronRight className="h-5 w-5 text-muted-foreground/40 transition group-hover:text-rose-500" />
+      </div>
+    </button>
+  );
+};
+
+const ThemeDetailV2: React.FC<{ theme: MacroThemeV2; onBack: () => void }> = ({ theme, onBack }) => {
+  const traj = trajectorySymbol(theme.current_state.trajectory);
+  const tl = v2TruthLikelihood(theme.current_state);
+  const tier = v2Tier(theme.current_state);
+  const tlPct = tl !== null ? Math.round(tl * 100) : null;
+  const priorPct = Math.round((theme.prior ?? 0) * 100);
+  const scenarios =
+    theme.scenarios && typeof theme.scenarios === 'object' && !Array.isArray(theme.scenarios)
+      ? (theme.scenarios as Record<string, number>)
+      : null;
+
+  return (
+    <div className="space-y-5">
+      <button
+        onClick={onBack}
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-rose-500 transition"
+      >
+        <ChevronLeft className="h-3 w-3" />
+        back to active macro drivers
+      </button>
+
+      {/* Hero */}
+      <Card className="rounded-3xl border-rose-500/30 bg-rose-500/[0.04] shadow-sm">
+        <CardContent className="p-6 md:p-8 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-1 rounded-full bg-rose-500/10 p-2">
+              <Globe className="h-5 w-5 text-rose-500" />
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="rounded-full text-[10px] font-mono">
+                  {theme.id}
+                </Badge>
+                <span
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${pillarBadgeClass(theme.pillar)}`}
+                >
+                  {PILLAR_LABEL_V2[theme.pillar] || theme.pillar}
+                </span>
+                {tier ? (
+                  <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] ${tierBadgeClass(tier)}`}>
+                    {tier}
+                  </span>
+                ) : null}
+                <span className={`text-xs font-semibold ${traj.color} flex items-center gap-1`}>
+                  <span>{traj.symbol}</span>
+                  <span>{traj.label}</span>
+                </span>
+              </div>
+              <h2 className="text-2xl font-semibold text-foreground leading-tight">{theme.title}</h2>
+              {theme.thesis ? (
+                <p className="text-base text-foreground leading-relaxed">{theme.thesis}</p>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-2 pt-2">
+                {tlPct !== null ? (
+                  <span className="rounded-full border border-rose-500/40 bg-rose-500/[0.06] px-2.5 py-0.5 text-[10px] text-rose-700 dark:text-rose-300 tabular-nums font-medium">
+                    TL {tlPct}%
+                  </span>
+                ) : null}
+                <span className="rounded-full border border-border/40 bg-background/60 px-2.5 py-0.5 text-[10px] tabular-nums">
+                  prior {priorPct}%
+                </span>
+                {theme.prior_class ? (
+                  <span className="rounded-full border border-border/40 bg-background/60 px-2.5 py-0.5 text-[10px] text-muted-foreground">
+                    {theme.prior_class.replace(/_/g, ' ')}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          {theme.prior_rationale ? (
+            <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.03] p-3">
+              <div className="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300 font-semibold mb-1">
+                Why this prior
+              </div>
+              <p className="text-sm text-foreground/90 leading-relaxed font-serif">{theme.prior_rationale}</p>
+            </div>
+          ) : null}
+
+          {theme.definition ? (
+            <div className="rounded-xl border border-border/40 bg-background/40 p-3">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">
+                Definition
+              </div>
+              <p className="text-sm text-foreground/85 leading-relaxed font-serif">{theme.definition}</p>
+            </div>
+          ) : null}
+
+          {scenarios && Object.keys(scenarios).length > 0 ? (
+            <div className="pt-3 border-t border-rose-500/10 space-y-2">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70 font-semibold">
+                How likely is each scenario?
+              </div>
+              <ScenarioBarV2 scenarios={scenarios} />
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {/* Named watch metrics */}
+      {theme.named_watch_metrics && theme.named_watch_metrics.length > 0 ? (
+        <div>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Zap className="h-3 w-3" />
+            Named watch metrics ({theme.named_watch_metrics.length})
+          </h3>
+          <div className="overflow-hidden rounded-xl border border-border/40">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/30 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">Metric</th>
+                  <th className="px-3 py-2 text-left font-semibold">Source</th>
+                  <th className="px-3 py-2 text-left font-semibold">Cadence</th>
+                  <th className="px-3 py-2 text-left font-semibold">Current</th>
+                </tr>
+              </thead>
+              <tbody>
+                {theme.named_watch_metrics.map((m, i) => (
+                  <tr key={i} className="border-t border-border/30 align-top">
+                    <td className="px-3 py-2 text-xs text-foreground">{m.name || m.metric || '—'}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">{m.source || '—'}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                      {m.cadence || m.frequency || '—'}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground max-w-md">
+                      {String(m.current_value ?? m.current_value_2026_05 ?? '—').slice(0, 160)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Propagation to bets */}
+      {theme.propagation_to_bets_seed && theme.propagation_to_bets_seed.length > 0 ? (
+        <div>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Network className="h-3 w-3" />
+            Propagates into bets ({theme.propagation_to_bets_seed.length})
+          </h3>
+          <p className="mb-2 text-xs text-muted-foreground/80">
+            When this driver's scenario probabilities shift, the priors of these bets get nudged.
+          </p>
+          <div className="overflow-hidden rounded-xl border border-border/40">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/30 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">Bet</th>
+                  <th className="px-3 py-2 text-left font-semibold">Channel / mechanism</th>
+                  <th className="px-3 py-2 text-right font-semibold">Weight</th>
+                </tr>
+              </thead>
+              <tbody>
+                {theme.propagation_to_bets_seed.map((p, i) => {
+                  const w = p.weight ?? 0;
+                  return (
+                    <tr key={i} className="border-t border-border/30 align-top">
+                      <td className="px-3 py-2 text-xs">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="outline" className="rounded-full text-[10px] font-mono">
+                            {p.bet_id || p.bet_id_placeholder || '—'}
+                          </Badge>
+                          {(p.bet_label || p.label || p.name) ? (
+                            <span className="text-foreground">
+                              {p.bet_label || p.label || p.name}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground line-clamp-2 max-w-md">
+                        {p.channel || p.transmission_mechanism || p.rule || p.reading_rule || p.rationale || '—'}
+                      </td>
+                      <td className="px-3 py-2 text-xs font-medium tabular-nums text-right text-foreground">
+                        {w.toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Cross-cutting */}
+      {theme.cross_cutting && theme.cross_cutting.length > 0 ? (
+        <div>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Layers className="h-3 w-3" />
+            Cross-cutting overlay ({theme.cross_cutting.length})
+          </h3>
+          <ul className="space-y-1 list-disc list-outside pl-5 text-sm text-muted-foreground leading-relaxed">
+            {theme.cross_cutting.map((cc, i) => (
+              <li key={i}>{cc}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {/* Expected projection topics */}
+      {theme.expected_projection_topics && theme.expected_projection_topics.length > 0 ? (
+        <div>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Compass className="h-3 w-3" />
+            Expected indicator topics ({theme.expected_projection_topics.length})
+          </h3>
+          <ul className="space-y-1 list-disc list-outside pl-5 text-sm text-muted-foreground leading-relaxed">
+            {theme.expected_projection_topics.map((t, i) => (
+              <li key={i}>{t}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+const CrowsNestMacroRadarV2: React.FC<MacroRadarV2Props> = ({
+  data,
+  selectedThemeId,
+  onSelectTheme,
+}) => {
+  const themes = useMemo(() => {
+    const arr = [...(data.themes ?? [])];
+    arr.sort((a, b) => a.id.localeCompare(b.id));
+    return arr;
+  }, [data.themes]);
+
+  if (selectedThemeId) {
+    const theme = themes.find((t) => t.id === selectedThemeId);
+    if (theme) {
+      return <ThemeDetailV2 theme={theme} onBack={() => onSelectTheme(null)} />;
+    }
+  }
+
+  if (themes.length === 0) {
+    return (
+      <Card className="rounded-3xl border-rose-500/30 bg-rose-500/[0.04]">
+        <CardContent className="p-8 text-center">
+          <Radio className="mx-auto mb-3 h-10 w-10 text-rose-500" />
+          <h3 className="text-base font-semibold text-foreground">No macro drivers in v2 bundle</h3>
+          <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
+            The bundle's <code className="text-xs rounded bg-muted/40 px-1 py-0.5">themes</code>{' '}
+            array is empty.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Aggregate stats
+  const totalBetsAffected = themes.reduce(
+    (s, t) => s + (t.propagation_to_bets_seed?.length || 0),
+    0,
+  );
+  const allBetIds = new Set<string>();
+  for (const t of themes) {
+    for (const p of t.propagation_to_bets_seed || []) {
+      const id = p.bet_id || p.bet_id_placeholder;
+      if (id) allBetIds.add(id);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Hero verdict */}
+      <Card className="rounded-3xl border-rose-500/30 bg-rose-500/[0.04] shadow-sm">
+        <CardContent className="p-6 md:p-8 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="mt-1 rounded-full bg-rose-500/10 p-2">
+              <Globe className="h-5 w-5 text-rose-500" />
+            </div>
+            <div className="flex-1 space-y-1.5">
+              <h2 className="text-xl md:text-2xl font-semibold text-foreground leading-snug">
+                {themes.length} macro {themes.length === 1 ? 'driver' : 'drivers'} on the radar,
+                propagating to{' '}
+                <span className="text-rose-600 dark:text-rose-300">{allBetIds.size} bet{allBetIds.size === 1 ? '' : 's'}</span>{' '}
+                via {totalBetsAffected} weighted link{totalBetsAffected === 1 ? '' : 's'}.
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Each macro driver is a universal world-state force with its own truth-likelihood and
+                trajectory. When a driver's prior shifts, the priors of the bets it loads get nudged
+                via the propagation matrix. Click any card for thesis, watch metrics, and the
+                propagation seed.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Theme cards */}
+      <div className="space-y-3">
+        {themes.map((t) => (
+          <ThemeCardV2 key={t.id} theme={t} onClick={() => onSelectTheme(t.id)} />
         ))}
       </div>
     </div>

@@ -19,12 +19,11 @@ import { CrowsNestStatusQuo } from '@/components/views/CrowsNestStatusQuo';
 import { CrowsNestExecutivePapers } from '@/components/views/CrowsNestExecutivePapers';
 import { CrowsNestOpenSweep } from '@/components/views/CrowsNestOpenSweep';
 import { CrowsNestCycleHistory } from '@/components/views/CrowsNestCycleHistory';
-import { CrowsNestStrategicBets } from '@/components/views/CrowsNestStrategicBets';
-import { CrowsNestMacroThemesV2 } from '@/components/views/CrowsNestMacroThemesV2';
-import { CrowsNestProjectionsBrowse } from '@/components/views/CrowsNestProjectionsBrowse';
 import { CrowsNestPositionMap } from '@/components/views/CrowsNestPositionMap';
+import { EmptySectionView } from '@/components/views/placeholders/EmptySectionView';
 import { ProjectionEditor, applyOverridesToBundle } from '@/components/crows-nest/ProjectionEditor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useForesight } from '@/contexts/ForesightContext';
@@ -88,10 +87,19 @@ type DashboardView =
   | 'crows-nest-open-sweep'
   | 'crows-nest-cycle-history'
   | 'crows-nest-whatif'
-  | 'crows-nest-v2-strategic-bets'
-  | 'crows-nest-v2-macro-themes'
-  | 'crows-nest-v2-projections'
-  | 'crows-nest-v2-position-map';
+  | 'crows-nest-v2-position-map'
+  // Outside-In placeholders (v3)
+  | 'crows-nest-outside-steeple'
+  | 'crows-nest-outside-watching'
+  | 'crows-nest-outside-bet-candidates'
+  | 'crows-nest-outside-coverage-gaps'
+  // Course Correction placeholders (v3)
+  | 'crows-nest-course-predictive'
+  | 'crows-nest-course-recommendations'
+  | 'crows-nest-course-decisions'
+  // Position & Financials placeholders (v3)
+  | 'crows-nest-position-financials'
+  | 'crows-nest-position-share-price';
 
 interface SidebarItemProps {
   label: string;
@@ -249,25 +257,58 @@ const viewMetaMap: Record<DashboardView, { title: string; stream: string; note: 
     stream: 'Crow\'s Nest',
     note: 'Stress-test the company\'s bets. Scenarios that override drivers or macro themes and cascade through.',
   },
-  'crows-nest-v2-strategic-bets': {
-    title: 'Crow\'s Nest 2.0 — Strategic Bets',
-    stream: 'Crow\'s Nest 2.0',
-    note: 'The seven load-bearing forecasts (B1-B7). Each bet has a thesis, intermediate gates, theme dependencies, scenarios, falsification criteria and breakage shape.',
-  },
-  'crows-nest-v2-macro-themes': {
-    title: 'Crow\'s Nest 2.0 — Macro Themes',
-    stream: 'Crow\'s Nest 2.0',
-    note: 'The 6 universal world-state forces (T1-T6). Each theme is independent of the company; its truth-likelihood propagates into bets via weighted dependencies.',
-  },
-  'crows-nest-v2-projections': {
-    title: 'Crow\'s Nest 2.0 — Projections',
-    stream: 'Crow\'s Nest 2.0',
-    note: 'The 49 falsifiable measurables under each theme. Each projection has a metric, a date, and explicit thresholds for resolves-true and resolves-false.',
-  },
   'crows-nest-v2-position-map': {
     title: 'Crow\'s Nest 2.0 — Position Map',
     stream: 'Crow\'s Nest 2.0',
     note: '38 sourced components describing the company\'s actual position — segments, sites, offtake book, balance sheet, governance, technology, capabilities — plus flagged factual corrections.',
+  },
+  // ── Outside-In placeholders (v3) ──
+  'crows-nest-outside-steeple': {
+    title: 'Outside-In — STEEPLE Watch',
+    stream: 'Crow\'s Nest',
+    note: 'Pillar-by-pillar wide scan of world-state forces (Social, Technology, Economic, Environmental, Political-Legal, Ethical) — including drivers not currently linked to any bet. NOT bet-filtered. To be populated in a later phase.',
+  },
+  'crows-nest-outside-watching': {
+    title: 'Outside-In — Watching Drivers',
+    stream: 'Crow\'s Nest',
+    note: 'Speculative, forward-looking world-state forces with low priors and explicit trigger-evidence. Not yet linked to any current bet. To be populated in a later phase.',
+  },
+  'crows-nest-outside-bet-candidates': {
+    title: 'Outside-In — Bet Candidates',
+    stream: 'Crow\'s Nest',
+    note: 'Bets the company isn\'t currently making but could. Each candidate references the Outside-In drivers that would justify it and what would tip it from candidate to active. To be populated in a later phase.',
+  },
+  'crows-nest-outside-coverage-gaps': {
+    title: 'Outside-In — Coverage Gaps',
+    stream: 'Crow\'s Nest',
+    note: 'STEEPLE pillars with no drivers tracked. Surfaces blind spots in the current driver universe. To be populated in a later phase.',
+  },
+  // ── Course Correction placeholders (v3) ──
+  'crows-nest-course-predictive': {
+    title: 'Course Correction — Predictive Layer',
+    stream: 'Crow\'s Nest',
+    note: 'Automatic per-cycle forward truth-likelihood distributions on bets, driver-prior velocity rankings, and predicted course-correction triggers. Always labelled "PREDICTED". To be built in a later phase.',
+  },
+  'crows-nest-course-recommendations': {
+    title: 'Course Correction — Open Recommendations',
+    stream: 'Crow\'s Nest',
+    note: 'System-surfaced promotions / demotions / new bet suggestions awaiting decision. To be populated in a later phase.',
+  },
+  'crows-nest-course-decisions': {
+    title: 'Course Correction — Decision Log',
+    stream: 'Crow\'s Nest',
+    note: 'What was decided, when, and the cycle that prompted it. The strategic-decision audit trail. To be populated in a later phase.',
+  },
+  // ── Position & Financials placeholders (v3) ──
+  'crows-nest-position-financials': {
+    title: 'Position & Financials — Financial Baseline',
+    stream: 'Crow\'s Nest',
+    note: 'Segment economics, KPIs, foundation cushion math — the numerical anchor consumed by both postures. Will read from the financial stream when wired in a later phase.',
+  },
+  'crows-nest-position-share-price': {
+    title: 'Position & Financials — Share Price Lens',
+    stream: 'Crow\'s Nest',
+    note: 'Historical multiples, peer comps, beta, recent consensus. The valuation lens consumed by Simulation Engine Layer 3. Will read from the share price stream when wired in a later phase.',
   },
 };
 
@@ -602,6 +643,31 @@ export function Dashboard() {
       </CardContent>
     </Card>
   );
+
+  // v3 placeholder icon map — each placeholder gets a contextual icon
+  const v3PlaceholderIcons: Partial<Record<DashboardView, React.ComponentType<{ className?: string }>>> = {
+    'crows-nest-outside-steeple': Compass,
+    'crows-nest-outside-watching': Telescope,
+    'crows-nest-outside-bet-candidates': Target,
+    'crows-nest-outside-coverage-gaps': ShieldAlert,
+    'crows-nest-course-predictive': TrendingUp,
+    'crows-nest-course-recommendations': GitMerge,
+    'crows-nest-course-decisions': ClipboardList,
+    'crows-nest-position-financials': CircleDollarSign,
+    'crows-nest-position-share-price': TrendingUp,
+  };
+
+  const renderV3Placeholder = (view: DashboardView) => {
+    const meta = viewMetaMap[view];
+    const Icon = v3PlaceholderIcons[view] ?? Telescope;
+    return (
+      <EmptySectionView
+        title={meta?.title ?? 'Coming soon'}
+        description={meta?.note ?? ''}
+        icon={Icon}
+      />
+    );
+  };
 
   const currentViewMeta = viewMetaMap[activeView];
 
@@ -1199,14 +1265,19 @@ export function Dashboard() {
             onSelectScenario={setCrowsNestWhatIfId}
           />
         );
-      case 'crows-nest-v2-strategic-bets':
-        return <CrowsNestStrategicBets />;
-      case 'crows-nest-v2-macro-themes':
-        return <CrowsNestMacroThemesV2 />;
-      case 'crows-nest-v2-projections':
-        return <CrowsNestProjectionsBrowse />;
       case 'crows-nest-v2-position-map':
         return <CrowsNestPositionMap />;
+      // ── v3 placeholders (replaced by EmptySectionView in Step 2) ──
+      case 'crows-nest-outside-steeple':
+      case 'crows-nest-outside-watching':
+      case 'crows-nest-outside-bet-candidates':
+      case 'crows-nest-outside-coverage-gaps':
+      case 'crows-nest-course-predictive':
+      case 'crows-nest-course-recommendations':
+      case 'crows-nest-course-decisions':
+      case 'crows-nest-position-financials':
+      case 'crows-nest-position-share-price':
+        return renderV3Placeholder(activeView);
       default:
         return null;
     }
@@ -1498,121 +1569,232 @@ export function Dashboard() {
                     </div>
                   )}
 
-                  {/* === v2 entries (top of the Crow's Nest section) === */}
-                  <SidebarItem
-                    label="Strategic Bets"
-                    icon={Target}
-                    isActive={activeView === 'crows-nest-v2-strategic-bets'}
-                    onClick={() => navigate('crows-nest-v2-strategic-bets')}
-                    badge={hasCrowsNestV2Data ? `${crowsNestV2Data?.bets?.length ?? 0}` : 'v2 only'}
-                    collapsed={isSidebarCollapsed}
-                    tone="crows-nest"
-                  />
-                  <SidebarItem
-                    label="Macro Themes (v2)"
-                    icon={Compass}
-                    isActive={activeView === 'crows-nest-v2-macro-themes'}
-                    onClick={() => navigate('crows-nest-v2-macro-themes')}
-                    badge={hasCrowsNestV2Data ? `${crowsNestV2Data?.themes?.length ?? 0}` : 'v2 only'}
-                    collapsed={isSidebarCollapsed}
-                    tone="crows-nest"
-                  />
-                  <SidebarItem
-                    label="Projections (v2)"
-                    icon={ClipboardList}
-                    isActive={activeView === 'crows-nest-v2-projections'}
-                    onClick={() => navigate('crows-nest-v2-projections')}
-                    badge={hasCrowsNestV2Data ? `${crowsNestV2Data?.projections?.length ?? 0}` : 'v2 only'}
-                    collapsed={isSidebarCollapsed}
-                    tone="crows-nest"
-                  />
-                  <SidebarItem
-                    label="Position Map"
-                    icon={Map}
-                    isActive={activeView === 'crows-nest-v2-position-map'}
-                    onClick={() => navigate('crows-nest-v2-position-map')}
-                    badge={hasCrowsNestV2Data ? `${crowsNestV2Data?.position_map?.components?.length ?? 0}` : 'v2 only'}
-                    collapsed={isSidebarCollapsed}
-                    tone="crows-nest"
-                  />
+                  {isSidebarCollapsed ? (
+                    // Collapsed sidebar — just show all items as icons, no section grouping
+                    <>
+                      <SidebarItem label="Strategic Stakes" icon={Layers} isActive={activeView === 'crows-nest-bets-register'} onClick={() => navigate('crows-nest-bets-register')} collapsed tone="crows-nest" />
+                      <SidebarItem label="Status Quo" icon={BookOpenText} isActive={activeView === 'crows-nest-status-quo'} onClick={() => navigate('crows-nest-status-quo')} collapsed tone="crows-nest" />
+                      <SidebarItem label="Macro Radar" icon={Globe} isActive={activeView === 'crows-nest-macro'} onClick={() => navigate('crows-nest-macro')} collapsed tone="crows-nest" />
+                      <SidebarItem label="Velocity Grid" icon={Radio} isActive={activeView === 'crows-nest-home'} onClick={() => navigate('crows-nest-home')} collapsed tone="crows-nest" />
+                      <SidebarItem label="Cycle History" icon={History} isActive={activeView === 'crows-nest-cycle-history'} onClick={() => navigate('crows-nest-cycle-history')} collapsed tone="crows-nest" />
+                      <SidebarItem label="Open Sweep" icon={Telescope} isActive={activeView === 'crows-nest-open-sweep'} onClick={() => navigate('crows-nest-open-sweep')} collapsed tone="crows-nest" />
+                      <SidebarItem label="Cross-Posture Memo" icon={FileText} isActive={activeView === 'crows-nest-executive-papers'} onClick={() => navigate('crows-nest-executive-papers')} collapsed tone="crows-nest" />
+                      <SidebarItem label="Simulation Engine" icon={FlaskConical} isActive={activeView === 'crows-nest-whatif'} onClick={() => navigate('crows-nest-whatif')} collapsed tone="crows-nest" />
+                      <SidebarItem label="Position Map" icon={Map} isActive={activeView === 'crows-nest-v2-position-map'} onClick={() => navigate('crows-nest-v2-position-map')} collapsed tone="crows-nest" />
+                    </>
+                  ) : (
+                    <Accordion type="multiple" defaultValue={["inside-out"]} className="space-y-1">
+                      {/* ─────────────────────────── 1. INSIDE-OUT ─────────────────────────── */}
+                      <AccordionItem value="inside-out" className="border-none">
+                        <AccordionTrigger className="rounded-lg border border-rose-500/20 bg-rose-500/[0.04] px-3 py-2 hover:no-underline data-[state=open]:bg-rose-500/[0.08]">
+                          <div className="flex flex-col items-start text-left">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">1. Inside-Out</span>
+                            <span className="text-[11px] text-muted-foreground">Our Strategy</span>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="space-y-1 pt-2 pl-1">
+                          <SidebarItem
+                            label="Strategic Stakes"
+                            icon={Layers}
+                            isActive={activeView === 'crows-nest-bets-register'}
+                            onClick={() => navigate('crows-nest-bets-register')}
+                            badge={hasCrowsNestV2Data ? `${crowsNestV2Data?.bets?.length ?? 0}` : (hasCrowsNestData ? `${crowsNestData?.bets_register?.totals?.with_user_assertion ?? 0}/${crowsNestData?.bets_register?.totals?.all_projections ?? 0}` : 'Pending')}
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                          <SidebarItem
+                            label="Status Quo Outlook"
+                            icon={BookOpenText}
+                            isActive={activeView === 'crows-nest-status-quo'}
+                            onClick={() => navigate('crows-nest-status-quo')}
+                            badge={hasCrowsNestData ? (crowsNestData?.status_quo_outlook ? 'Ready' : 'Pending') : 'Pending'}
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                          <SidebarItem
+                            label="Macro Radar (Active)"
+                            icon={Globe}
+                            isActive={activeView === 'crows-nest-macro'}
+                            onClick={() => navigate('crows-nest-macro')}
+                            badge={hasCrowsNestV2Data ? `${crowsNestV2Data?.themes?.length ?? 0}` : (hasCrowsNestData ? `${crowsNestData?.macro_themes?.length ?? 0}` : 'Pending')}
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                          <SidebarItem
+                            label="Velocity Grid"
+                            icon={Radio}
+                            isActive={activeView === 'crows-nest-home'}
+                            onClick={() => navigate('crows-nest-home')}
+                            badge={hasCrowsNestData ? 'Ready' : 'Pending'}
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                          <SidebarItem
+                            label="Cycle History"
+                            icon={History}
+                            isActive={activeView === 'crows-nest-cycle-history'}
+                            onClick={() => navigate('crows-nest-cycle-history')}
+                            badge={hasCrowsNestData ? `${crowsNestData?.cycle_history?.length ?? 0}` : 'Pending'}
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                          <SidebarItem
+                            label="Open Sweep (bet-routed)"
+                            icon={Telescope}
+                            isActive={activeView === 'crows-nest-open-sweep'}
+                            onClick={() => navigate('crows-nest-open-sweep')}
+                            badge={hasCrowsNestData ? `${crowsNestData?.open_sweep?.inbox?.proposals?.length ?? 0}` : 'Pending'}
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                        </AccordionContent>
+                      </AccordionItem>
 
-                  {!isSidebarCollapsed && (
-                    <div className="border-t border-rose-500/15 my-1" />
+                      {/* ─────────────────────────── 2. OUTSIDE-IN ─────────────────────────── */}
+                      <AccordionItem value="outside-in" className="border-none">
+                        <AccordionTrigger className="rounded-lg border border-rose-500/20 bg-rose-500/[0.04] px-3 py-2 hover:no-underline data-[state=open]:bg-rose-500/[0.08]">
+                          <div className="flex flex-col items-start text-left">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">2. Outside-In</span>
+                            <span className="text-[11px] text-muted-foreground">The Radar</span>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="space-y-1 pt-2 pl-1">
+                          <SidebarItem
+                            label="STEEPLE Watch"
+                            icon={Compass}
+                            isActive={activeView === 'crows-nest-outside-steeple'}
+                            onClick={() => navigate('crows-nest-outside-steeple')}
+                            badge="Empty"
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                          <SidebarItem
+                            label="Watching Drivers"
+                            icon={Telescope}
+                            isActive={activeView === 'crows-nest-outside-watching'}
+                            onClick={() => navigate('crows-nest-outside-watching')}
+                            badge="Empty"
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                          <SidebarItem
+                            label="Bet Candidates"
+                            icon={Target}
+                            isActive={activeView === 'crows-nest-outside-bet-candidates'}
+                            onClick={() => navigate('crows-nest-outside-bet-candidates')}
+                            badge="Empty"
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                          <SidebarItem
+                            label="Coverage Gaps"
+                            icon={ShieldAlert}
+                            isActive={activeView === 'crows-nest-outside-coverage-gaps'}
+                            onClick={() => navigate('crows-nest-outside-coverage-gaps')}
+                            badge="Empty"
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                        </AccordionContent>
+                      </AccordionItem>
+
+                      {/* ─────────────────────────── 3. COURSE CORRECTION ─────────────────────────── */}
+                      <AccordionItem value="course-correction" className="border-none">
+                        <AccordionTrigger className="rounded-lg border border-rose-500/20 bg-rose-500/[0.04] px-3 py-2 hover:no-underline data-[state=open]:bg-rose-500/[0.08]">
+                          <div className="flex flex-col items-start text-left">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">3. Course Correction</span>
+                            <span className="text-[11px] text-muted-foreground">The Bridge</span>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="space-y-1 pt-2 pl-1">
+                          <SidebarItem
+                            label="Cross-Posture Memo"
+                            icon={FileText}
+                            isActive={activeView === 'crows-nest-executive-papers'}
+                            onClick={() => navigate('crows-nest-executive-papers')}
+                            badge={hasCrowsNestV2Data ? `${crowsNestV2Data?.executive_papers_v2?.length ?? 0}` : (hasCrowsNestData ? `${crowsNestData?.executive_papers?.length ?? 0}` : 'Pending')}
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                          <SidebarItem
+                            label="Predictive Layer"
+                            icon={TrendingUp}
+                            isActive={activeView === 'crows-nest-course-predictive'}
+                            onClick={() => navigate('crows-nest-course-predictive')}
+                            badge="Empty"
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                          <SidebarItem
+                            label="Simulation Engine"
+                            icon={FlaskConical}
+                            isActive={activeView === 'crows-nest-whatif'}
+                            onClick={() => navigate('crows-nest-whatif')}
+                            badge={hasCrowsNestData ? `${crowsNestData?.what_if_scenarios?.length ?? 0}` : 'Type A'}
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                          <SidebarItem
+                            label="Open Recommendations"
+                            icon={GitMerge}
+                            isActive={activeView === 'crows-nest-course-recommendations'}
+                            onClick={() => navigate('crows-nest-course-recommendations')}
+                            badge="Empty"
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                          <SidebarItem
+                            label="Decision Log"
+                            icon={ClipboardList}
+                            isActive={activeView === 'crows-nest-course-decisions'}
+                            onClick={() => navigate('crows-nest-course-decisions')}
+                            badge="Empty"
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                        </AccordionContent>
+                      </AccordionItem>
+
+                      {/* ─────────────────────────── 4. POSITION & FINANCIALS ─────────────────────────── */}
+                      <AccordionItem value="position-financials" className="border-none">
+                        <AccordionTrigger className="rounded-lg border border-rose-500/20 bg-rose-500/[0.04] px-3 py-2 hover:no-underline data-[state=open]:bg-rose-500/[0.08]">
+                          <div className="flex flex-col items-start text-left">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">4. Position & Financials</span>
+                            <span className="text-[11px] text-muted-foreground">The Ground Truth</span>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="space-y-1 pt-2 pl-1">
+                          <SidebarItem
+                            label="Position Map"
+                            icon={Map}
+                            isActive={activeView === 'crows-nest-v2-position-map'}
+                            onClick={() => navigate('crows-nest-v2-position-map')}
+                            badge={hasCrowsNestV2Data ? `${crowsNestV2Data?.position_map?.components?.length ?? 0}` : 'v2 only'}
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                          <SidebarItem
+                            label="Financial Baseline"
+                            icon={CircleDollarSign}
+                            isActive={activeView === 'crows-nest-position-financials'}
+                            onClick={() => navigate('crows-nest-position-financials')}
+                            badge="Empty"
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                          <SidebarItem
+                            label="Share Price Lens"
+                            icon={TrendingUp}
+                            isActive={activeView === 'crows-nest-position-share-price'}
+                            onClick={() => navigate('crows-nest-position-share-price')}
+                            badge="Empty"
+                            collapsed={false}
+                            tone="crows-nest"
+                          />
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
                   )}
-
-                  {/* === Existing v1 entries === */}
-                  <SidebarItem
-                    label="Status Quo Outlook"
-                    icon={BookOpenText}
-                    isActive={activeView === 'crows-nest-status-quo'}
-                    onClick={() => navigate('crows-nest-status-quo')}
-                    badge={hasCrowsNestData ? (crowsNestData?.status_quo_outlook ? 'Ready' : 'Pending') : 'Pending'}
-                    collapsed={isSidebarCollapsed}
-                    tone="crows-nest"
-                  />
-                  <SidebarItem
-                    label="Executive Papers"
-                    icon={FileText}
-                    isActive={activeView === 'crows-nest-executive-papers'}
-                    onClick={() => navigate('crows-nest-executive-papers')}
-                    badge={hasCrowsNestData ? `${crowsNestData?.executive_papers?.length ?? 0}` : 'Pending'}
-                    collapsed={isSidebarCollapsed}
-                    tone="crows-nest"
-                  />
-                  <SidebarItem
-                    label="Bets Register"
-                    icon={Layers}
-                    isActive={activeView === 'crows-nest-bets-register'}
-                    onClick={() => navigate('crows-nest-bets-register')}
-                    badge={hasCrowsNestData ? `${crowsNestData?.bets_register?.totals?.with_user_assertion ?? 0}/${crowsNestData?.bets_register?.totals?.all_projections ?? 0}` : 'Pending'}
-                    collapsed={isSidebarCollapsed}
-                    tone="crows-nest"
-                  />
-                  <SidebarItem
-                    label="Velocity Grid"
-                    icon={Radio}
-                    isActive={activeView === 'crows-nest-home'}
-                    onClick={() => navigate('crows-nest-home')}
-                    badge={hasCrowsNestData ? 'Ready' : 'Pending'}
-                    collapsed={isSidebarCollapsed}
-                    tone="crows-nest"
-                  />
-                  <SidebarItem
-                    label="Macro Radar"
-                    icon={Globe}
-                    isActive={activeView === 'crows-nest-macro'}
-                    onClick={() => navigate('crows-nest-macro')}
-                    badge={hasCrowsNestData ? `${crowsNestData?.macro_themes?.length ?? 0}` : 'Pending'}
-                    collapsed={isSidebarCollapsed}
-                    tone="crows-nest"
-                  />
-                  <SidebarItem
-                    label="Open Sweep"
-                    icon={Telescope}
-                    isActive={activeView === 'crows-nest-open-sweep'}
-                    onClick={() => navigate('crows-nest-open-sweep')}
-                    badge={hasCrowsNestData ? `${crowsNestData?.open_sweep?.inbox?.proposals?.length ?? 0}` : 'Pending'}
-                    collapsed={isSidebarCollapsed}
-                    tone="crows-nest"
-                  />
-                  <SidebarItem
-                    label="Cycle History"
-                    icon={History}
-                    isActive={activeView === 'crows-nest-cycle-history'}
-                    onClick={() => navigate('crows-nest-cycle-history')}
-                    badge={hasCrowsNestData ? `${crowsNestData?.cycle_history?.length ?? 0}` : 'Pending'}
-                    collapsed={isSidebarCollapsed}
-                    tone="crows-nest"
-                  />
-                  <SidebarItem
-                    label="What-If"
-                    icon={FlaskConical}
-                    isActive={activeView === 'crows-nest-whatif'}
-                    onClick={() => navigate('crows-nest-whatif')}
-                    badge={hasCrowsNestData ? `${crowsNestData?.what_if_scenarios?.length ?? 0}` : 'Pending'}
-                    collapsed={isSidebarCollapsed}
-                    tone="crows-nest"
-                  />
                 </div>
 
                 {!isSidebarCollapsed && (

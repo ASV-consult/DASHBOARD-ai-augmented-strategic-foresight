@@ -303,6 +303,83 @@ export interface CrossReference {
   validation?: { passed: boolean; issues: unknown[] };
 }
 
+/** Status Quo Outlook v2 — the bet-anchored status quo memo bundled in the v2 bundle. */
+export interface StatusQuoBetAnchoredOutlook {
+  bet_id: string;
+  label: string;
+  tl: number;
+  tier: V2Tier;
+  trajectory: V2Trajectory;
+  prior: number;
+  narrative_60_100_words: string;
+  what_breaks_30_words: string;
+  [k: string]: unknown;
+}
+
+export interface StatusQuoJointDistributionRisk {
+  scenario: string;
+  probability_estimate: number;
+  impact_one_sentence: string;
+  [k: string]: unknown;
+}
+
+export interface StatusQuoCalendaredGate {
+  date: string;
+  gate: string;
+  affects_bets: string[];
+  [k: string]: unknown;
+}
+
+export interface StatusQuoOutlookV2 {
+  schema_version?: string;
+  company?: string;
+  ticker?: string;
+  as_of_cycle: string;
+  horizon_years?: number;
+  structure_version?: string;
+  headline: string;
+  bet_anchored_outlook: StatusQuoBetAnchoredOutlook[];
+  joint_distribution_risks: StatusQuoJointDistributionRisk[];
+  calendared_gates_FY2026_FY2028?: StatusQuoCalendaredGate[];
+  factual_corrections_carried_forward?: Array<string | { text?: string; note?: string }>;
+  narrative_md?: string;
+  [k: string]: unknown;
+}
+
+/** Executive Paper v2 — the per-bet assessment cycle memo. */
+export interface ExecutivePaperV2PerBetAssessment {
+  bet_id: string;
+  label?: string;
+  current_state?: V2CurrentState;
+  status_le_60_words?: string;
+  implication_le_80_words?: string;
+  effect_le_100_words?: string;
+  mitigation_le_80_words?: string;
+  [k: string]: unknown;
+}
+
+export interface ExecutivePaperV2Metadata {
+  as_of?: string;
+  authored_by?: string;
+  structure_note?: string;
+  [k: string]: unknown;
+}
+
+export interface ExecutivePaperV2 {
+  schema_version?: string;
+  company?: string;
+  cycle_date: string;
+  cycle_label?: string;
+  structure_version?: string;
+  headline_60_words: string;
+  per_bet_assessment: ExecutivePaperV2PerBetAssessment[];
+  joint_distribution_view_120_words?: string;
+  calendared_gates_to_watch_next_18_months?: StatusQuoCalendaredGate[];
+  factual_corrections_carried_forward?: Array<string | { text?: string; note?: string }>;
+  metadata?: ExecutivePaperV2Metadata;
+  [k: string]: unknown;
+}
+
 /** Top-level v2 bundle ingested by the dashboard. */
 export interface CrowsNestV2Data {
   schema_version: CrowsNestV2SchemaVersion;
@@ -314,6 +391,10 @@ export interface CrowsNestV2Data {
   projections: ProjectionV2[];
   position_map: PositionMapV2;
   cross_reference: CrossReference;
+  /** Optional v2 bet-anchored status quo memo. */
+  status_quo_outlook_v2?: StatusQuoOutlookV2;
+  /** Optional v2 executive paper cycles. */
+  executive_papers_v2?: ExecutivePaperV2[];
 }
 
 /** Type guard — used by the upload hook to dispatch payloads.
