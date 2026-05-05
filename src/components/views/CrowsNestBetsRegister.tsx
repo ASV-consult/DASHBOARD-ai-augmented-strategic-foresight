@@ -34,6 +34,8 @@ import {
 import {
   StrategicBet,
   ProjectionV2,
+  MacroThemeV2,
+  PositionComponent,
   tierBadgeClass,
   trajectorySymbol,
   v2TruthLikelihood,
@@ -774,6 +776,8 @@ const CrowsNestBetsRegisterV2: React.FC<BetsRegisterV2Props> = ({ data, onSelect
             key={bet.id}
             bet={bet}
             indicators={projectionsByBet[bet.id] || []}
+            themes={data.themes ?? []}
+            positionComponents={data.position_map?.components ?? []}
             expanded={!!expanded[bet.id]}
             onToggle={() => toggleExpanded(bet.id)}
             onSelectProjection={onSelectProjection}
@@ -787,6 +791,8 @@ const CrowsNestBetsRegisterV2: React.FC<BetsRegisterV2Props> = ({ data, onSelect
 interface BetCardV2Props {
   bet: StrategicBet;
   indicators: ProjectionV2[];
+  themes: MacroThemeV2[];
+  positionComponents: PositionComponent[];
   expanded: boolean;
   onToggle: () => void;
   onSelectProjection: (id: string) => void;
@@ -795,6 +801,8 @@ interface BetCardV2Props {
 const BetCardV2: React.FC<BetCardV2Props> = ({
   bet,
   indicators,
+  themes,
+  positionComponents,
   expanded,
   onToggle,
   onSelectProjection,
@@ -804,6 +812,60 @@ const BetCardV2: React.FC<BetCardV2Props> = ({
   const traj = trajectorySymbol(bet.current_state.trajectory);
   const tlPct = tl !== null ? Math.round(tl * 100) : null;
   const priorPct = Math.round((bet.prior ?? 0) * 100);
+
+  // Resolve position component refs to full components (for "Why is it a bet?" section)
+  const positionByKind: Record<string, PositionComponent[]> = {};
+  for (const ref of bet.position_components_loaded ?? []) {
+    const comp = positionComponents.find((c) => c.id === ref.id);
+    if (!comp) continue;
+    const kindLabel = ref.kind ?? comp.kind ?? 'other';
+    if (!positionByKind[kindLabel]) positionByKind[kindLabel] = [];
+    positionByKind[kindLabel].push(comp);
+  }
+  const posKindOrder = [
+    'strategic_commitment', 'offtake_book', 'site_footprint',
+    'segment_position', 'balance_sheet_position', 'governance_constraint',
+    'capability_position', 'technology_position',
+  ];
+  const sortedPositionKinds = Object.keys(positionByKind).sort((a, b) => {
+    const ai = posKindOrder.indexOf(a);
+    const bi = posKindOrder.indexOf(b);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
+
+  // Theme dependency lookup with current TL
+  const themeDepsWithState = (bet.theme_dependencies ?? []).map((td) => {
+    const theme = themes.find((t) => t.id === td.theme_id);
+    return {
+      ...td,
+      themeData: theme,
+      themeTl: theme ? v2TruthLikelihood(theme.current_state) : null,
+      themeTier: theme ? v2Tier(theme.current_state) : null,
+      themeTrajectory: theme?.current_state?.trajectory,
+    };
+  }).sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0));
+
+  // Top scenarios sorted by probability descending
+  const sortedScenarios = [...(bet.scenarios ?? [])].sort(
+    (a, b) => (b.probability ?? 0) - (a.probability ?? 0),
+  );
+  const topScenario = sortedScenarios[0];
+
+  // Plain-English headline verdict for this bet
+  const verdictTone =
+    tier === 'Vulnerable' || tier === 'Erosion' || tier === 'Contested'
+      ? 'rose'
+      : tier === 'Resilient' || tier === 'Confirmed'
+      ? 'emerald'
+      : 'amber';
+  const verdictHeadline = (() => {
+    if (tlPct === null) return 'Truth-likelihood not yet established for this cycle.';
+    if (tlPct < 35) return `${tlPct}% likely to resolve true — load-bearing break-risk.`;
+    if (tlPct < 50) return `${tlPct}% likely to resolve true — contested, downside-tilted.`;
+    if (tlPct < 65) return `${tlPct}% likely to resolve true — holding, but with material downside.`;
+    if (tlPct < 80) return `${tlPct}% likely to resolve true — resilient under current evidence.`;
+    return `${tlPct}% likely to resolve true — strongly supported.`;
+  })();
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border/40 bg-card/40">
@@ -863,154 +925,315 @@ const BetCardV2: React.FC<BetCardV2Props> = ({
         </div>
       </div>
 
-      {/* Expanded body */}
+      {/* Expanded body — narrative arc: What → Why → Depends on → Reasoning → What moves it → If it breaks */}
       {expanded ? (
-        <div className="space-y-4 p-4 md:p-5 text-sm">
-          {/* Thesis cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3">
-              <div className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300 font-semibold mb-1 flex items-center gap-1">
-                <Compass className="h-3 w-3" />
-                Resolves TRUE
-              </div>
-              <p className="text-xs text-foreground/85 leading-relaxed whitespace-pre-wrap">
-                {bet.thesis_resolves_true}
-              </p>
+        <div className="space-y-5 p-4 md:p-6 text-sm">
+
+          {/* ─────── HEADLINE VERDICT ─────── */}
+          <div className={`rounded-xl border-l-4 ${
+            verdictTone === 'rose' ? 'border-rose-500 bg-rose-500/[0.06]' :
+            verdictTone === 'emerald' ? 'border-emerald-500 bg-emerald-500/[0.06]' :
+            'border-amber-500 bg-amber-500/[0.06]'
+          } px-4 py-3`}>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">
+              Where this bet stands right now
             </div>
-            <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.04] p-3">
-              <div className="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300 font-semibold mb-1 flex items-center gap-1">
-                <ShieldAlert className="h-3 w-3" />
-                Resolves FALSE
-              </div>
-              <p className="text-xs text-foreground/85 leading-relaxed whitespace-pre-wrap">
-                {bet.thesis_resolves_false}
+            <p className={`text-sm font-medium leading-relaxed ${
+              verdictTone === 'rose' ? 'text-rose-900 dark:text-rose-200' :
+              verdictTone === 'emerald' ? 'text-emerald-900 dark:text-emerald-200' :
+              'text-amber-900 dark:text-amber-200'
+            }`}>
+              {verdictHeadline}
+            </p>
+            {topScenario ? (
+              <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                Most-likely scenario ({Math.round((topScenario.probability ?? 0) * 100)}%): <span className="text-foreground/85">{topScenario.name}</span>
               </p>
-            </div>
+            ) : null}
           </div>
 
-          {/* Prior rationale */}
-          {bet.prior_rationale ? (
-            <div className="rounded-xl border border-border/40 bg-background/40 p-3">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">
-                Prior rationale
+          {/* ─────── 1. WHAT IS THIS BET? ─────── */}
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500/15 text-[11px] font-bold text-rose-700 dark:text-rose-300">1</span>
+              <h4 className="text-sm font-semibold text-foreground">What is this bet?</h4>
+            </div>
+            <div className="ml-8 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.04] p-3">
+                <div className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300 font-semibold mb-1 flex items-center gap-1">
+                  <Compass className="h-3 w-3" /> If it resolves TRUE
+                </div>
+                <p className="text-xs text-foreground/85 leading-relaxed whitespace-pre-wrap">
+                  {bet.thesis_resolves_true}
+                </p>
               </div>
-              <p className="text-xs text-foreground/85 leading-relaxed whitespace-pre-wrap">
-                {bet.prior_rationale}
+              <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.04] p-3">
+                <div className="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300 font-semibold mb-1 flex items-center gap-1">
+                  <ShieldAlert className="h-3 w-3" /> If it resolves FALSE
+                </div>
+                <p className="text-xs text-foreground/85 leading-relaxed whitespace-pre-wrap">
+                  {bet.thesis_resolves_false}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {/* ─────── 2. WHY IS IT A BET? — the position underneath ─────── */}
+          {sortedPositionKinds.length > 0 ? (
+            <section>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500/15 text-[11px] font-bold text-rose-700 dark:text-rose-300">2</span>
+                <h4 className="text-sm font-semibold text-foreground">Why is it a bet?</h4>
+                <span className="text-[11px] text-muted-foreground">— the committed position underneath</span>
+              </div>
+              <p className="ml-8 text-xs text-muted-foreground mb-2 leading-relaxed">
+                This bet exists because Umicore has made these {bet.position_components_loaded?.length ?? 0} sourced commitments. If any of them break or drift, the bet's foundation shifts.
               </p>
-            </div>
-          ) : null}
-
-          {/* Intermediate gates */}
-          {bet.intermediate_gates && bet.intermediate_gates.length > 0 ? (
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5 flex items-center gap-1">
-                <Calendar className="h-3 w-3" />
-                Intermediate gates ({bet.intermediate_gates.length})
-              </div>
-              <ul className="space-y-1.5">
-                {bet.intermediate_gates.map((g, i) => (
-                  <li key={i} className="rounded-lg border border-border/40 bg-background/40 p-2.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-medium text-foreground">{g.name}</span>
-                      <Badge variant="outline" className="rounded-full text-[10px] font-mono">
-                        {g.date}
-                      </Badge>
+              <div className="ml-8 space-y-2">
+                {sortedPositionKinds.map((kindLabel) => (
+                  <div key={kindLabel} className="rounded-lg border border-border/40 bg-background/40 p-2.5">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80 font-semibold mb-1.5">
+                      {kindLabel.replace(/_/g, ' ')}
                     </div>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
-                      {g.what_resolves}
-                    </p>
-                  </li>
+                    <ul className="space-y-1">
+                      {positionByKind[kindLabel].map((comp) => (
+                        <li key={comp.id} className="text-[11px] leading-relaxed">
+                          <span className="font-medium text-foreground">{comp.label}</span>
+                          {comp.notes ? (
+                            <span className="text-muted-foreground"> — {comp.notes}</span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
-            </div>
+              </div>
+            </section>
           ) : null}
 
-          {/* Theme dependencies */}
-          {bet.theme_dependencies && bet.theme_dependencies.length > 0 ? (
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5 flex items-center gap-1">
-                <Layers className="h-3 w-3" />
-                Macro driver dependencies ({bet.theme_dependencies.length})
+          {/* ─────── 3. WHAT DOES IT DEPEND ON? — macro drivers ─────── */}
+          {themeDepsWithState.length > 0 ? (
+            <section>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500/15 text-[11px] font-bold text-rose-700 dark:text-rose-300">3</span>
+                <h4 className="text-sm font-semibold text-foreground">What does it depend on?</h4>
+                <span className="text-[11px] text-muted-foreground">— macro drivers that move the bet</span>
               </div>
-              <ul className="space-y-1.5">
-                {bet.theme_dependencies.map((td, i) => (
-                  <li key={i} className="rounded-lg border border-border/40 bg-background/40 p-2.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="outline" className="rounded-full text-[10px] font-mono">
-                        {td.theme_id}
-                      </Badge>
-                      {td.theme_label ? (
-                        <span className="text-xs font-medium text-foreground">{td.theme_label}</span>
-                      ) : null}
-                      <Badge variant="outline" className="rounded-full text-[10px]">
-                        weight {td.weight.toFixed(2)}
-                      </Badge>
-                      {td.role ? (
-                        <Badge variant="outline" className="rounded-full text-[10px]">
-                          {td.role}
+              <p className="ml-8 text-xs text-muted-foreground mb-2 leading-relaxed">
+                Sorted by load-bearing weight. The driver's own truth-likelihood is what propagates into this bet.
+              </p>
+              <div className="ml-8 space-y-2">
+                {themeDepsWithState.map((td, i) => {
+                  const isLoadBearing = (td.role ?? '').toLowerCase().includes('load') || td.weight >= 0.9;
+                  const themeTlPct = td.themeTl !== null && td.themeTl !== undefined ? Math.round(td.themeTl * 100) : null;
+                  return (
+                    <div
+                      key={i}
+                      className={`rounded-lg border p-3 ${
+                        isLoadBearing
+                          ? 'border-rose-500/40 bg-rose-500/[0.04]'
+                          : 'border-border/40 bg-background/40'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <Badge variant="outline" className="rounded-full text-[10px] font-mono">
+                          {td.theme_id}
                         </Badge>
+                        <span className="text-xs font-semibold text-foreground">
+                          {td.themeData?.title ?? td.theme_label ?? td.theme_id}
+                        </span>
+                        {isLoadBearing ? (
+                          <Badge variant="outline" className="rounded-full text-[10px] border-rose-500/40 text-rose-700 dark:text-rose-300">
+                            load-bearing
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="rounded-full text-[10px]">
+                            {td.role ?? 'secondary'}
+                          </Badge>
+                        )}
+                        <Badge variant="outline" className="rounded-full text-[10px]">
+                          weight {td.weight.toFixed(2)}
+                        </Badge>
+                        <span className="ml-auto inline-flex items-center gap-1.5 text-[11px]">
+                          {td.themeTier ? (
+                            <span className={`rounded-full border px-1.5 py-0.5 text-[10px] ${tierBadgeClass(td.themeTier)}`}>
+                              {td.themeTier}
+                            </span>
+                          ) : null}
+                          <span className="tabular-nums text-muted-foreground">
+                            driver TL <strong className="text-foreground">{themeTlPct !== null ? `${themeTlPct}%` : '—'}</strong>
+                          </span>
+                        </span>
+                      </div>
+                      {td.transmission_mechanisms && td.transmission_mechanisms.length > 0 ? (
+                        <ul className="text-[11px] text-muted-foreground leading-relaxed pl-1 space-y-0.5">
+                          {td.transmission_mechanisms.map((tm, j) => (
+                            <li key={j}>
+                              <span className="text-foreground/85">{tm.channel}</span>
+                              {tm.reading_rule ? (
+                                <span className="text-muted-foreground/80"> — {tm.reading_rule}</span>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
                       ) : null}
                     </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {/* Scenarios */}
-          {bet.scenarios && bet.scenarios.length > 0 ? (
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5 flex items-center gap-1">
-                <Compass className="h-3 w-3" />
-                Scenarios ({bet.scenarios.length})
+                  );
+                })}
               </div>
-              <ul className="space-y-1.5">
-                {bet.scenarios.map((s, i) => (
-                  <li key={i} className="rounded-lg border border-border/40 bg-background/40 p-2.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-medium text-foreground">{s.name}</span>
-                      <Badge variant="outline" className="rounded-full text-[10px]">
-                        p={Math.round((s.probability || 0) * 100)}%
-                      </Badge>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
-                      {s.narrative}
-                    </p>
-                    {s.what_makes_this_path_break ? (
-                      <p className="text-[11px] text-rose-700 dark:text-rose-300 leading-relaxed mt-1">
-                        <span className="uppercase tracking-wide text-[9px]">Breaks if: </span>
-                        {s.what_makes_this_path_break}
-                      </p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            </section>
           ) : null}
 
-          {/* Falsification criteria */}
-          {bet.falsification_criteria && bet.falsification_criteria.length > 0 ? (
-            <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.04] p-3">
-              <div className="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300 font-semibold mb-1.5 flex items-center gap-1">
-                <ShieldAlert className="h-3 w-3" />
-                Falsification criteria ({bet.falsification_criteria.length})
+          {/* ─────── 4. WHY IS THE TL WHERE IT IS? — reasoning ─────── */}
+          {bet.prior_rationale ? (
+            <section>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500/15 text-[11px] font-bold text-rose-700 dark:text-rose-300">4</span>
+                <h4 className="text-sm font-semibold text-foreground">Why is the TL where it is?</h4>
+                <span className="text-[11px] text-muted-foreground">— the reasoning behind the number</span>
               </div>
-              <ul className="list-disc list-outside pl-5 space-y-1 text-[11px] text-foreground/85 leading-relaxed">
-                {bet.falsification_criteria.map((fc, i) => (
-                  <li key={i}>{fc}</li>
-                ))}
-              </ul>
-            </div>
+              <div className="ml-8 rounded-xl border border-border/40 bg-background/40 p-3">
+                <p className="text-xs text-foreground/85 leading-relaxed whitespace-pre-wrap">
+                  {bet.prior_rationale}
+                </p>
+                <div className="mt-3 pt-2 border-t border-border/30 flex items-center gap-3 text-[11px] text-muted-foreground">
+                  <span>
+                    Current TL: <strong className="text-foreground tabular-nums">{tlPct !== null ? `${tlPct}%` : '—'}</strong>
+                  </span>
+                  <span>·</span>
+                  <span>
+                    Prior: <strong className="text-foreground tabular-nums">{priorPct}%</strong>
+                  </span>
+                  {tlPct !== null ? (
+                    <>
+                      <span>·</span>
+                      <span>
+                        Δ vs prior: <strong className={`tabular-nums ${tlPct > priorPct ? 'text-emerald-700 dark:text-emerald-300' : tlPct < priorPct ? 'text-rose-700 dark:text-rose-300' : 'text-foreground'}`}>
+                          {tlPct > priorPct ? '+' : ''}{tlPct - priorPct}pp
+                        </strong>
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </section>
           ) : null}
 
-          {/* Indicators routed to this bet */}
+          {/* ─────── 5. WHAT WOULD MOVE IT? — scenarios + falsification ─────── */}
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500/15 text-[11px] font-bold text-rose-700 dark:text-rose-300">5</span>
+              <h4 className="text-sm font-semibold text-foreground">What would move it?</h4>
+            </div>
+            <div className="ml-8 space-y-3">
+              {/* Scenarios */}
+              {sortedScenarios.length > 0 ? (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5">
+                    Scenarios (sorted by probability)
+                  </div>
+                  <ul className="space-y-1.5">
+                    {sortedScenarios.map((s, i) => {
+                      const pPct = Math.round((s.probability ?? 0) * 100);
+                      return (
+                        <li key={i} className="rounded-lg border border-border/40 bg-background/40 p-2.5">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <div className="flex-1 min-w-0">
+                              <span className="text-xs font-medium text-foreground">{s.name}</span>
+                            </div>
+                            {/* Probability bar */}
+                            <div className="flex items-center gap-1.5 text-[10px]">
+                              <div className="w-16 h-1.5 rounded-full bg-border/40 overflow-hidden">
+                                <div
+                                  className="h-full bg-rose-500/60"
+                                  style={{ width: `${pPct}%` }}
+                                />
+                              </div>
+                              <span className="tabular-nums font-medium text-foreground">{pPct}%</span>
+                            </div>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            {s.narrative}
+                          </p>
+                          {s.what_makes_this_path_break ? (
+                            <p className="text-[11px] text-rose-700 dark:text-rose-300 leading-relaxed mt-1">
+                              <span className="uppercase tracking-wide text-[9px] font-semibold">Breaks if: </span>
+                              {s.what_makes_this_path_break}
+                            </p>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+
+              {/* Intermediate gates */}
+              {bet.intermediate_gates && bet.intermediate_gates.length > 0 ? (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5 flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    Calendared gates
+                  </div>
+                  <ul className="space-y-1">
+                    {bet.intermediate_gates.map((g, i) => (
+                      <li key={i} className="rounded-lg border border-border/40 bg-background/40 px-2.5 py-2 flex flex-wrap items-start gap-2">
+                        <Badge variant="outline" className="rounded-full text-[10px] font-mono">
+                          {g.date}
+                        </Badge>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-medium text-foreground">{g.name}</span>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5">
+                            {g.what_resolves}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {/* Falsification criteria */}
+              {bet.falsification_criteria && bet.falsification_criteria.length > 0 ? (
+                <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.04] p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300 font-semibold mb-1.5 flex items-center gap-1">
+                    <ShieldAlert className="h-3 w-3" />
+                    Specific things that would resolve this bet FALSE
+                  </div>
+                  <ul className="list-disc list-outside pl-5 space-y-1 text-[11px] text-foreground/85 leading-relaxed">
+                    {bet.falsification_criteria.map((fc, i) => (
+                      <li key={i}>{fc}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          {/* ─────── 6. IF IT BREAKS ─────── */}
+          {bet.breakage_shape ? (
+            <section>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500/15 text-[11px] font-bold text-rose-700 dark:text-rose-300">6</span>
+                <h4 className="text-sm font-semibold text-foreground">If it breaks, what does it look like?</h4>
+              </div>
+              <div className="ml-8 rounded-xl border border-amber-500/40 bg-amber-500/[0.04] p-3">
+                <p className="text-xs text-foreground/85 leading-relaxed whitespace-pre-wrap">
+                  {bet.breakage_shape}
+                </p>
+              </div>
+            </section>
+          ) : null}
+
+          {/* ─────── 7. INDICATORS — the falsifiable measurables ─────── */}
           {indicators.length > 0 ? (
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1.5 flex items-center gap-1">
-                <Target className="h-3 w-3" />
-                Indicators feeding this bet ({indicators.length})
+            <section>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500/15 text-[11px] font-bold text-rose-700 dark:text-rose-300">7</span>
+                <h4 className="text-sm font-semibold text-foreground">Indicators feeding this bet</h4>
+                <span className="text-[11px] text-muted-foreground">— click to drill down</span>
               </div>
-              <ul className="divide-y divide-border/30 rounded-lg border border-border/40 bg-background/40 overflow-hidden">
+              <ul className="ml-8 divide-y divide-border/30 rounded-lg border border-border/40 bg-background/40 overflow-hidden">
                 {indicators.map((ind) => {
                   const indTl = v2TruthLikelihood(ind.current_state);
                   const indTier = v2Tier(ind.current_state);
@@ -1054,20 +1277,7 @@ const BetCardV2: React.FC<BetCardV2Props> = ({
                   );
                 })}
               </ul>
-            </div>
-          ) : null}
-
-          {/* Breakage shape */}
-          {bet.breakage_shape ? (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-3">
-              <div className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-300 font-semibold mb-1 flex items-center gap-1">
-                <AlertCircle className="h-3 w-3" />
-                Breakage shape
-              </div>
-              <p className="text-xs text-foreground/85 leading-relaxed whitespace-pre-wrap">
-                {bet.breakage_shape}
-              </p>
-            </div>
+            </section>
           ) : null}
         </div>
       ) : null}
