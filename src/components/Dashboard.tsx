@@ -19,6 +19,10 @@ import { CrowsNestStatusQuo } from '@/components/views/CrowsNestStatusQuo';
 import { CrowsNestExecutivePapers } from '@/components/views/CrowsNestExecutivePapers';
 import { CrowsNestOpenSweep } from '@/components/views/CrowsNestOpenSweep';
 import { CrowsNestCycleHistory } from '@/components/views/CrowsNestCycleHistory';
+import { CrowsNestStrategicBets } from '@/components/views/CrowsNestStrategicBets';
+import { CrowsNestMacroThemesV2 } from '@/components/views/CrowsNestMacroThemesV2';
+import { CrowsNestProjectionsBrowse } from '@/components/views/CrowsNestProjectionsBrowse';
+import { CrowsNestPositionMap } from '@/components/views/CrowsNestPositionMap';
 import { ProjectionEditor, applyOverridesToBundle } from '@/components/crows-nest/ProjectionEditor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -36,6 +40,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  ClipboardList,
   Compass,
   FileText,
   FlaskConical,
@@ -44,6 +49,7 @@ import {
   History,
   Layers,
   LayoutDashboard,
+  Map,
   PanelLeftClose,
   PanelLeftOpen,
   Radio,
@@ -81,7 +87,11 @@ type DashboardView =
   | 'crows-nest-macro'
   | 'crows-nest-open-sweep'
   | 'crows-nest-cycle-history'
-  | 'crows-nest-whatif';
+  | 'crows-nest-whatif'
+  | 'crows-nest-v2-strategic-bets'
+  | 'crows-nest-v2-macro-themes'
+  | 'crows-nest-v2-projections'
+  | 'crows-nest-v2-position-map';
 
 interface SidebarItemProps {
   label: string;
@@ -238,6 +248,26 @@ const viewMetaMap: Record<DashboardView, { title: string; stream: string; note: 
     title: 'Crow\'s Nest — What-If',
     stream: 'Crow\'s Nest',
     note: 'Stress-test the company\'s bets. Scenarios that override drivers or macro themes and cascade through.',
+  },
+  'crows-nest-v2-strategic-bets': {
+    title: 'Crow\'s Nest 2.0 — Strategic Bets',
+    stream: 'Crow\'s Nest 2.0',
+    note: 'The seven load-bearing forecasts (B1-B7). Each bet has a thesis, intermediate gates, theme dependencies, scenarios, falsification criteria and breakage shape.',
+  },
+  'crows-nest-v2-macro-themes': {
+    title: 'Crow\'s Nest 2.0 — Macro Themes',
+    stream: 'Crow\'s Nest 2.0',
+    note: 'The 6 universal world-state forces (T1-T6). Each theme is independent of the company; its truth-likelihood propagates into bets via weighted dependencies.',
+  },
+  'crows-nest-v2-projections': {
+    title: 'Crow\'s Nest 2.0 — Projections',
+    stream: 'Crow\'s Nest 2.0',
+    note: 'The 49 falsifiable measurables under each theme. Each projection has a metric, a date, and explicit thresholds for resolves-true and resolves-false.',
+  },
+  'crows-nest-v2-position-map': {
+    title: 'Crow\'s Nest 2.0 — Position Map',
+    stream: 'Crow\'s Nest 2.0',
+    note: '38 sourced components describing the company\'s actual position — segments, sites, offtake book, balance sheet, governance, technology, capabilities — plus flagged factual corrections.',
   },
 };
 
@@ -440,10 +470,12 @@ export function Dashboard() {
     hasSharePriceData,
     hasMacroData,
     hasCrowsNestData,
+    hasCrowsNestV2Data,
     financialData,
     sharePriceData,
     macroData,
     crowsNestData,
+    crowsNestV2Data,
     companyName,
     resetStreams,
   } = useForesight();
@@ -966,7 +998,11 @@ export function Dashboard() {
       return renderNoDataCard('Macro stream is not loaded yet. Upload a macro dashboard JSON file.');
     }
 
-    if (activeView.startsWith('crows-nest-') && !hasCrowsNestData) {
+    if (activeView.startsWith('crows-nest-v2-') && !hasCrowsNestV2Data) {
+      return renderNoDataCard('Crow\'s Nest v2 bundle is not loaded yet. Upload a JSON file with schema_version: "crows_nest_v2_dashboard_bundle".');
+    }
+
+    if (activeView.startsWith('crows-nest-') && !activeView.startsWith('crows-nest-v2-') && !hasCrowsNestData) {
       return renderNoDataCard('Crow\'s Nest stream is not loaded yet. Upload a Crow\'s Nest bundle JSON (schema_version: crows_nest_v2).');
     }
 
@@ -1163,6 +1199,14 @@ export function Dashboard() {
             onSelectScenario={setCrowsNestWhatIfId}
           />
         );
+      case 'crows-nest-v2-strategic-bets':
+        return <CrowsNestStrategicBets />;
+      case 'crows-nest-v2-macro-themes':
+        return <CrowsNestMacroThemesV2 />;
+      case 'crows-nest-v2-projections':
+        return <CrowsNestProjectionsBrowse />;
+      case 'crows-nest-v2-position-map':
+        return <CrowsNestPositionMap />;
       default:
         return null;
     }
@@ -1442,11 +1486,61 @@ export function Dashboard() {
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Crow's Nest
                       </p>
-                      <Badge variant={hasCrowsNestData ? 'default' : 'secondary'} className="text-[10px]">
-                        {hasCrowsNestData ? 'Loaded' : 'Missing'}
+                      <Badge variant={hasCrowsNestData || hasCrowsNestV2Data ? 'default' : 'secondary'} className="text-[10px]">
+                        {hasCrowsNestV2Data && hasCrowsNestData
+                          ? 'v1+v2'
+                          : hasCrowsNestV2Data
+                          ? 'v2'
+                          : hasCrowsNestData
+                          ? 'v1'
+                          : 'Missing'}
                       </Badge>
                     </div>
                   )}
+
+                  {/* === v2 entries (top of the Crow's Nest section) === */}
+                  <SidebarItem
+                    label="Strategic Bets"
+                    icon={Target}
+                    isActive={activeView === 'crows-nest-v2-strategic-bets'}
+                    onClick={() => navigate('crows-nest-v2-strategic-bets')}
+                    badge={hasCrowsNestV2Data ? `${crowsNestV2Data?.bets?.length ?? 0}` : 'v2 only'}
+                    collapsed={isSidebarCollapsed}
+                    tone="crows-nest"
+                  />
+                  <SidebarItem
+                    label="Macro Themes (v2)"
+                    icon={Compass}
+                    isActive={activeView === 'crows-nest-v2-macro-themes'}
+                    onClick={() => navigate('crows-nest-v2-macro-themes')}
+                    badge={hasCrowsNestV2Data ? `${crowsNestV2Data?.themes?.length ?? 0}` : 'v2 only'}
+                    collapsed={isSidebarCollapsed}
+                    tone="crows-nest"
+                  />
+                  <SidebarItem
+                    label="Projections (v2)"
+                    icon={ClipboardList}
+                    isActive={activeView === 'crows-nest-v2-projections'}
+                    onClick={() => navigate('crows-nest-v2-projections')}
+                    badge={hasCrowsNestV2Data ? `${crowsNestV2Data?.projections?.length ?? 0}` : 'v2 only'}
+                    collapsed={isSidebarCollapsed}
+                    tone="crows-nest"
+                  />
+                  <SidebarItem
+                    label="Position Map"
+                    icon={Map}
+                    isActive={activeView === 'crows-nest-v2-position-map'}
+                    onClick={() => navigate('crows-nest-v2-position-map')}
+                    badge={hasCrowsNestV2Data ? `${crowsNestV2Data?.position_map?.components?.length ?? 0}` : 'v2 only'}
+                    collapsed={isSidebarCollapsed}
+                    tone="crows-nest"
+                  />
+
+                  {!isSidebarCollapsed && (
+                    <div className="border-t border-rose-500/15 my-1" />
+                  )}
+
+                  {/* === Existing v1 entries === */}
                   <SidebarItem
                     label="Status Quo Outlook"
                     icon={BookOpenText}
