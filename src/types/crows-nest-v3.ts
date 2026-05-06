@@ -150,10 +150,27 @@ export type V3TrajectoryReading = {
   [k: string]: unknown;
 };
 
+/**
+ * Data-quality marker for trajectory readings.
+ *  - "primary"             — readings are direct disclosures (e.g. company-published % share)
+ *  - "triangulated_estimate" — readings are analyst triangulation, not market data
+ *  - "estimated"           — readings are forward-projection or synthetic
+ *  - "mixed"               — some readings primary, some triangulated
+ * When set to anything other than "primary", the dashboard renders an
+ * "Estimate — not market data" badge above the chart.
+ */
+export type V3TrajectoryDataQuality =
+  | 'primary'
+  | 'triangulated_estimate'
+  | 'estimated'
+  | 'mixed';
+
 export type V3TrajectoryReadings = {
   readings?: V3TrajectoryReading[];
   trend_direction?: string | null;
   research_question?: string | null;
+  data_quality?: V3TrajectoryDataQuality;
+  data_quality_note?: string;
   [k: string]: unknown;
 };
 

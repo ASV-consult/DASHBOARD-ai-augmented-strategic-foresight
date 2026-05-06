@@ -632,6 +632,28 @@ const IndicatorDetailV3: React.FC<{ indicator: IndicatorV3 }> = ({ indicator }) 
               ) : null}
             </div>
 
+            {/* Data-quality badge — only shown when not primary */}
+            {indicator.trajectory?.data_quality &&
+            indicator.trajectory.data_quality !== 'primary' ? (
+              <div className="mb-2 flex items-start gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/[0.08] px-2.5 py-1.5">
+                <AlertTriangle className="h-3 w-3 mt-0.5 text-amber-700 dark:text-amber-300 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                    {indicator.trajectory.data_quality === 'triangulated_estimate'
+                      ? 'Estimate — not market data'
+                      : indicator.trajectory.data_quality === 'estimated'
+                        ? 'Synthetic / forward estimate'
+                        : 'Mixed sources — see note'}
+                  </div>
+                  {indicator.trajectory.data_quality_note ? (
+                    <p className="text-[10px] text-amber-900 dark:text-amber-200 leading-relaxed mt-0.5">
+                      {indicator.trajectory.data_quality_note}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
             {multiSeries ? (
               /* ── Multi-region chart ── */
               <div style={{ width: '100%', height: 220 }}>
