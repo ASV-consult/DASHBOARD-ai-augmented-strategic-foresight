@@ -7,6 +7,7 @@ import { SharePriceAnalysisData } from '@/types/share-price';
 import { MacroDashboardData } from '@/types/macro';
 import { CrowsNestData, isCrowsNestPayload } from '@/types/crows-nest';
 import { CrowsNestV2Data, isCrowsNestV2Payload } from '@/types/crows-nest-v2';
+import { CrowsNestV3Data, isCrowsNestV3Payload } from '@/types/crows-nest-v3';
 import { isMacroPayload, normalizeMacroPayload } from '@/lib/macro-utils';
 
 const isForesightPayload = (json: unknown): json is ForesightData => {
@@ -41,7 +42,7 @@ const isSharePricePayload = (json: unknown): json is SharePriceAnalysisData => {
 };
 
 export function useStreamUploader() {
-  const { setData, setFinancialData, setSharePriceData, setMacroData, setCrowsNestData, setCrowsNestV2Data } = useForesight();
+  const { setData, setFinancialData, setSharePriceData, setMacroData, setCrowsNestData, setCrowsNestV2Data, setCrowsNestV3Data } = useForesight();
   const { toast } = useToast();
 
   const uploadFiles = useCallback(
@@ -71,6 +72,7 @@ export function useStreamUploader() {
         macro: 0,
         crowsNest: 0,
         crowsNestV2: 0,
+        crowsNestV3: 0,
       };
       const failedFiles: string[] = [];
       let nextForesightData: ForesightData | null = null;
@@ -79,6 +81,7 @@ export function useStreamUploader() {
       let nextMacroData: MacroDashboardData | null = null;
       let nextCrowsNestData: CrowsNestData | null = null;
       let nextCrowsNestV2Data: CrowsNestV2Data | null = null;
+      let nextCrowsNestV3Data: CrowsNestV3Data | null = null;
 
       for (const file of files) {
         try {
@@ -133,6 +136,13 @@ export function useStreamUploader() {
             lastCompanyLabel = json.company || lastCompanyLabel;
           }
 
+          if (isCrowsNestV3Payload(json)) {
+            nextCrowsNestV3Data = json;
+            streamCounts.crowsNestV3 += 1;
+            recognized = true;
+            lastCompanyLabel = json.company || lastCompanyLabel;
+          }
+
           if (!recognized) {
             // Diagnostic — surface what we saw vs what we expected
             const obj = (json && typeof json === 'object') ? json as Record<string, unknown> : {};
@@ -143,7 +153,8 @@ export function useStreamUploader() {
               `schema_version="${sv}", top-level keys=[${keys}]. ` +
               `Expected one of: foresight (v2.1 or legacy), financial (schema_version + run_meta), ` +
               `share-price (schema_version="share_price_v1"), macro (flavor + meta.company_name + segment_views), ` +
-              `crow's-nest (schema_version="crows_nest_v2"), crow's-nest-v2 bundle (schema_version="crows_nest_v2_dashboard_bundle").`
+              `crow's-nest (schema_version="crows_nest_v2"), crow's-nest-v2 bundle (schema_version="crows_nest_v2_dashboard_bundle"), ` +
+              `crow's-nest-v3 canonical bundle (schema_version="crows_nest_v3_canonical_bundle").`
             );
             throw new Error(`Unrecognized schema (schema_version="${sv}", keys=[${keys}])`);
           }
@@ -163,13 +174,14 @@ export function useStreamUploader() {
         if (nextMacroData) setMacroData(nextMacroData);
         if (nextCrowsNestData) setCrowsNestData(nextCrowsNestData);
         if (nextCrowsNestV2Data) setCrowsNestV2Data(nextCrowsNestV2Data);
+        if (nextCrowsNestV3Data) setCrowsNestV3Data(nextCrowsNestV3Data);
 
         toast({
           title: 'Data loaded successfully',
           description:
             `Loaded ${lastCompanyLabel}. ` +
             `Processed ${successfulFiles}/${files.length} files ` +
-            `(${streamCounts.foresight} foresight, ${streamCounts.financial} financial, ${streamCounts.sharePrice} share-price, ${streamCounts.macro} macro, ${streamCounts.crowsNest} crow's nest, ${streamCounts.crowsNestV2} crow's nest v2).`,
+            `(${streamCounts.foresight} foresight, ${streamCounts.financial} financial, ${streamCounts.sharePrice} share-price, ${streamCounts.macro} macro, ${streamCounts.crowsNest} crow's nest, ${streamCounts.crowsNestV2} crow's nest v2, ${streamCounts.crowsNestV3} crow's nest v3).`,
         });
       }
 
@@ -184,7 +196,7 @@ export function useStreamUploader() {
         });
       }
     },
-    [setData, setFinancialData, setSharePriceData, setMacroData, setCrowsNestData, setCrowsNestV2Data, toast],
+    [setData, setFinancialData, setSharePriceData, setMacroData, setCrowsNestData, setCrowsNestV2Data, setCrowsNestV3Data, toast],
   );
 
   return { uploadFiles };

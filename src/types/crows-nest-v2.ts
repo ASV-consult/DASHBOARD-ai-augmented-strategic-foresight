@@ -395,6 +395,138 @@ export interface CrowsNestV2Data {
   status_quo_outlook_v2?: StatusQuoOutlookV2;
   /** Optional v2 executive paper cycles. */
   executive_papers_v2?: ExecutivePaperV2[];
+  /** v3 additive section — Outside-In radar (Watching drivers, bet candidates, coverage gaps, STEEPLE watch) */
+  outside_in?: OutsideInSection;
+  /** v3 additive section — Course-Correction Memo (the bridge artefact between Inside-Out and Outside-In) */
+  course_correction?: CourseCorrectionSection;
+}
+
+/** ─────────────────── v3 Outside-In + Course-Correction types ─────────────────── */
+
+export interface WatchingDriverIndicator {
+  id: string;
+  topic?: string;
+  testable?: string;
+  cadence?: string;
+  current_value?: string;
+  horizon?: string;
+}
+
+export interface WatchingDriverHistoryEntry {
+  cycle_date: string;
+  n_evidence_rows: number;
+  cycle_score: number;
+  directional_breakdown: { '+': number; '-': number; o: number };
+  prior_tl_before: number | null;
+  prior_tl_after: number;
+  delta: number;
+  evidence_row_guids: string[];
+}
+
+export interface WatchingDriverV3 {
+  id: string;
+  name: string;
+  pillar: string;
+  tier: string;
+  thesis: string;
+  system_claim: { claim?: string; horizon_date?: string; rationale?: string; as_of?: string; source?: string };
+  current_observed_value?: { narrative?: string; as_of?: string; source_references?: string[]; [k: string]: unknown };
+  trajectory?: { readings?: Array<{ date: string; what_happened: string; shift?: string }>; trend_direction?: string; research_question?: string };
+  data_sources?: { primary?: unknown[]; secondary?: unknown[]; tertiary?: unknown[] };
+  open_sweep_search_terms?: string[];
+  falsification_thresholds?: Array<{ event: string; magnitude: string; rationale: string }>;
+  promotion_criteria?: { what_would_make_this_active?: string; linked_bet_candidates?: string[] };
+  indicators?: WatchingDriverIndicator[];
+  current_state?: { truth_likelihood?: number | null; tier?: string; trajectory?: string; as_of?: string; derivation_note?: string };
+  umicore_translation_hypothesis?: string;
+  history?: WatchingDriverHistoryEntry[];
+}
+
+export interface BetCandidateV3 {
+  id: string;
+  name: string;
+  tier: string;
+  thesis_one_paragraph: string;
+  trigger_drivers: Array<{ driver_id: string; name: string; channel: string }>;
+  tipping_conditions?: { primary_trigger_AND_logic?: Array<{ condition: string; rationale: string; current_status: string; watch_items?: string[] }>; secondary_supportive_signals?: string[]; promotion_logic?: string };
+  umicore_specific_levers_and_assets?: { existing_assets_supporting_candidate?: string[]; gaps_to_close_for_promotion?: string[]; competitive_landscape?: { incumbent_competitors?: string[]; challenger_pressure_from?: string[]; trader_pressure_from?: string[]; umicore_relative_position?: string } };
+  estimated_financial_impact_framework?: { approach_note?: string; baseline_anchor?: Record<string, unknown>; service_revenue_model_assumptions_to_test?: string[]; two_sided_outcomes?: { upside_case?: string; downside_case?: string; base_case?: string }; valuation_framework_pointer?: string };
+  what_makes_this_a_candidate_not_a_bet_today?: string[];
+}
+
+export interface CoverageGapsV3 {
+  schema_version?: string;
+  scope_basis?: string;
+  pillar_coverage_assessment?: Record<string, { active_drivers?: string[]; coverage?: string; note?: string; remaining_subgaps?: string[] }>;
+  summary_by_pillar?: Record<string, { active?: string[]; watching?: string[]; coverage?: string; remaining_subgaps?: string[] }>;
+  explicit_deferrals?: Record<string, { decision?: string; decided_at?: string; by?: string; rationale?: string; unauthored_candidates?: string[] }>;
+  open_sweep_seed_terms_for_unauthored_pillars?: string[];
+}
+
+export interface SteepleWatchPayload {
+  [pillar: string]: {
+    active: Array<{ id: string; name: string; thesis?: string; tier: string; current_state?: unknown }>;
+    watching: Array<{ id: string; name: string; thesis?: string; system_claim?: string; tier: string; horizon_date?: string; n_indicators?: number; n_falsification_thresholds?: number; current_state?: unknown; umicore_translation_hypothesis?: string }>;
+  };
+}
+
+export interface PromotionProposal {
+  driver_id: string;
+  current_state_at_proposal?: unknown;
+  supporting_aggregate?: unknown;
+  proposal: string;
+  rationale: string;
+  review_action_required: string;
+}
+
+export interface OutsideInLatestCycle {
+  company: string;
+  cycle_date: string;
+  cycle_started_at: string;
+  cycle_completed_at?: string;
+  since_ts?: string | null;
+  n_routing_rows_processed: number;
+  n_promotion_proposals?: number;
+  drivers: Array<{ driver_id: string; name?: string; pillar?: string; history_entry: WatchingDriverHistoryEntry; promotion_proposed: boolean }>;
+  active_targets_summary?: Array<{ target_id: string; n_evidence_rows: number; cycle_score: number; directional_breakdown: { '+': number; '-': number; o: number }; summed_score?: number; evidence_row_guids?: string[] }>;
+}
+
+export interface OutsideInSection {
+  schema_version: string;
+  as_of: string;
+  pillar_coverage_assessment?: Record<string, unknown>;
+  steeple_watch: SteepleWatchPayload;
+  watching_drivers: WatchingDriverV3[];
+  bet_candidates: BetCandidateV3[];
+  coverage_gaps?: CoverageGapsV3;
+  promotion_proposals?: PromotionProposal[];
+  latest_cycle?: OutsideInLatestCycle;
+  recent_routing_sample?: Array<{ ts: string; guid: string; title: string; pub_date_text?: string; target_id: string; confidence: string; signal_direction: string; magnitude: string; rationale: string }>;
+  counts: {
+    active_drivers: number;
+    watching_drivers: number;
+    bet_candidates: number;
+    promotion_proposals_open: number;
+    recent_routing_rows: number;
+  };
+}
+
+export interface CourseCorrectionMemoBody {
+  headline: string;
+  driver_and_bet_cascade: string[];
+  financial_delta?: { table?: Array<{ line?: string; fy?: string; low?: string; high?: string; rationale?: string }>; method?: string | null };
+  share_price_impact?: { narrative?: string; range?: string | null; method?: string | null; confidence?: string; sensitivity?: string };
+  adjacency_flags: string[];
+  assumptions_used: string[];
+  what_would_invalidate_this: string[];
+  _meta?: { company?: string; cycle_date?: string; generated_at?: string; model?: string; n_routing_rows_processed?: number; n_promotion_proposals?: number; n_drivers_evaluated?: number };
+  _stub_mode?: boolean;
+}
+
+export interface CourseCorrectionSection {
+  schema_version: string;
+  latest_memo?: CourseCorrectionMemoBody | null;
+  all_memos?: CourseCorrectionMemoBody[];
 }
 
 /** Type guard — used by the upload hook to dispatch payloads.
@@ -402,13 +534,20 @@ export interface CrowsNestV2Data {
  * The schema_version match is the load-bearing check; the array/object checks
  * are defence-in-depth. We accept partial bundles (e.g. position_map missing)
  * so the dashboard never silently rejects a slightly-incomplete v2 bundle.
+ *
+ * v3 bundles are a superset of v2 (carry-through pattern) and are accepted here
+ * with the same data-flow; the v3-only fields (outside_in, course_correction)
+ * are optional and read by the v3 views directly.
  */
 export function isCrowsNestV2Payload(value: unknown): value is CrowsNestV2Data {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
-  if (v.schema_version !== 'crows_nest_v2_dashboard_bundle') return false;
+  if (
+    v.schema_version !== 'crows_nest_v2_dashboard_bundle' &&
+    v.schema_version !== 'crows_nest_v3_dashboard_bundle'
+  )
+    return false;
   // Defence-in-depth: warn but accept if any of the arrays are missing/empty.
-  // The schema_version match alone is sufficient to identify a v2 bundle.
   return true;
 }
 
