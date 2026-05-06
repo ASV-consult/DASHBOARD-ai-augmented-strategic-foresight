@@ -24,6 +24,7 @@ import {
   confidenceBadgeClassV3,
   macroDriverChipClassV3,
   extractTrajectorySeries,
+  extractMultiRegionTrajectorySeries,
 } from '@/types/crows-nest-v3';
 import {
   ChevronRight,
@@ -45,6 +46,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip as RechartsTooltip,
+  Legend,
   ResponsiveContainer,
 } from 'recharts';
 
@@ -462,13 +464,33 @@ const IndicatorRowV3: React.FC<IndicatorRowV3Props> = ({ indicator, expanded, on
 
 /* ─────────────────────────── Indicator detail (two-panel) ─────────────────────────── */
 
+/* Region line colours — stable across renders */
+const REGION_COLORS: Record<string, string> = {
+  China: '#ef4444',
+  EU: '#3b82f6',
+  US: '#10b981',
+  'EU all-BEV': '#3b82f6',
+  'US all-BEV': '#10b981',
+  World: '#8b5cf6',
+  'EMDEs ex-China': '#f59e0b',
+};
+const FALLBACK_COLORS = ['#6366f1', '#ec4899', '#14b8a6', '#f97316'];
+function regionColor(name: string, idx: number): string {
+  return REGION_COLORS[name] ?? FALLBACK_COLORS[idx % FALLBACK_COLORS.length];
+}
+
 const IndicatorDetailV3: React.FC<{ indicator: IndicatorV3 }> = ({ indicator }) => {
   const cs = indicator.current_state_assessment;
   const fp = indicator.forward_projection;
   const sysClaim = indicator.system_claim;
-  const series = useMemo(
-    () => extractTrajectorySeries(indicator.trajectory?.readings),
+
+  const multiSeries = useMemo(
+    () => extractMultiRegionTrajectorySeries(indicator.trajectory?.readings),
     [indicator.trajectory?.readings],
+  );
+  const singleSeries = useMemo(
+    () => (multiSeries ? null : extractTrajectorySeries(indicator.trajectory?.readings)),
+    [indicator.trajectory?.readings, multiSeries],
   );
   const [methodOpen, setMethodOpen] = useState(false);
 
@@ -595,27 +617,76 @@ const IndicatorDetailV3: React.FC<{ indicator: IndicatorV3 }> = ({ indicator }) 
             </div>
           ) : null}
 
-          {/* Trajectory mini chart */}
+          {/* Trajectory chart — multi-region when readings carry a region field */}
           <div className="rounded-lg border border-border/40 bg-background/50 p-2.5">
-            <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center justify-between mb-1.5">
               <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold flex items-center gap-1">
                 <TrendingUp className="h-3 w-3" />
                 Trajectory
               </div>
-              {series ? (
-                <span className="text-[10px] text-muted-foreground">{series.fieldLabel}</span>
+              {(multiSeries ?? singleSeries) ? (
+                <span className="text-[10px] text-muted-foreground">
+                  {(multiSeries ?? singleSeries)!.fieldLabel}
+                  {multiSeries ? ` — ${multiSeries.regions.length} regions` : ''}
+                </span>
               ) : null}
             </div>
-            {series ? (
+
+            {multiSeries ? (
+              /* ── Multi-region chart ── */
+              <div style={{ width: '100%', height: 220 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={multiSeries.pivoted}
+                    margin={{ top: 8, right: 12, left: 0, bottom: 4 }}
+                  >
+                    <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" />
+                    <XAxis dataKey="x" tick={{ fontSize: 10 }} />
+                    <YAxis
+                      tick={{ fontSize: 10 }}
+                      domain={[0, 'auto']}
+                      tickFormatter={(v) => `${v}%`}
+                    />
+                    <RechartsTooltip
+                      contentStyle={{ fontSize: 11, padding: 6 }}
+                      formatter={(value: number | null, name: string) =>
+                        value == null ? ['—', name] : [`${value}%`, name]
+                      }
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: 10, paddingTop: 4 }}
+                      iconType="circle"
+                      iconSize={8}
+                    />
+                    {multiSeries.regions.map((r, idx) => (
+                      <Line
+                        key={r.name}
+                        type="monotone"
+                        dataKey={r.name}
+                        stroke={regionColor(r.name, idx)}
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                        activeDot={{ r: 5 }}
+                        connectNulls={false}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : singleSeries ? (
+              /* ── Single-series chart (fallback) ── */
               <div style={{ width: '100%', height: 180 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={series.points} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
+                  <LineChart
+                    data={singleSeries.points}
+                    margin={{ top: 8, right: 8, left: 0, bottom: 4 }}
+                  >
                     <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" />
                     <XAxis dataKey="x" tick={{ fontSize: 10 }} />
                     <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} />
                     <RechartsTooltip
                       contentStyle={{ fontSize: 11, padding: 6 }}
-                      formatter={(value: number) => [value, series.fieldLabel]}
+                      formatter={(value: number) => [value, singleSeries.fieldLabel]}
                     />
                     <Line
                       type="monotone"
@@ -629,10 +700,13 @@ const IndicatorDetailV3: React.FC<{ indicator: IndicatorV3 }> = ({ indicator }) 
                 </ResponsiveContainer>
               </div>
             ) : (
-              <p className="text-[11px] text-muted-foreground italic py-3">Trajectory not yet quantified</p>
+              <p className="text-[11px] text-muted-foreground italic py-3">
+                Trajectory not yet quantified
+              </p>
             )}
+
             {indicator.trajectory?.trend_direction ? (
-              <p className="text-[10px] text-muted-foreground italic mt-1">
+              <p className="text-[10px] text-muted-foreground italic mt-1.5 leading-relaxed">
                 {indicator.trajectory.trend_direction}
               </p>
             ) : null}

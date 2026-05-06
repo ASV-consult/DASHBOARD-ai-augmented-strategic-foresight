@@ -378,6 +378,8 @@ const TRAJECTORY_FIELD_PREFERENCE = [
   'volume',
 ];
 
+const NON_METRIC_KEYS = new Set(['as_of', 'date', 'region', 'source', 'note']);
+
 export interface TrajectorySeriesPoint {
   x: string;
   y: number;
@@ -397,7 +399,7 @@ export function extractTrajectorySeries(readings: V3TrajectoryReading[] | undefi
   const numericFieldCounts: Record<string, number> = {};
   for (const r of readings) {
     for (const [k, v] of Object.entries(r)) {
-      if (k === 'as_of' || k === 'date' || k === 'region' || k === 'source' || k === 'note') continue;
+      if (NON_METRIC_KEYS.has(k)) continue;
       if (typeof v === 'number' && Number.isFinite(v)) {
         numericFieldCounts[k] = (numericFieldCounts[k] || 0) + 1;
       }
@@ -437,5 +439,101 @@ export function extractTrajectorySeries(readings: V3TrajectoryReading[] | undefi
     field: chosen,
     fieldLabel: chosen.replace(/_/g, ' '),
     points,
+  };
+}
+
+/* ─── Multi-region trajectory series ─── */
+
+export interface RegionSeries {
+  name: string;
+  points: { x: string; y: number }[];
+}
+
+/**
+ * Multi-region variant. When readings carry a `region` field, group them by
+ * region and return one series per region, all on the same primary metric.
+ * Returns null if no `region` field is found (fall back to extractTrajectorySeries).
+ */
+export interface MultiRegionTrajectorySeries {
+  field: string;
+  fieldLabel: string;
+  /** Sorted unique years across all regions */
+  years: string[];
+  regions: RegionSeries[];
+  /** Recharts-friendly pivot: [{ x, RegionA, RegionB, ... }] */
+  pivoted: Record<string, string | number | null>[];
+}
+
+export function extractMultiRegionTrajectorySeries(
+  readings: V3TrajectoryReading[] | undefined,
+): MultiRegionTrajectorySeries | null {
+  if (!readings || readings.length === 0) return null;
+
+  // Only activate when at least one reading has a `region` field.
+  const hasRegion = readings.some((r) => typeof r.region === 'string' && r.region.trim() !== '');
+  if (!hasRegion) return null;
+
+  // Pick the primary metric using the same preference logic.
+  const numericFieldCounts: Record<string, number> = {};
+  for (const r of readings) {
+    for (const [k, v] of Object.entries(r)) {
+      if (NON_METRIC_KEYS.has(k)) continue;
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        numericFieldCounts[k] = (numericFieldCounts[k] || 0) + 1;
+      }
+    }
+  }
+  if (Object.keys(numericFieldCounts).length === 0) return null;
+
+  let chosen: string | null = null;
+  for (const pref of TRAJECTORY_FIELD_PREFERENCE) {
+    if (numericFieldCounts[pref]) { chosen = pref; break; }
+  }
+  if (!chosen) {
+    const sorted = Object.entries(numericFieldCounts).sort((a, b) => b[1] - a[1]);
+    chosen = sorted[0]?.[0] ?? null;
+  }
+  if (!chosen) return null;
+
+  // Group by region.
+  const byRegion: Record<string, { x: string; y: number }[]> = {};
+  const yearSet = new Set<string>();
+
+  for (const r of readings) {
+    const regionName = (typeof r.region === 'string' ? r.region : 'Unknown').trim();
+    const x = String(r.as_of ?? r.date ?? '');
+    const v = r[chosen];
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    if (!byRegion[regionName]) byRegion[regionName] = [];
+    byRegion[regionName].push({ x, y: v });
+    yearSet.add(x);
+  }
+
+  const regionNames = Object.keys(byRegion);
+  if (regionNames.length === 0) return null;
+
+  // Sort each region's series by year.
+  for (const name of regionNames) {
+    byRegion[name].sort((a, b) => a.x.localeCompare(b.x));
+  }
+
+  const years = Array.from(yearSet).sort((a, b) => a.localeCompare(b));
+
+  // Build recharts pivot: each entry = { x: year, Region1: val, Region2: val, ... }
+  const pivoted: Record<string, string | number | null>[] = years.map((yr) => {
+    const row: Record<string, string | number | null> = { x: yr };
+    for (const name of regionNames) {
+      const pt = byRegion[name].find((p) => p.x === yr);
+      row[name] = pt?.y ?? null;
+    }
+    return row;
+  });
+
+  return {
+    field: chosen,
+    fieldLabel: chosen.replace(/_/g, ' '),
+    years,
+    regions: regionNames.map((name) => ({ name, points: byRegion[name] })),
+    pivoted,
   };
 }
