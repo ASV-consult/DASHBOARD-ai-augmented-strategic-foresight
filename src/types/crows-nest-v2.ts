@@ -470,6 +470,116 @@ export interface SteepleWatchPayload {
   };
 }
 
+/** ─── STEEPLE Tree (v3 deep-dive) — full per-pillar joined view ───
+ *  Consumed by OutsideInSteepleWatchView. One node per pillar joining:
+ *    active (T-drivers) · watching_authored (W-drivers) · seeded_candidates
+ *    (steeple_seed_v1.json) · candidate_for_review (W7-W9 from subagent pass)
+ *    · deferred (Ethical) · remaining_subgaps. Every node carries the metadata
+ *    needed for inline deep-dive (thesis, research pointer, Umicore translation).
+ */
+export type SteepleNodeKind =
+  | 'active_T_driver'
+  | 'watching_W_driver_authored'
+  | 'steeple_seed_candidate'
+  | 'subagent_surfaced_candidate'
+  | 'deferred_seed_candidate';
+
+export interface SteepleActiveNode {
+  id: string;
+  name: string;
+  thesis?: string;
+  current_state?: unknown;
+  tier: 'active';
+  kind: 'active_T_driver';
+}
+
+export interface SteepleWatchingAuthoredNode {
+  id: string;
+  name: string;
+  thesis?: string;
+  system_claim?: string;
+  horizon_date?: string;
+  current_state?: { truth_likelihood?: number | null; tier?: string; trajectory?: string; as_of?: string };
+  trend_direction?: string;
+  n_indicators?: number;
+  n_falsification_thresholds?: number;
+  umicore_translation_hypothesis?: string;
+  tier: 'watching';
+  kind: 'watching_W_driver_authored';
+}
+
+export interface SteepleSeededCandidateNode {
+  id: string;
+  name: string;
+  thesis_one_line?: string;
+  why_eu_materials_specialty_chemicals?: string;
+  preliminary_classification?: string;
+  relation_to_existing?: string;
+  umicore_translation_hypothesis?: string;
+  first_research_pointer?: string;
+  tier: 'seeded';
+  kind: 'steeple_seed_candidate';
+}
+
+export interface SteepleSubagentCandidateNode {
+  id: string;
+  name: string;
+  thesis?: string;
+  first_signal?: string;
+  umicore_translation_hypothesis?: string;
+  decision?: string;
+  tier: 'candidate_for_review';
+  kind: 'subagent_surfaced_candidate';
+}
+
+export interface SteepleDeferredNode {
+  id: string;
+  name: string;
+  decision?: string;
+  decided_at?: string;
+  by?: string;
+  rationale?: string;
+  thesis_one_line?: string;
+  umicore_translation_hypothesis?: string;
+  first_research_pointer?: string;
+  tier: 'deferred';
+  kind: 'deferred_seed_candidate';
+}
+
+export interface SteepleTreePillarNode {
+  pillar: string;
+  active: SteepleActiveNode[];
+  watching_authored: SteepleWatchingAuthoredNode[];
+  seeded_candidates: SteepleSeededCandidateNode[];
+  candidate_for_review: SteepleSubagentCandidateNode[];
+  deferred: SteepleDeferredNode[];
+  remaining_subgaps: string[];
+  pillar_assessment: {
+    coverage_label?: string;
+    note?: string;
+    active_ids?: string[];
+    watching_ids?: string[];
+  };
+  counts: {
+    active: number;
+    watching_authored: number;
+    seeded_candidates: number;
+    candidate_for_review: number;
+    deferred: number;
+    remaining_subgaps: number;
+    total_tracked: number;
+  };
+}
+
+export type SteepleTreePayload = Record<string, SteepleTreePillarNode>;
+
+export type SteepleNode =
+  | SteepleActiveNode
+  | SteepleWatchingAuthoredNode
+  | SteepleSeededCandidateNode
+  | SteepleSubagentCandidateNode
+  | SteepleDeferredNode;
+
 export interface PromotionProposal {
   driver_id: string;
   current_state_at_proposal?: unknown;
@@ -496,9 +606,13 @@ export interface OutsideInSection {
   as_of: string;
   pillar_coverage_assessment?: Record<string, unknown>;
   steeple_watch: SteepleWatchPayload;
+  /** v3 deep-dive STEEPLE tree — full per-pillar join (active + watching + seeded + deferred + sub-gaps). */
+  steeple_tree?: SteepleTreePayload;
   watching_drivers: WatchingDriverV3[];
   bet_candidates: BetCandidateV3[];
   coverage_gaps?: CoverageGapsV3;
+  /** Original seed file shipped through to the dashboard for reference / search. */
+  steeple_seed?: { schema_version?: string; company?: string; as_of?: string; scope?: string; candidates?: unknown[]; pillar_coverage_assessment?: unknown; [k: string]: unknown };
   promotion_proposals?: PromotionProposal[];
   latest_cycle?: OutsideInLatestCycle;
   recent_routing_sample?: Array<{ ts: string; guid: string; title: string; pub_date_text?: string; target_id: string; confidence: string; signal_direction: string; magnitude: string; rationale: string }>;
@@ -508,6 +622,8 @@ export interface OutsideInSection {
     bet_candidates: number;
     promotion_proposals_open: number;
     recent_routing_rows: number;
+    steeple_seed_candidates?: number;
+    steeple_tree_total_tracked?: number;
   };
 }
 

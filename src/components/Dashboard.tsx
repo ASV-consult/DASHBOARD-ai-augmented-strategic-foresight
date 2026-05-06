@@ -58,6 +58,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Radio,
+  ScrollText,
   ShieldAlert,
   Target,
   Telescope,
@@ -275,26 +276,26 @@ const viewMetaMap: Record<DashboardView, { title: string; stream: string; note: 
     stream: 'Crow\'s Nest 2.0',
     note: '38 sourced components describing the company\'s actual position — segments, sites, offtake book, balance sheet, governance, technology, capabilities — plus flagged factual corrections.',
   },
-  // ── Outside-In placeholders (v3) ──
+  // ── Outside-In (v3) ──
   'crows-nest-outside-steeple': {
-    title: 'Outside-In — STEEPLE Watch',
+    title: 'Outside-In — STEEPLE Tree',
     stream: 'Crow\'s Nest',
-    note: 'Pillar-by-pillar wide scan of world-state forces (Social, Technology, Economic, Environmental, Political-Legal, Ethical) — including drivers not currently linked to any bet. NOT bet-filtered. To be populated in a later phase.',
+    note: 'Wide-scan tree across all six STEEPLE pillars: active drivers (T*), authored watching drivers (W*), seeded candidates (OI-*), surfaced-this-cycle, deferred items, and remaining sub-gaps. NOT bet-filtered.',
   },
   'crows-nest-outside-watching': {
     title: 'Outside-In — Watching Drivers',
     stream: 'Crow\'s Nest',
-    note: 'Speculative, forward-looking world-state forces with low priors and explicit trigger-evidence. Not yet linked to any current bet. To be populated in a later phase.',
+    note: 'Drill-down on authored W-driver records — full v3-canonical schema: thesis, system claim, indicators, falsification thresholds, current observed value, trajectory readings, cycle history.',
   },
   'crows-nest-outside-bet-candidates': {
     title: 'Outside-In — Bet Candidates',
     stream: 'Crow\'s Nest',
-    note: 'Bets the company isn\'t currently making but could. Each candidate references the Outside-In drivers that would justify it and what would tip it from candidate to active. To be populated in a later phase.',
+    note: 'Bets the company isn\'t currently making but could. Each BC-OI-* candidate references the Outside-In drivers that would justify it and what would tip it from candidate to active.',
   },
   'crows-nest-outside-coverage-gaps': {
-    title: 'Outside-In — Coverage Gaps',
+    title: 'Outside-In — Decisions Log',
     stream: 'Crow\'s Nest',
-    note: 'STEEPLE pillars with no drivers tracked. Surfaces blind spots in the current driver universe. To be populated in a later phase.',
+    note: 'Governance trail for the radar: pending promotion proposals, explicit deferral decisions with rationale, and Open Sweep seed terms governing autonomous research in unauthored areas.',
   },
   // ── Course Correction views (v3) ──
   'crows-nest-course-memo': {
@@ -670,7 +671,7 @@ export function Dashboard() {
     'crows-nest-outside-steeple': Compass,
     'crows-nest-outside-watching': Telescope,
     'crows-nest-outside-bet-candidates': Target,
-    'crows-nest-outside-coverage-gaps': ShieldAlert,
+    'crows-nest-outside-coverage-gaps': ScrollText,
     'crows-nest-course-memo': GitMerge,
     'crows-nest-course-predictive': TrendingUp,
     'crows-nest-course-recommendations': GitMerge,
@@ -1732,11 +1733,11 @@ export function Dashboard() {
                         </AccordionTrigger>
                         <AccordionContent className="space-y-1 pt-2 pl-1">
                           <SidebarItem
-                            label="STEEPLE Watch"
+                            label="STEEPLE Tree"
                             icon={Compass}
                             isActive={activeView === 'crows-nest-outside-steeple'}
                             onClick={() => navigate('crows-nest-outside-steeple')}
-                            badge={crowsNestV2Data?.outside_in ? `${(crowsNestV2Data.outside_in.counts.active_drivers + crowsNestV2Data.outside_in.counts.watching_drivers)}` : 'Empty'}
+                            badge={crowsNestV2Data?.outside_in ? `${crowsNestV2Data.outside_in.counts.steeple_tree_total_tracked ?? (crowsNestV2Data.outside_in.counts.active_drivers + crowsNestV2Data.outside_in.counts.watching_drivers)}` : 'Empty'}
                             collapsed={false}
                             tone="crows-nest"
                           />
@@ -1759,11 +1760,18 @@ export function Dashboard() {
                             tone="crows-nest"
                           />
                           <SidebarItem
-                            label="Coverage Gaps"
-                            icon={ShieldAlert}
+                            label="Decisions Log"
+                            icon={ScrollText}
                             isActive={activeView === 'crows-nest-outside-coverage-gaps'}
                             onClick={() => navigate('crows-nest-outside-coverage-gaps')}
-                            badge={crowsNestV2Data?.outside_in?.coverage_gaps ? 'live' : 'Empty'}
+                            badge={(() => {
+                              const oi = crowsNestV2Data?.outside_in;
+                              if (!oi) return 'Empty';
+                              const promos = oi.promotion_proposals?.length ?? 0;
+                              const defers = Object.keys(oi.coverage_gaps?.explicit_deferrals ?? {}).length;
+                              const total = promos + defers;
+                              return total > 0 ? `${total}` : 'live';
+                            })()}
                             collapsed={false}
                             tone="crows-nest"
                           />
