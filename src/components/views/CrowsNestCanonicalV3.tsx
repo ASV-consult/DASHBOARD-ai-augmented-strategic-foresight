@@ -409,11 +409,14 @@ const IndicatorRowV3: React.FC<IndicatorRowV3Props> = ({ indicator, expanded, on
   const confidence = cs?.confidence ?? null;
   const weight = indicator.feeds_into_bet_resolution?.weight_in_bet;
 
+  const tierShort = shortTier(tier);
+  const confShort = shortConfidence(confidence);
+
   return (
     <li className="rounded-lg border border-border/40 bg-background/40 overflow-hidden">
       {/* Compact row */}
       <div
-        className="grid grid-cols-[auto_auto_1fr_auto] items-center gap-3 px-3 py-2 cursor-pointer hover:bg-rose-500/[0.04] transition"
+        className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 cursor-pointer hover:bg-rose-500/[0.04] transition"
         onClick={onToggle}
       >
         <button
@@ -426,30 +429,43 @@ const IndicatorRowV3: React.FC<IndicatorRowV3Props> = ({ indicator, expanded, on
         >
           {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         </button>
-        <span className="rounded border border-rose-500/30 bg-rose-500/[0.06] px-1.5 py-0.5 text-[10px] font-mono text-rose-700 dark:text-rose-300">
+        <span className="shrink-0 rounded border border-rose-500/30 bg-rose-500/[0.06] px-1.5 py-0.5 text-[10px] font-mono text-rose-700 dark:text-rose-300">
           {indicator.indicator_id}
         </span>
-        <div className="min-w-0">
-          <div className="text-xs font-semibold text-foreground line-clamp-1">{indicator.topic}</div>
+        <div className="min-w-0 overflow-hidden">
+          <div className="text-xs font-semibold text-foreground truncate">{indicator.topic}</div>
           {cs?.value ? (
-            <div className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">{cs.value}</div>
+            <div className="text-[10px] text-muted-foreground truncate mt-0.5" title={cs.value}>
+              {cs.value}
+            </div>
           ) : null}
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground shrink-0">
           {tier ? (
-            <span className={`rounded-full border px-1.5 py-0.5 ${tierBadgeClassV3(tier)}`}>{tier}</span>
+            <span
+              className={`shrink-0 whitespace-nowrap rounded-full border px-1.5 py-0.5 ${tierBadgeClassV3(tier)}`}
+              title={tier}
+            >
+              {tierShort}
+            </span>
           ) : (
-            <span className="rounded-full border border-slate-400/40 bg-slate-400/[0.06] px-1.5 py-0.5 text-slate-500">
+            <span className="shrink-0 whitespace-nowrap rounded-full border border-slate-400/40 bg-slate-400/[0.06] px-1.5 py-0.5 text-slate-500">
               not yet researched
             </span>
           )}
           {confidence ? (
-            <span className={`rounded-full border px-1.5 py-0.5 ${confidenceBadgeClassV3(confidence)}`}>
-              conf: {confidence}
+            <span
+              className={`shrink-0 whitespace-nowrap rounded-full border px-1.5 py-0.5 ${confidenceBadgeClassV3(confidence)}`}
+              title={confidence}
+            >
+              conf: {confShort}
             </span>
           ) : null}
           {typeof weight === 'number' ? (
-            <span className="rounded-full border border-border/40 bg-background/60 px-1.5 py-0.5 tabular-nums" title="Weight in bet">
+            <span
+              className="shrink-0 whitespace-nowrap rounded-full border border-border/40 bg-background/60 px-1.5 py-0.5 tabular-nums"
+              title="Weight in bet"
+            >
               w {weight.toFixed(3)}
             </span>
           ) : null}
@@ -463,6 +479,36 @@ const IndicatorRowV3: React.FC<IndicatorRowV3Props> = ({ indicator, expanded, on
 };
 
 /* ─────────────────────────── Indicator detail (two-panel) ─────────────────────────── */
+
+/**
+ * Tier / confidence strings sometimes carry long qualifying text (e.g.
+ * "Tier 1 for FY2025 + 2026 consensus; Tier 2 triangulated for ..."). For the
+ * compact row we want a short pill — the full text stays in the expanded
+ * detail panel. These helpers extract the short label.
+ */
+function shortTier(t: string | null | undefined): string {
+  if (!t) return '';
+  const lower = t.toLowerCase();
+  if (lower.includes('tier 1')) {
+    return lower.includes('tier 2') ? 'Tier 1 / 2' : 'Tier 1';
+  }
+  if (lower.includes('tier 2')) {
+    if (lower.includes('uncertain')) return 'Tier 2 (uncertain)';
+    if (lower.includes('triangulat')) return 'Tier 2 triangulated';
+    return 'Tier 2';
+  }
+  return t.length > 22 ? t.slice(0, 20) + '…' : t;
+}
+function shortConfidence(c: string | null | undefined): string {
+  if (!c) return '';
+  const lower = c.trim().toLowerCase();
+  if (lower.startsWith('medium-low')) return 'medium-low';
+  if (lower.startsWith('medium-high')) return 'medium-high';
+  if (lower.startsWith('high')) return 'high';
+  if (lower.startsWith('medium')) return 'medium';
+  if (lower.startsWith('low')) return 'low';
+  return c.length > 14 ? c.slice(0, 12) + '…' : c;
+}
 
 /* Region line colours — stable across renders */
 const REGION_COLORS: Record<string, string> = {
